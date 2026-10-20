@@ -515,7 +515,8 @@ export type StartEvalCommand = {
   cmd: "startEval";
   datasetId: string;
   agentId: string;
-  targets: { provider: string; model: string }[];
+  /** `effort`: one of the runtime's five reasoning levels, or absent for the model's default. */
+  targets: { provider: string; model: string; effort?: string | null }[];
   budgetUsd?: number | null;
   /** The session this sweep was started from. See RunCommand.threadId. */
   threadId?: string;

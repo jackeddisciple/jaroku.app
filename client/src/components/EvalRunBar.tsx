@@ -21,6 +21,7 @@ import { isRunnable, modelName, runProviders, useProviderStore } from "../store/
 import { useUiStore } from "../store/uiStore.ts";
 import { sendCancelEval, sendEstimateEval, sendStartEval } from "../lib/socket.ts";
 import { fmtCost } from "../lib/format.ts";
+import { effortName, effortStops } from "../lib/effortLevels.ts";
 import { Chip } from "./Chip.tsx";
 import { primaryBtn } from "./buttons.ts";
 import type { EvalEstimate, EvalTarget } from "../types.ts";
@@ -255,6 +256,34 @@ export function EvalRunBar() {
           );
         })()}
       </div>
+
+      {/* HOW HARD EACH CHOSEN MODEL THINKS, as Test mode lets you choose. An eval ran every model at its
+          default — Liven failed six of six on Sonnet 5 at a level Test mode would not have used. Only
+          the models that have levels get a row; the app's segmented chips, never a native select. */}
+      {targets.some((t) => effortStops(providerModels.find((m) => m.id === t.model)).length > 0) && (
+        <div className="space-y-1 text-tiny">
+          {targets.map((t) => {
+            const model = providerModels.find((m) => m.id === t.model);
+            const stops = effortStops(model);
+            if (!stops.length) return null;
+            const pick = (effort: string | null) =>
+              setTargets((cur) => cur.map((x) => (key(x) === key(t) ? { ...x, effort } : x)));
+            return (
+              <div key={key(t)} className="flex flex-wrap items-center gap-1" role="group" aria-label={`Reasoning effort for ${modelName(providerModels, t.model)}`}>
+                <span className="mr-1 text-faint">{modelName(providerModels, t.model)} effort</span>
+                <Chip size="sm" selected={!t.effort} disabled={running} onClick={() => pick(null)} title="The model's own default">
+                  Default
+                </Chip>
+                {stops.map((level) => (
+                  <Chip key={level} size="sm" selected={t.effort === level} disabled={running} onClick={() => pick(level)}>
+                    {effortName(model, level)}
+                  </Chip>
+                ))}
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {/* the estimate — shown only when money is involved, and always as a range */}
       {confirming && (

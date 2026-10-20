@@ -76,6 +76,32 @@ export interface Rubric {
 export interface EvalTarget {
   provider: string;
   model: string;
+  /**
+   * How hard this leg thinks — one of the runtime's five levels — or absent for the model's default.
+   * Test mode always offered it and an eval never did, so a model was only ever compared at its default.
+   */
+  effort?: string | null;
+}
+
+/** The levels a run's `JAROKU_REASONING_EFFORT` takes, as runtime/jaroku_runner/models.py reads them. */
+export const EFFORT_LEVELS = ["low", "medium", "high", "xhigh", "max"] as const;
+
+/**
+ * The legs an eval was asked for, tidied: one per (provider, model), and an effort only when it is
+ * one of the five levels. Two legs of one model would be grouped into one row of the comparison.
+ */
+export function cleanTargets(raw: unknown): EvalTarget[] {
+  const out: EvalTarget[] = [];
+  const seen = new Set<string>();
+  for (const t of Array.isArray(raw) ? raw : []) {
+    const provider = typeof t?.provider === "string" ? t.provider : "";
+    const model = typeof t?.model === "string" ? t.model : "";
+    if (!provider || !model || seen.has(`${provider} ${model}`)) continue;
+    seen.add(`${provider} ${model}`);
+    const effort = (EFFORT_LEVELS as readonly string[]).includes(t?.effort) ? (t.effort as string) : null;
+    out.push(effort ? { provider, model, effort } : { provider, model });
+  }
+  return out;
 }
 
 export type EvalRunStatus =

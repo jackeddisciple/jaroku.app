@@ -32,7 +32,7 @@ import { RetentionSweeper, describeSweep, deleted as sweptRows } from "./lifecyc
 import { openDb } from "./db/open.ts";
 import { readRoleFacts, rlsRefusal } from "./db/rlsGuard.ts";
 import { newRequestId, systemContext, systemContextFor, type TenantContext } from "./db/tenant.ts";
-import { EvalStore, checkDatasetName, uniqueDatasetName, type Rubric, type RubricCriterion } from "./evalStore.ts";
+import { EvalStore, checkDatasetName, cleanTargets, uniqueDatasetName, type Rubric, type RubricCriterion } from "./evalStore.ts";
 import { EvalRunner, evalRunsOwnedElsewhere } from "./evalRunner.ts";
 import { DEFAULT_CRITERIA, validateRubric } from "./judge/rubric.ts";
 import { JudgeScorer } from "./judge/score.ts";
@@ -11453,7 +11453,7 @@ async function handleEvalCommand(ctx: TenantContext, cmd: ForwardedCommand): Pro
           datasetId: cmd.datasetId,
           agentId: cmd.agentId,
           rubricId: await rubricIdFor(ctx, cmd.datasetId),
-          targets: cmd.targets ?? [],
+          targets: cleanTargets(cmd.targets),
           budgetUsd: cmd.budgetUsd ?? null,
           ...(origin ? { origin } : {}),
         });

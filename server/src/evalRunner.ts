@@ -49,6 +49,8 @@ interface RunEvalPayload {
   provider: string;
   model: string;
   attempt: number;
+  /** The leg's reasoning effort, when it set one. See EvalTarget.effort. */
+  effort?: string | null;
 }
 
 /** Wall-clock deadline per job. A wedged subprocess must not hold a slot forever. Reads the
@@ -821,6 +823,7 @@ export class EvalRunner {
       provider: job.provider,
       model: job.model,
       attempt: job.attempt,
+      effort: evalRun.targets.find((t) => t.provider === job.provider && t.model === job.model)?.effort ?? null,
     };
     this.jobToEval.set(job.id, live.evalId);
     await this.deps.dispatcher.enqueue("run.eval", this.ctx(live.evalId).workspaceId, payload, {
@@ -945,6 +948,9 @@ export class EvalRunner {
           JAROKU_RUN_ID: runId,
           JAROKU_PROVIDER: payload.provider,
           JAROKU_MODEL: payload.model,
+          // HOW HARD IT THINKS, per leg. An eval run carried only a provider and a model, so a model
+          // was compared at its default thinking whatever Test mode had been set to.
+          ...(payload.effort ? { JAROKU_REASONING_EFFORT: payload.effort } : {}),
         },
       });
     } catch (err) {

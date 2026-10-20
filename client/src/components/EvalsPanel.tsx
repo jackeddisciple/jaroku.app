@@ -55,7 +55,8 @@ export function ResultsHeader({ results, live }: { results: EvalResults; live: E
   const agentName = useBuildStore((s) => s.agents.find((a) => a.agent_id === results.agentId)?.name ?? results.agentId);
   const status = (live && live.evalId === results.evalId && live.status === undefined ? "running" : results.status) as EvalRunStatus;
   const word = EVAL_WORD[status] ?? status;
-  const models = (results.targets ?? results.providers).map((t) => t.model);
+  // Each with its effort when it had one, so two comparisons at different levels are told apart.
+  const models = (results.targets ?? results.providers).map((t) => ("effort" in t && t.effort ? `${t.model} (${t.effort})` : t.model));
   const { totals } = results;
   return (
     <div className="space-y-1 pb-3">

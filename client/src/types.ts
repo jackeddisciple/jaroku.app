@@ -497,6 +497,8 @@ export interface DatasetExample {
 export interface EvalTarget {
   provider: string;
   model: string;
+  /** How hard this leg thinks — one of the five levels — or absent for the model's default. */
+  effort?: string | null;
 }
 
 /**

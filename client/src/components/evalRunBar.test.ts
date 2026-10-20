@@ -139,5 +139,34 @@ console.log("\nan agent that has never been built cannot be estimated or run");
   check(/\sdisabled=""/.test(button), "and Estimate is off", button);
 }
 
+console.log("\na chosen model with effort levels can be given one");
+{
+  const { createElement } = await import("react");
+  const { markup, seed } = await import("../lib/testRender.ts");
+  const { useBuildStore } = await import("../store/buildStore.ts");
+  const { useEvalStore } = await import("../store/evalStore.ts");
+  const { useProviderStore } = await import("../store/providerStore.ts");
+  const { EvalRunBar } = await import("./EvalRunBar.tsx");
+  seed(useBuildStore, { activeAgentId: "liven", agents: [{ agent_id: "liven", name: "Liven" }] } as never);
+  seed(useProviderStore, {
+    models: [
+      { id: "claude-sonnet-5", name: "Sonnet 5", provider: "anthropic", label: "Anthropic", reasoning: "effort", effort_levels: ["low", "medium", "high"] },
+      { id: "claude-haiku-4-5", name: "Haiku 4.5", provider: "anthropic", label: "Anthropic", reasoning: null },
+    ],
+    providers: [{ id: "anthropic", env_key: "ANTHROPIC_API_KEY", configured: true, runnable: true }],
+  } as never);
+  seed(useEvalStore, {
+    selectedDatasetByAgent: { liven: "d1" },
+    examplesByDataset: { d1: [{ id: "x1", dataset_id: "d1", input: "a", expected: null, notes: null, position: 0, created_at: "" }] },
+    targetsByAgent: { liven: [{ provider: "anthropic", model: "claude-sonnet-5", effort: "high" }, { provider: "anthropic", model: "claude-haiku-4-5" }] },
+    progressByEval: {},
+  } as never);
+  const html = markup(createElement(EvalRunBar));
+  const words = html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
+  check(/aria-label="Reasoning effort for Sonnet 5"/.test(html), "Sonnet 5 gets an effort row", words);
+  check(!/aria-label="Reasoning effort for Haiku 4.5"/.test(html), "Haiku 4.5, which has no levels, does not");
+  check(words.includes("Default") && words.includes("High"), "with Default and the model's own levels", words);
+}
+
 console.log(failures === 0 ? "\nALL CORRECT" : `\n${failures} FAILURES`);
 (globalThis as { process?: { exit(code: number): void } }).process?.exit(failures === 0 ? 0 : 1);

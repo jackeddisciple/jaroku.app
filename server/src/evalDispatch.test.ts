@@ -13,7 +13,7 @@ import { openTestSqlite, testContext } from "./db/testDb.ts";
 import { TraceStore } from "./store.ts";
 import { EvalStore } from "./evalStore.ts";
 import { EvalRunner, retryWakeIn, type EvalProgress } from "./evalRunner.ts";
-import type { EvalJob } from "./evalStore.ts";
+import { cleanTargets, type EvalJob } from "./evalStore.ts";
 import { Dispatcher } from "./queue/dispatcher.ts";
 import { InMemoryQueueBackend } from "./queue/inMemoryBackend.ts";
 import type { RunPool, RunPoolEvents, PoolRunOptions } from "./runPool.ts";
@@ -475,6 +475,39 @@ console.log("\na job keeps what the agent answered");
     for (let i = 0; i < 40 && finished.length < 1; i++) await sleep(15);
     const job = (await evalStore.jobsForEval(ctx, started.evalId))[0];
     check(job?.output === "decline — the candidate has no QA experience", `the job keeps the agent's final answer (${job?.output})`);
+  }
+}
+
+console.log("\neach leg runs at the reasoning effort it was given");
+{
+  const pool = new FakePool(2);
+  const dispatcher = new Dispatcher(new InMemoryQueueBackend());
+  const runner = new EvalRunner({
+    pool: pool as unknown as RunPool, store, dispatcher, evalStore, runtimeDir: ".", context: () => ctx,
+    markEvalRun: () => {}, onStarted: () => {}, onProgress: () => {}, onFinished: () => {},
+  });
+  const ds = await evalStore.createDataset(ctx, "agent_effort", "effort");
+  await evalStore.addExample(ctx, ds.id, "hello", null, null);
+  const rubric = await evalStore.putRubric(ctx, { dataset_id: null, name: "r", criteria: [] });
+  const started = await runner.start({
+    ctx, datasetId: ds.id, agentId: "agent_effort", rubricId: rubric.id, budgetUsd: null,
+    targets: cleanTargets([
+      { provider: "fake", model: "thinker", effort: "high" },
+      { provider: "fake", model: "plain" },
+      { provider: "fake", model: "thinker", effort: "low" },
+      { provider: "fake", model: "odd", effort: "ludicrous" },
+    ]),
+  });
+  if ("error" in started) { check(false, `start failed: ${started.error}`); }
+  else {
+    for (let i = 0; i < 40 && pool.started.length < 2; i++) await sleep(15);
+    const env = (model: string) => pool.started.find((p) => p.env?.JAROKU_MODEL === model)?.env;
+    check(env("thinker")?.JAROKU_REASONING_EFFORT === "high", `a leg set to high runs at high (${env("thinker")?.JAROKU_REASONING_EFFORT})`);
+    check(env("plain") !== undefined && env("plain")?.JAROKU_REASONING_EFFORT === undefined, "a leg with none runs at the model's default");
+    const run = await evalStore.getEvalRun(ctx, started.evalId);
+    check(run?.targets.length === 3, `a model asked for twice is one leg (${run?.targets.map((t) => t.model).join(",")})`);
+    check(run?.targets.find((t) => t.model === "odd")?.effort === undefined, "and a level the runtime does not have is dropped");
+    await runner.cancel(started.evalId);
   }
 }
 
