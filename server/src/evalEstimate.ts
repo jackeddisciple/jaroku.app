@@ -116,6 +116,8 @@ export interface EvalEstimate {
   affordability: Affordability | null;
   /** Whether the eval's answers will be judged. When false, Quality stays empty — said before Run. */
   judgeEnabled: boolean;
+  /** The plan's refusal a start would meet ("28 of 20 eval runs…"), added by the caller. Null when none. */
+  planRefusal?: string | null;
 }
 
 /** Mean input/output tokens per run for this agent on this model, from real history. */

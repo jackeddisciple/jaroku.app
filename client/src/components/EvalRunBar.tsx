@@ -88,6 +88,8 @@ export function ceilingWarning(usd: number, estimate: EvalEstimate): string | nu
 
 /** Whether pressing Run would be refused, in the refusal's own words — or null. */
 export function refusalOf(estimate: EvalEstimate | null): string | null {
+  // The plan first: a workspace out of eval runs is refused whatever its budget says.
+  if (estimate?.planRefusal) return estimate.planRefusal;
   return estimate?.affordability?.wouldRefuse ? (estimate.affordability.refusalMessage ?? "This workspace cannot start an eval right now.") : null;
 }
 

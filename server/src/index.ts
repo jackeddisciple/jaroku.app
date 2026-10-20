@@ -5406,6 +5406,8 @@ async function entitlementRefusalFor(
   ctx: TenantContext,
   cmd: string,
   agentId: string | null = null,
+  /** `false` for a question rather than an act — an estimate asking what a start would meet. */
+  opts: { audit?: boolean } = {},
 ): Promise<{ message: string; refusal: unknown } | null> {
   const check = entitlementFor(cmd);
   if (!check || check === NO_ENTITLEMENT) return null;
@@ -5445,6 +5447,7 @@ async function entitlementRefusalFor(
     // BOTH FLAGS, NEITHER FROM THE REQUEST. `isAdmin` is derived from the environment; `adminMode`
     // is this process's own memory. Nothing a client sends reaches either.
     if (ctx.actorUserId && isAdminUser(ctx.actorUserId) && adminModeOn(ctx.actorUserId)) {
+      if (opts.audit === false) return null;
       void identityRepo
         .appendAudit(ctx, {
           workspaceId: ctx.workspaceId,
@@ -11567,18 +11570,20 @@ async function handleEvalCommand(ctx: TenantContext, cmd: ForwardedCommand): Pro
           reply({ type: "error", message: blocked });
           return;
         }
-        reply({
-          type: "estimate",
-          estimate: await estimateEval(ctx, store, evalStore, {
-            datasetId: cmd.datasetId,
-            agentId: cmd.agentId,
-            targets: cmd.targets ?? [],
-            judgeEnabled: (await judgeState(ctx)).enabled,
-            // The same status the gate itself decides with, so what this dialog says before
-            // the button and what a refusal says after it cannot disagree.
-            budget: await budgetGate.status(ctx),
-          }),
+        const estimate = await estimateEval(ctx, store, evalStore, {
+          datasetId: cmd.datasetId,
+          agentId: cmd.agentId,
+          targets: cmd.targets ?? [],
+          judgeEnabled: (await judgeState(ctx)).enabled,
+          // The same status the gate itself decides with, so what this dialog says before
+          // the button and what a refusal says after it cannot disagree.
+          budget: await budgetGate.status(ctx),
         });
+        // THE PLAN, AS WELL AS THE MONEY. A Free workspace past its eval runs for the month was
+        // shown a clean estimate and an enabled "Run for real", and refused only after pressing it.
+        // The same check the start meets, asked as a question.
+        const plan = await entitlementRefusalFor(ctx, "startEval", cmd.agentId, { audit: false });
+        reply({ type: "estimate", estimate: { ...estimate, planRefusal: plan?.message ?? null } });
         return;
       }
       case "loadEvalResults": {

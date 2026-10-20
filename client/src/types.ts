@@ -712,6 +712,8 @@ export interface EvalEstimate {
   affordability?: EvalAffordability | null;
   /** Whether the answers will be judged. False means an empty Quality column — said before Run. */
   judgeEnabled?: boolean;
+  /** The plan's refusal a start would meet ("28 of 20 eval runs…"). Null when none. */
+  planRefusal?: string | null;
 }
 
 /** Whether a workspace's evals are judged, and on whose key (server `judgeState`). */

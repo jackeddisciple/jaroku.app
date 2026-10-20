@@ -117,6 +117,15 @@ console.log("\nthe estimate says each model's share, and a refusal before Run");
   check(words.includes("claude-opus-5") && words.includes("$0.3000") && words.includes("$0.5000"), "each model has its own range", words);
   check(words.includes("from 5 runs"), "and says what it was projected from", words);
   check(words.includes("reached its $5.00 ceiling"), "and a refusal is said before Run is pressed", words);
+  // A workspace out of eval runs for the month was shown a clean estimate and refused only after Run.
+  const { refusalOf } = await import("./EvalRunBar.tsx");
+  const plan = "28 of 20 eval runs per month used on the free plan";
+  check(refusalOf(estimate({ planRefusal: plan })) === plan, "the plan's refusal is said before Run too");
+  check(refusalOf(estimate({ planRefusal: plan, affordability: {
+    ceilingUsd: 5, spentUsd: 5.2, spentIsComplete: true, headroomUsd: 0, availableCreditUsd: 0,
+    wouldRefuse: true, refusalMessage: "ceiling", mayNotFinish: true,
+  } })) === plan, "and ahead of the budget's, since it refuses whatever the budget says");
+  check(refusalOf(estimate({ planRefusal: null })) === null, "and nothing is refused when neither says so");
 }
 
 console.log("\nan agent that has never been built cannot be estimated or run");
