@@ -331,10 +331,11 @@ function sources(w: Window, dialect: Dialect): FeedSource[] {
            ${agentFilter ? "AND d.agent_id = ?" : ""}`,
     },
     {
-      // NAMED BY ITS DATASET, as it was called when the eval ran (migration 089) — the row used to
-      // read "Evaluated 14380410-aeaa-…", the dataset's id. And its outcome from the statuses an eval
-      // actually has: `failed` is not one, so a failed eval read as still running, and `cancelled`
-      // read as "refused", which nobody did. An eval that stopped short is `stopped`.
+      // NAMED BY ITS DATASET, as it was called when the eval ran (migration 089) or is called now —
+      // the row used to read "Evaluated 14380410-aeaa-…", the dataset's id — and, when neither is
+      // left, as a deleted one. Its outcome from the statuses an eval actually has: `failed` is not
+      // one, so a failed eval read as still running, and `cancelled` read as "refused", which nobody
+      // did. An eval that stopped short is `stopped`.
       kind: "eval",
       hasAgent: true,
       hasActor: false,
@@ -343,7 +344,7 @@ function sources(w: Window, dialect: Dialect): FeedSource[] {
                e.agent_id AS agent_id, CAST(NULL AS TEXT) AS actor_user_id,
                COALESCE(e.dataset_name,
                         (SELECT d.name FROM datasets d WHERE d.id = e.dataset_id AND d.workspace_id = e.workspace_id),
-                        e.dataset_id) AS object,
+                        CAST('a deleted dataset' AS TEXT)) AS object,
                CASE WHEN e.status = 'completed' THEN 'ok'
                     WHEN e.status = 'error'     THEN 'error'
                     WHEN e.status IN ('cancelled', 'aborted_over_budget') THEN 'stopped'

@@ -243,7 +243,7 @@ console.log("\nan eval is one row, named by its dataset, and its runs are not ru
   const rows = (await store.feed(ctx, w)).rows;
   const of = (id: string) => rows.find((r) => r.id === `eval:${id}`);
   check("an eval reads by the dataset it ran, not the dataset's id", of(done)?.object === "Screening cases", of(done)?.object ?? "missing");
-  check("a deleted dataset with no name kept falls back to its id rather than nothing", of(stopped)?.object === "ds-gone");
+  check("a deleted dataset with no name kept reads as deleted, not as its id", of(stopped)?.object === "a deleted dataset", of(stopped)?.object ?? "");
   check("a finished eval is ok", of(done)?.outcome === "ok");
   check("a failed one is an error, not still running", of(failed)?.outcome === "error", of(failed)?.outcome ?? "");
   check("one stopped over budget says it stopped", of(stopped)?.outcome === "stopped", of(stopped)?.outcome ?? "");
