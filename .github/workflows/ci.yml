@@ -1317,6 +1317,8 @@ jobs:
           npm run test:thread-cost
           npm run test:thread-resume
           npm run test:thread-archive
+          # The Evals tab's state, and what each eval-channel message is allowed to do to it.
+          npm run test:eval-store
           npm run test:secrets-store
           # The guard that decides whether a value off the socket becomes an upsell card. A cast instead
           # of a check renders "undefined of undefined used" over an Upgrade button, which is worse than

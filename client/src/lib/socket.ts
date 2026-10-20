@@ -366,7 +366,8 @@ function dispatch(msg: ServerMessage): void {
         e.setProgress({ evalId: msg.evalId, total: msg.total, done: 0, running: 0, queued: msg.total, failed: 0 });
         e.selectEval(msg.evalId);
       } else if (msg.type === "evalProgress") {
-        e.setProgress({ ...msg });
+        const { channel: _channel, type: _type, ...counts } = msg;
+        e.applyProgress(counts);
         // §4.3.3, the eval half. An eval's runs are kept off the `trace` channel on purpose, so
         // this is the only route its spend has to a thread row — and the progress numbers are what
         // give `projectCost` a denominator that moves. Both go to `threadStore` rather than being

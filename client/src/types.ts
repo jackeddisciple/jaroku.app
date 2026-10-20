@@ -676,7 +676,7 @@ export type EvalMessage =
   // only route a running eval's spend has to a client, since its runs are kept off `trace`.
   | {
       channel: "eval"; type: "evalProgress"; evalId: string; total: number; done: number;
-      running: number; queued: number; failed: number; spentDeltaUsd: number;
+      running: number; queued: number; failed: number; succeeded: number; cancelled: number; spentDeltaUsd: number;
     }
   | { channel: "eval"; type: "evalFinished"; evalId: string; status: string; error?: string }
   | { channel: "eval"; type: "scored"; evalId: string; jobId: string; score: number | null; error?: string | null }

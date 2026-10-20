@@ -21,6 +21,9 @@ export interface EvalProgress {
   running: number;
   queued: number;
   failed: number;
+  /** Of `done`, the jobs that ran and succeeded, and the ones that never ran. Absent until the first count. */
+  succeeded?: number;
+  cancelled?: number;
   /** Set once the runs finish; scoring may still be in flight. */
   status?: string;
   scoring?: boolean;
@@ -73,6 +76,15 @@ interface EvalState {
   selectEval: (evalId: string | null) => void;
   setResults: (evalId: string, results: EvalResults) => void;
   setProgress: (p: EvalProgress | null) => void;
+  /**
+   * A count from the server's `evalProgress`.
+   *
+   * A FINISHED EVAL STAYS FINISHED. `evalFinished` sets `status`, and a count that arrives after it
+   * — two jobs exiting together each sent one — used to replace the whole object and take the status
+   * with it, so a finished eval read `running 15/15` with a Cancel that could cancel nothing and
+   * every model chip locked until a reload.
+   */
+  applyProgress: (p: EvalProgress) => void;
   patchProgress: (patch: Partial<EvalProgress>) => void;
   setRubric: (rubric: Rubric, isDefault: boolean) => void;
 
@@ -147,6 +159,11 @@ export const useEvalStore = create<EvalState>((set) => ({
     set((s) => ({ resultsByEval: { ...s.resultsByEval, [evalId]: results } })),
 
   setProgress: (progress) => set({ progress }),
+
+  applyProgress: (p) =>
+    set((s) =>
+      s.progress?.evalId === p.evalId && s.progress.status !== undefined ? {} : { progress: { ...p } },
+    ),
 
   patchProgress: (patch) =>
     set((s) => (s.progress ? { progress: { ...s.progress, ...patch } } : {})),
