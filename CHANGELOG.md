@@ -8,6 +8,72 @@ release notes and the commits in that release's range.
 
 ---
 
+## v0.4.1 : Evals bug fixes and improvements
+
+A full pass over the Evals tab, from a live test that ran real evals against two agents on the
+production deployment. Every fix below landed as its own commit with its own test, and the release
+was then checked again in a fresh desktop build against production.
+
+### Fixed
+
+- **Running an eval:** each eval now has one pump, so a cell no longer runs twice and the ceiling
+  holds; cancelling with nothing in flight ends the eval; a retry that comes due mid-pump is no
+  longer lost; a late count no longer reopens a finished eval.
+- **Two machines:** each eval is owned by one machine through a shared claim. A deploy or restart
+  no longer cancels evals the other machine is running, Cancel reaches whichever machine runs it,
+  and an eval whose machine died is settled instead of hanging.
+- **What an eval keeps:** the cases, expected answers, dataset name, agent version, rubric and
+  check it ran with are kept on the eval, so editing or deleting a dataset no longer rewrites or
+  breaks old results. A deleted dataset's evals stay listed and readable, and can be reached even
+  when the open dataset has only one eval.
+- **The Evals tab:** state is kept per agent, so switching agents mid-eval no longer shows the
+  other agent's datasets or progress; replies reach only the tab that asked; history filters by
+  agent and dataset before it pages; open results refresh as runs finish.
+- **Results:** a header names the agent, dataset, version, models, status, spend against budget
+  and why it stopped. Cells look different when queued, running, cancelled, timed out or failed.
+  The comparison counts what ran ("Ran OK", cancelled left out, "—" when nothing succeeded, a
+  leader only when two models have data) and stacks into cards on a narrow panel. A cell that ran
+  says so, or whether it matched, instead of a dash. The drill-down keeps line breaks, folds long
+  cases, shows the agent's answer beside the expected one, and disables Prev/Next for a single
+  response. A refused Retry or Run again says why where it was pressed, Retry is offered only for
+  cells whose case still exists, and Run again shows however Results was reached.
+- **Rubric editor:** weights take decimals, new criteria never reuse an id, problems are named
+  before Save, Built-in and Custom are labelled honestly, and it scrolls on its own.
+- **Datasets:** a CSV imports in file order as one write; new datasets get unique names and open
+  ready to rename; a refused edit says why; deleting a dataset or case can be undone for five
+  seconds; cases are typed in a multi-line box that autocorrects nothing; a case's delete shows on
+  keyboard focus; a folded case no longer leaves a blank block below it in the desktop app.
+- **Before Run:** model chips are grouped by provider, models without a key fold into one link to
+  Secrets, and the chips say why they are locked while an eval runs. The estimate shows each
+  model's share, suggests a ceiling in cents with every estimate, warns when the ceiling is below
+  it, and shows a refusal before Run, including a plan's monthly eval limit. A draft agent that was
+  never built cannot be estimated or run.
+- **Exports:** one Export menu; files that make sense on their own, including cases that did not
+  run; local-time file names; and a note saying where the file was saved.
+- **Outside the tab:** eval runs are tagged in Runs and left out of an agent's health, last model,
+  the Activity leaderboard and the model mix (their cost still counts toward spend). The Activity
+  feed shows its rows on a first visit (it stayed empty until revisited), names each eval by its
+  dataset and opens its results. An eval's trace leads back to its
+  results with the cell still open. Pressing the right panel's open tab again says it hides the
+  panel. The "Add a provider key" Inbox card resolves when a key is saved under its provider's name.
+
+### Added
+
+- **Expected-answer checks without a judge:** exact, contains, whole word or a pattern, chosen per
+  dataset and shown per cell.
+- **Judge with your own Anthropic key:** an opt-in per workspace, used for the judge and nothing
+  else.
+- **Reasoning effort per model** in an eval.
+- **Retry in place or run again:** retry only an eval's unfinished cells, or start a fresh copy.
+- **Compare with an earlier eval:** each model's figures then and now, and the cases whose outcome
+  changed, worse first. Each eval is named by its dataset, and a narrow panel shows models as cards.
+- **Dataset housekeeping:** export a dataset as CSV, duplicate it, search its cases, and read and
+  add each case's notes.
+- **Save a test input where you mean to:** choose the dataset, or make a new one, and give the
+  expected answer as you save — from the composer's bar or its overflow menu.
+
+---
+
 ## v0.4.0 : Bug Fixes and Improvements
 
 A full pass over the Cockpit, deploys and the desktop app, from a live test that ran real jobs on a
