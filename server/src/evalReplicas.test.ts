@@ -228,6 +228,10 @@ console.log("\nand the server is wired the way this suite assumes");
   const estimate = handler.slice(handler.indexOf('case "estimateEval": {'), handler.indexOf('case "loadEvalResults": {'));
   check("a start asks whether the agent was ever built", start.includes("await evalBlockedFor(ctx, cmd.agentId)"));
   check("and so does an estimate", estimate.includes("await evalBlockedFor(ctx, cmd.agentId)"));
+
+  // A SAVED TEST INPUT GOES WHERE IT WAS ASKED TO — and only into the agent's own dataset.
+  const promote = handler.slice(handler.indexOf('case "promoteTestInput": {'));
+  check("a test input saved into a named dataset checks it is the agent's", promote.includes("ds.agent_id !== cmd.agentId"));
 }
 
 console.log(fail === 0 ? "\nALL CORRECT" : `\n${fail} FAILURES`);

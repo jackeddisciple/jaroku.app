@@ -24,6 +24,7 @@ import {
   sendCreateThread, sendEditTurn, sendSelectVariant, sendStopChat,
   sendEdit, sendExplain, sendGenerate, sendLoadWorkItem, sendPeekWorkItem, sendPlanAgent, sendPromoteTestInput, sendRun, reportHostProviders} from "../lib/socket.ts";
 import { datasetsOf, useEvalStore } from "../store/evalStore.ts";
+import { SaveCaseControl } from "./composer/SaveCaseControl.tsx";
 import { UpsellCard } from "./UpsellCard.tsx";
 import { composerMoment } from "../lib/composerMoment.ts";
 import { AgentTray } from "./composer/AgentTray.tsx";
@@ -2452,9 +2453,12 @@ export function BuildPane({
 
   const clearPromoted = useEvalStore((s) => s.clearPromoted);
   const promotable = (testDraft.trim() || (localStorage.getItem(inputKey(activeAgentId)) ?? "").trim());
+  // The overflow menu's one-click save goes where the bar's form would by default: the dataset open in
+  // the Evals tab for this agent, not whichever was touched last.
+  const evalsDataset = useEvalStore((s) => (activeAgentId ? (s.selectedDatasetByAgent[activeAgentId] ?? undefined) : undefined));
   const promote = () => {
     if (!activeAgentId || !promotable) return;
-    sendPromoteTestInput(activeAgentId, promotable, agent?.name);
+    sendPromoteTestInput(activeAgentId, promotable, agent?.name, null, evalsDataset ?? undefined);
   };
   // The confirmation is a transient acknowledgement, not state — clear it after a beat.
   useEffect(() => {
@@ -3885,26 +3889,17 @@ export function BuildPane({
                 ? {
                     promote: {
                       bar: (density: Density) => (
-                        <ControlButton
-                          icon={Icon.attach.dataset}
-                          name="Save this test input to the eval dataset"
+                        // A FORM, NOT ONE CLICK: where it goes and what it should answer. See SaveCaseControl.
+                        <SaveCaseControl
+                          agentId={activeAgentId}
+                          agentName={agent?.name}
+                          input={promotable}
+                          connected={connected}
                           label={
                             showsLabel(density) && promoted
                               ? promoted.duplicate ? "already saved" : "saved"
                               : undefined
                           }
-                          title={
-                            promoted
-                              ? promoted.duplicate
-                                ? `already in ${promoted.datasetName}`
-                                : `saved to ${promoted.datasetName}`
-                              : promotable
-                                ? "Save this test input to the eval dataset"
-                                : "Type or run a test input first"
-                          }
-                          active={Boolean(promoted)}
-                          disabled={!connected || !promotable}
-                          onClick={promote}
                         />
                       ),
                       menu: () => (

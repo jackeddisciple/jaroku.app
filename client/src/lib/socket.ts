@@ -2352,16 +2352,21 @@ export function sendDeleteExample(datasetId: string, exampleId: string): void {
   send({ cmd: "deleteExample", datasetId, exampleId, origin: EVAL_ORIGIN });
 }
 
-/** One-click "save this test input to the eval dataset" (doc §4.7.6). The target dataset
- *  is resolved server-side — the agent's most recent, or a new default — so this is one
- *  round trip and lands in the same table the dataset builder writes to. */
+/** "Save this test input as an eval case" (doc §4.7.6), into the dataset asked for — or, with none
+ *  named, the agent's most recent — in one round trip, into the table the dataset builder writes to. */
 export function sendPromoteTestInput(
   agentId: string,
   input: string,
   agentName?: string,
   expected?: string | null,
+  /** A dataset of this agent's to save into, or "new" for a fresh one. Omitted: its latest. */
+  into?: string | "new",
 ): void {
-  send({ cmd: "promoteTestInput", agentId, agentName, input, expected, origin: EVAL_ORIGIN });
+  send({
+    cmd: "promoteTestInput", agentId, agentName, input, expected,
+    ...(into === "new" ? { newDataset: true } : into ? { datasetId: into } : {}),
+    origin: EVAL_ORIGIN,
+  });
 }
 
 // --- eval runs -------------------------------------------------------------

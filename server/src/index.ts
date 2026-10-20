@@ -11712,7 +11712,22 @@ async function handleEvalCommand(ctx: TenantContext, cmd: ForwardedCommand): Pro
           reply({ type: "error", message: "nothing to promote — the test input is empty" });
           return;
         }
-        const ds = await evalStore.defaultDatasetFor(ctx, cmd.agentId, cmd.agentName);
+        // THE DATASET ASKED FOR, when one was: it used to be whichever this agent touched last — not
+        // the one open in the Evals tab, and with nothing on screen to choose another. A new one when
+        // asked, named like any new dataset; the agent's most recent only when nothing was said.
+        let ds;
+        if (typeof cmd.datasetId === "string" && cmd.datasetId) {
+          ds = await evalStore.getDataset(ctx, cmd.datasetId);
+          if (!ds || ds.agent_id !== cmd.agentId) {
+            reply({ type: "error", message: "that dataset is not this agent's" });
+            return;
+          }
+        } else if (cmd.newDataset === true) {
+          const taken = (await evalStore.listDatasets(ctx, cmd.agentId)).map((d) => d.name);
+          ds = await evalStore.createDataset(ctx, cmd.agentId, uniqueDatasetName(taken));
+        } else {
+          ds = await evalStore.defaultDatasetFor(ctx, cmd.agentId, cmd.agentName);
+        }
         // Adding the same input twice silently doubles what an eval over this dataset
         // costs, for zero extra signal. Report it instead.
         const duplicate = await evalStore.hasExampleWithInput(ctx, ds.id, input);

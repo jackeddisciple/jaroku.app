@@ -164,6 +164,16 @@ console.log("\na delete waits out its undo window before it is sent");
   check(sentCmds().slice(before).filter((c) => c === "deleteExample").length === 2, "and the window closing sends the second");
 }
 
+console.log("\na test input is saved where it was asked to go, with what it should answer");
+{
+  const { sendPromoteTestInput } = await import("./socket.ts");
+  const last = () => JSON.parse(socket.sent.at(-1)!) as Record<string, unknown>;
+  sendPromoteTestInput("liven", "Role: QA", "Liven", "decline", "d1");
+  check(last()["datasetId"] === "d1" && last()["expected"] === "decline", "into the dataset chosen, with its expected output");
+  sendPromoteTestInput("liven", "Role: QA", "Liven", null, "new");
+  check(last()["newDataset"] === true && last()["datasetId"] === undefined, "or into a new one");
+}
+
 console.log("\nan open eval's cells reload as its runs finish, at most once a beat");
 {
   const { RESULTS_RELOAD_MS } = await import("./socket.ts");

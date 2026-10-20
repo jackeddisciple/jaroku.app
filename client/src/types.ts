@@ -2623,7 +2623,7 @@ export type ClientCommand =
   | { cmd: "addExamples"; datasetId: string; rows: { input: string; expected?: string | null }[]; origin?: string }
   | { cmd: "updateExample"; datasetId: string; exampleId: string; input?: string; expected?: string | null; notes?: string | null; origin?: string }
   | { cmd: "deleteExample"; datasetId: string; exampleId: string; origin?: string }
-  | { cmd: "promoteTestInput"; agentId: string; agentName?: string; input: string; expected?: string | null; origin?: string }
+  | { cmd: "promoteTestInput"; agentId: string; agentName?: string; input: string; expected?: string | null; datasetId?: string; newDataset?: boolean; origin?: string }
   | { cmd: "startEval"; datasetId: string; agentId: string; targets: EvalTarget[]; budgetUsd?: number | null; threadId?: string; origin?: string }
   | { cmd: "cancelEval"; evalId: string; origin?: string }
   | { cmd: "retryEval"; evalId: string; agentId: string; budgetUsd?: number | null; origin?: string }

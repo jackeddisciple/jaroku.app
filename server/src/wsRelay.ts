@@ -508,6 +508,9 @@ export type PromoteTestInputCommand = {
   agentName?: string;
   input: string;
   expected?: string | null;
+  /** The dataset to save into — one of this agent's — or `newDataset` for a fresh one. Neither: its latest. */
+  datasetId?: string;
+  newDataset?: boolean;
   origin?: string;
 };
 /** Fan a dataset out across providers. `budgetUsd` is a hard ceiling on TRUE spend. */
