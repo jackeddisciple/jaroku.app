@@ -330,6 +330,20 @@ jobs:
           # checkpointer, or a platform key.
           npm run test:desktop-exec
 
+      # THE EVALS DESTINATION, which had suites for its runner, its retries, its cleanup, its budget
+      # and its judge — and CI ran none of them. Every one passed, and every one ran only when somebody
+      # remembered, which is how an eval that stalled on two machines and a Cancel that never ended
+      # anything shipped past them. `test:retry` is three suites: retries, ownership and dispatch.
+      - name: the evals destination
+        working-directory: server
+        run: |
+          npm run test:retry
+          npm run test:eval-stress
+          npm run test:eval-off-trace
+          npm run test:eval-budget
+          npm run test:cleanup
+          npm run test:judge
+
       # THE DEPLOY PATH, in a step of its own from its first suite — and the whole of it is new
       # to this file. `test:deploy-artifacts` and `test:deploy-secrets` have existed since the
       # deploy layer shipped and appear in none of this workflow's lineages, which is the same
