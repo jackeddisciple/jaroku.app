@@ -85,7 +85,15 @@ export function SaveCaseControl({
         disabled={!connected || !input}
         onClick={() => setOpen((v) => !v)}
       />}
-      <Popover open={open} onClose={() => setOpen(false)} triggerRef={controlled && anchorRef ? anchorRef : triggerRef} label="Save as an eval case" width={320}>
+      <Popover
+        open={open}
+        onClose={() => setOpen(false)}
+        triggerRef={controlled && anchorRef ? anchorRef : triggerRef}
+        label="Save as an eval case"
+        width={320}
+        // Opened from the `⋯` menu, which returns focus to its own button as it closes.
+        holdOnFocusOutside={controlled}
+      >
         <div className="space-y-2 p-2 text-tiny">
           <div className="text-faint">Save as a case in</div>
           <div className="flex flex-wrap gap-1" role="group" aria-label="Dataset to save into">

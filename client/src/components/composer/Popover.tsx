@@ -38,6 +38,7 @@ export function Popover({
   align = "left",
   width,
   bare = false,
+  holdOnFocusOutside = false,
   children,
 }: {
   open: boolean;
@@ -53,6 +54,13 @@ export function Popover({
    * that makes it a menu (role, arrow keys, Esc, focus returned) is unchanged.
    */
   bare?: boolean;
+  /**
+   * Stay open when focus moves outside, closing only on a press outside, Esc, or the caller.
+   *
+   * FOR A POPOVER OPENED FROM ANOTHER ONE'S ROW. The menu that opened it closes in the same click and
+   * hands focus back to its own trigger — outside this one — so it closed the moment it opened.
+   */
+  holdOnFocusOutside?: boolean;
   children: React.ReactNode;
 }) {
   /** The arrow keys: rows a ring, and a field or a slider keeping its own. */
@@ -105,6 +113,7 @@ export function Popover({
         // THE TRIGGER IS NOT "OUTSIDE". It toggles, and closing here as well would make a second
         // click on it close-then-reopen, which reads as the menu not responding.
         onInteractOutside={(e) => { if (onTrigger(e.target)) e.preventDefault(); }}
+        onFocusOutside={(e) => { if (holdOnFocusOutside) e.preventDefault(); }}
         // Focus back to the trigger on close, whichever way it closed — §10: never to the document.
         onCloseAutoFocus={(e) => { e.preventDefault(); triggerRef.current?.focus(); }}
         className={bare ? "" : "animate-slide-in rounded-card border border-edge bg-elevated p-1 shadow-floating motion-reduce:animate-none"}

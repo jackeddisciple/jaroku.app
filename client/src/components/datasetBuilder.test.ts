@@ -139,6 +139,9 @@ console.log("\nsaving a test input opens the form from the bar and from the over
   const { readFileSync } = await import("node:fs");
   const pane = readFileSync("src/components/BuildPane.tsx", "utf8");
   check(!/onSelect=\{promote\}/.test(pane) && /onSelect=\{\(\) => setSaveFromMenu\(true\)\}/.test(pane), "and the menu row opens it rather than saving");
+  // The menu hands focus back to its own button as it closes, which closed the form as it opened.
+  const control = readFileSync("src/components/composer/SaveCaseControl.tsx", "utf8");
+  check(/holdOnFocusOutside=\{controlled\}/.test(control), "and the form opened from the menu is not closed by the menu returning focus");
 }
 
 console.log(failures === 0 ? "\nALL CORRECT" : `\n${failures} FAILURES`);
