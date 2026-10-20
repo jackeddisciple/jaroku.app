@@ -5,7 +5,7 @@
 // the person had not been looking at. The bar's button now opens a small form: where it goes (the
 // Evals tab's dataset first), what it should answer, and Save.
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 import { ControlButton } from "./ControlButton.tsx";
 import { Popover } from "./Popover.tsx";
 import { Chip } from "../Chip.tsx";
@@ -19,6 +19,9 @@ export function SaveCaseControl({
   input,
   connected,
   label,
+  open: openFromOutside,
+  onOpenChange,
+  anchorRef,
 }: {
   agentId: string;
   agentName?: string;
@@ -26,8 +29,24 @@ export function SaveCaseControl({
   input: string;
   connected: boolean;
   label?: string;
+  /**
+   * OPENED FROM THE `⋯` MENU, with no button of its own: the bar folds the control into the menu
+   * when the composer is narrow, and that row used to save at once into the Evals tab's dataset —
+   * no choice of dataset, no expected answer, and its confirmation in a menu that had just closed.
+   * Given these, the same form opens over `anchorRef` instead.
+   */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  anchorRef?: RefObject<HTMLElement | null>;
 }) {
-  const [open, setOpen] = useState(false);
+  const [openHere, setOpenHere] = useState(false);
+  const controlled = openFromOutside !== undefined;
+  const open = controlled ? openFromOutside : openHere;
+  const setOpen = (next: boolean | ((v: boolean) => boolean)): void => {
+    const value = typeof next === "function" ? next(open) : next;
+    if (controlled) onOpenChange?.(value);
+    else setOpenHere(value);
+  };
   const [expected, setExpected] = useState("");
   const [into, setInto] = useState<string | null>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -51,7 +70,7 @@ export function SaveCaseControl({
 
   return (
     <div className="relative shrink-0">
-      <ControlButton
+      {!controlled && <ControlButton
         buttonRef={triggerRef}
         icon={Icon.attach.dataset}
         name="Save this test input as an eval case"
@@ -65,8 +84,8 @@ export function SaveCaseControl({
         active={open || Boolean(promoted)}
         disabled={!connected || !input}
         onClick={() => setOpen((v) => !v)}
-      />
-      <Popover open={open} onClose={() => setOpen(false)} triggerRef={triggerRef} label="Save as an eval case" width={320}>
+      />}
+      <Popover open={open} onClose={() => setOpen(false)} triggerRef={controlled && anchorRef ? anchorRef : triggerRef} label="Save as an eval case" width={320}>
         <div className="space-y-2 p-2 text-tiny">
           <div className="text-faint">Save as a case in</div>
           <div className="flex flex-wrap gap-1" role="group" aria-label="Dataset to save into">

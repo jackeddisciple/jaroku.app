@@ -118,5 +118,25 @@ console.log("\na dataset can leave the tab, be found in, and keep its notes");
   check(/aria-label="Export these cases as a CSV"/.test(html) && /aria-label="Duplicate this dataset"/.test(html), "and a dataset can be exported and duplicated");
 }
 
+console.log("\nsaving a test input opens the form from the bar and from the overflow menu alike");
+{
+  // The menu row saved at once into the Evals tab's dataset — no dataset to choose, no expected
+  // answer, and its confirmation in a menu that had just closed. It now opens the same form.
+  const { createElement, createRef } = await import("react");
+  const { markup } = await import("../lib/testRender.ts");
+  const { SaveCaseControl } = await import("./composer/SaveCaseControl.tsx");
+  const { TooltipProvider } = await import("./ui/tooltip.tsx");
+  const props = { agentId: "liven", input: "Role: QA", connected: true };
+  const onBar = markup(createElement(TooltipProvider, null, createElement(SaveCaseControl, props)));
+  check(/aria-label="Save this test input as an eval case"/.test(onBar), "on the bar it is a button that opens the form");
+  const fromMenu = markup(createElement(TooltipProvider, null, createElement(SaveCaseControl, {
+    ...props, open: false, onOpenChange: () => {}, anchorRef: createRef<HTMLElement>(),
+  })));
+  check(!/aria-label="Save this test input as an eval case"/.test(fromMenu), "opened from the menu it has no button of its own, only the form");
+  const { readFileSync } = await import("node:fs");
+  const pane = readFileSync("src/components/BuildPane.tsx", "utf8");
+  check(!/onSelect=\{promote\}/.test(pane) && /onSelect=\{\(\) => setSaveFromMenu\(true\)\}/.test(pane), "and the menu row opens it rather than saving");
+}
+
 console.log(failures === 0 ? "\nALL CORRECT" : `\n${failures} FAILURES`);
 (globalThis as { process?: { exit(code: number): void } }).process?.exit(failures === 0 ? 0 : 1);

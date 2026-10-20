@@ -22,7 +22,7 @@ import { isRunnable, modelName, providerLabelOf, runProviders, useProviderStore 
 import {
   sendApplyEdit, sendAskRecord, sendBranchRun, sendChat, sendDiscardEdit, sendDiscardPlan, sendDispatchWork,
   sendCreateThread, sendEditTurn, sendSelectVariant, sendStopChat,
-  sendEdit, sendExplain, sendGenerate, sendLoadWorkItem, sendPeekWorkItem, sendPlanAgent, sendPromoteTestInput, sendRun, reportHostProviders} from "../lib/socket.ts";
+  sendEdit, sendExplain, sendGenerate, sendLoadWorkItem, sendPeekWorkItem, sendPlanAgent, sendRun, reportHostProviders} from "../lib/socket.ts";
 import { datasetsOf, useEvalStore } from "../store/evalStore.ts";
 import { SaveCaseControl } from "./composer/SaveCaseControl.tsx";
 import { UpsellCard } from "./UpsellCard.tsx";
@@ -2453,13 +2453,8 @@ export function BuildPane({
 
   const clearPromoted = useEvalStore((s) => s.clearPromoted);
   const promotable = (testDraft.trim() || (localStorage.getItem(inputKey(activeAgentId)) ?? "").trim());
-  // The overflow menu's one-click save goes where the bar's form would by default: the dataset open in
-  // the Evals tab for this agent, not whichever was touched last.
-  const evalsDataset = useEvalStore((s) => (activeAgentId ? (s.selectedDatasetByAgent[activeAgentId] ?? undefined) : undefined));
-  const promote = () => {
-    if (!activeAgentId || !promotable) return;
-    sendPromoteTestInput(activeAgentId, promotable, agent?.name, null, evalsDataset ?? undefined);
-  };
+  // The `⋯` menu's way into the save form — see SaveCaseControl's `open`.
+  const [saveFromMenu, setSaveFromMenu] = useState(false);
   // The confirmation is a transient acknowledgement, not state — clear it after a beat.
   useEffect(() => {
     if (!promoted) return;
@@ -3905,9 +3900,9 @@ export function BuildPane({
                       menu: () => (
                         <PopoverRow
                           label="Save to eval dataset"
-                          detail={promoted ? `saved to ${promoted.datasetName}` : "turn this test input into a case"}
+                          detail={promoted ? `saved to ${promoted.datasetName}` : "choose the dataset and what it should answer"}
                           disabled={!connected || !promotable}
-                          onSelect={promote}
+                          onSelect={() => setSaveFromMenu(true)}
                         />
                       ),
                     },
@@ -4050,6 +4045,18 @@ export function BuildPane({
               },
             }}
           />
+          {/* The same form, opened from the `⋯` menu when the bar has folded the control away. */}
+          {composerMode === "test" && activeAgentId && (
+            <SaveCaseControl
+              agentId={activeAgentId}
+              agentName={agent?.name}
+              input={promotable}
+              connected={connected}
+              open={saveFromMenu}
+              onOpenChange={setSaveFromMenu}
+              anchorRef={composerRef}
+            />
+          )}
         </div>
         </ComposerShell>
       </div>
