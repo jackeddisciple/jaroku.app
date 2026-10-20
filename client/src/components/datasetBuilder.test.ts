@@ -110,6 +110,9 @@ console.log("\na dataset can leave the tab, be found in, and keep its notes");
   check(words.includes("show more"), "a long case folds, with a way to read the rest");
   // WebKit hid the folded lines but kept their height: a blank block above "show more".
   check(/class="clamp-lines" style="--clamp:4"/.test(html), "folded by the shared class, four lines", (/<span class="clamp-lines[^>]*>/.exec(html) ?? [""])[0]);
+  // AND THE BUTTON AROUND IT IS A BLOCK: WebKit sized an inline-block button from the unfolded text.
+  const caseButton = /<button[^>]*title="Click to edit"[^>]*>(?=<span class="clamp-lines)/.exec(html)?.[0] ?? "";
+  check(/class="block /.test(caseButton), "inside a button laid out as a block, which WebKit then sizes to the fold", caseButton);
   const { readFileSync } = await import("node:fs");
   const rule = /\.clamp-lines \{[^}]*\}/.exec(readFileSync("src/index.css", "utf8"))?.[0] ?? "";
   check(/max-height: calc\(var\(--clamp\) \* 1lh\)/.test(rule) && /max-height: calc\(var\(--clamp\) \* 1\.4em\)/.test(rule),

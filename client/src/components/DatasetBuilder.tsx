@@ -115,11 +115,13 @@ function ExampleRow({
         className="w-full resize-none bg-elevated text-ink rounded-input border border-edge px-2 py-1 text-caption outline-none focus:shadow-focusring"
       />
     ) : (
+      // `block`: WEBKIT SIZES A BUTTON FROM ITS CONTENT'S FULL HEIGHT, folded or not — so a folded
+      // case kept the unfolded case's height as a blank block under it, in the desktop app and Safari.
       <button
         type="button"
         onClick={() => begin(which)}
         title="Click to edit"
-        className={`w-full text-left text-caption rounded-control px-2 py-1 -mx-2 hover:bg-active/50 transition-colors whitespace-pre-wrap break-words ${
+        className={`block w-full text-left text-caption rounded-control px-2 py-1 -mx-2 hover:bg-active/50 transition-colors whitespace-pre-wrap break-words ${
           text ? (which === "input" ? "text-ink" : "text-muted") : "text-faint italic"
         }`}
       >
