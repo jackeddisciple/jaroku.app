@@ -541,6 +541,8 @@ export type EstimateEvalCommand = {
   targets: { provider: string; model: string }[];
   origin?: string;
 };
+/** A copy of a dataset — its cases, check and rubric — under a name the agent does not have. */
+export type DuplicateDatasetCommand = { cmd: "duplicateDataset"; datasetId: string; origin?: string };
 /** How a dataset's answers are checked against `expected`: exact, contains, word, regex — or null, off. */
 export type SetDatasetCheckCommand = { cmd: "setDatasetCheck"; datasetId: string; mode: string | null; origin?: string };
 /** Whether this workspace's evals will be judged, and on whose key. */
@@ -1965,6 +1967,7 @@ export type EvalCommand =
   | LoadJudgeCommand
   | SetJudgeOwnKeyCommand
   | SetDatasetCheckCommand
+  | DuplicateDatasetCommand
   | LoadEvalResultsCommand
   | ListEvalsCommand
   | EstimateEvalCommand;
@@ -1972,7 +1975,7 @@ export type EvalCommand =
 const EVAL_COMMANDS = new Set([
   "createDataset", "renameDataset", "deleteDataset", "listDatasets",
   "loadDataset", "addExample", "addExamples", "updateExample", "deleteExample", "promoteTestInput",
-  "startEval", "cancelEval", "retryEval", "loadRubric", "saveRubric", "resetRubric", "loadJudge", "setJudgeOwnKey", "setDatasetCheck",
+  "startEval", "cancelEval", "retryEval", "loadRubric", "saveRubric", "resetRubric", "loadJudge", "setJudgeOwnKey", "setDatasetCheck", "duplicateDataset",
   "loadEvalResults", "listEvals", "estimateEval",
 ]);
 
@@ -4043,7 +4046,7 @@ export const COMMAND_CHANNEL: Record<string, string> = {
   createDataset: "eval", renameDataset: "eval", deleteDataset: "eval", listDatasets: "eval",
   loadDataset: "eval", addExample: "eval", addExamples: "eval", updateExample: "eval", deleteExample: "eval",
   promoteTestInput: "eval", startEval: "eval", cancelEval: "eval", retryEval: "eval", loadRubric: "eval",
-  saveRubric: "eval", resetRubric: "eval", loadJudge: "eval", setJudgeOwnKey: "eval", setDatasetCheck: "eval", loadEvalResults: "eval", listEvals: "eval", estimateEval: "eval",
+  saveRubric: "eval", resetRubric: "eval", loadJudge: "eval", setJudgeOwnKey: "eval", setDatasetCheck: "eval", duplicateDataset: "eval", loadEvalResults: "eval", listEvals: "eval", estimateEval: "eval",
   listMcpServers: "mcp", addMcpServer: "mcp", removeMcpServer: "mcp", rediscoverMcpServer: "mcp",
   setMcpServerAuth: "mcp", setMcpToolImpact: "mcp", resolveMcpConfirm: "mcp",
   listProviders: "providers", setOwnKeyForPlatform: "providers",

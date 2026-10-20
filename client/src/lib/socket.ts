@@ -2428,6 +2428,10 @@ export function sendEstimateEval(datasetId: string, agentId: string, targets: Ev
 export function sendLoadRubric(datasetId: string): void {
   send({ cmd: "loadRubric", datasetId, origin: EVAL_ORIGIN });
 }
+/** A copy of a dataset — cases, check and rubric — under a free name; it opens ready to rename. */
+export function sendDuplicateDataset(datasetId: string): void {
+  send({ cmd: "duplicateDataset", datasetId, origin: EVAL_ORIGIN });
+}
 /** How a dataset's answers are checked against `expected`; null turns the check off. */
 export function sendSetDatasetCheck(datasetId: string, mode: string | null): void {
   send({ cmd: "setDatasetCheck", datasetId, mode, origin: EVAL_ORIGIN });

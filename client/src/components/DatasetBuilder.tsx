@@ -24,10 +24,13 @@ import {
   sendResetRubric,
   sendSaveRubric,
   sendSetDatasetCheck,
+  sendDuplicateDataset,
   sendUpdateExample,
 } from "../lib/socket.ts";
 import { csvToExamples } from "../lib/csv.ts";
 import { deleteWithUndo } from "../lib/evalUndo.ts";
+import { download, examplesToCsv } from "../lib/evalExport.ts";
+import { useUiStore } from "../store/uiStore.ts";
 import { ICON } from "../lib/tokens.ts";
 import { Chip } from "./Chip.tsx";
 import { Truncate } from "./Truncate.tsx";
@@ -49,14 +52,16 @@ function ExampleRow({
   datasetId: string;
   agentId: string;
 }) {
-  const [editing, setEditing] = useState<null | "input" | "expected">(null);
+  const [editing, setEditing] = useState<null | "input" | "expected" | "notes">(null);
+  /** A long case folds to a few lines; this unfolds it. A Liven case is a job and a résumé. */
+  const [unfolded, setUnfolded] = useState(false);
   const [draft, setDraft] = useState("");
   /** Why the edit cannot be saved as it stands — said, rather than quietly putting the old text back. */
   const [refusal, setRefusal] = useState<string | null>(null);
   const ref = useRef<HTMLTextAreaElement>(null);
 
-  const begin = (field: "input" | "expected") => {
-    setDraft(field === "input" ? example.input : (example.expected ?? ""));
+  const begin = (field: "input" | "expected" | "notes") => {
+    setDraft(field === "input" ? example.input : field === "expected" ? (example.expected ?? "") : (example.notes ?? ""));
     setRefusal(null);
     setEditing(field);
   };
@@ -80,16 +85,19 @@ function ExampleRow({
       return;
     }
     const unchanged =
-      editing === "input" ? value === example.input : value === (example.expected ?? "");
+      editing === "input" ? value === example.input
+        : editing === "expected" ? value === (example.expected ?? "")
+          : value === (example.notes ?? "");
     if (!unchanged) {
       sendUpdateExample(datasetId, example.id,
-        editing === "input" ? { input: value } : { expected: value || null });
+        editing === "input" ? { input: value } : editing === "expected" ? { expected: value || null } : { notes: value || null });
     }
     setRefusal(null);
     setEditing(null);
   };
 
-  const field = (which: "input" | "expected", text: string, placeholder: string) =>
+  const long = example.input.split("\n").length > 4 || example.input.length > 360;
+  const field = (which: "input" | "expected" | "notes", text: string, placeholder: string) =>
     editing === which ? (
       <textarea
         ref={ref}
@@ -116,7 +124,13 @@ function ExampleRow({
           text ? (which === "input" ? "text-ink" : "text-muted") : "text-faint italic"
         }`}
       >
-        {text || placeholder}
+        {/* FOLDED WHEN LONG. Unfolded, one case filled the panel and the others were a scroll away. */}
+        <span
+          className="block"
+          style={which === "input" && long && !unfolded ? { display: "-webkit-box", WebkitLineClamp: 4, WebkitBoxOrient: "vertical", overflow: "hidden" } : undefined}
+        >
+          {text || placeholder}
+        </span>
       </button>
     );
 
@@ -127,8 +141,16 @@ function ExampleRow({
       </span>
       <div className="min-w-0 flex-1 space-y-0.5">
         {field("input", example.input, "(empty)")}
+        {long && editing !== "input" && (
+          <button onClick={() => setUnfolded((v) => !v)} className="px-2 text-tiny text-faint transition-colors hover:text-ink">
+            {unfolded ? "show less" : "show more"}
+          </button>
+        )}
         {refusal && <div className="px-2 text-tiny text-err" role="alert">{refusal}</div>}
         {field("expected", example.expected ?? "", "+ expected output (optional)")}
+        {/* NOTES, which the schema and the API carried and the tab never showed. For the person who
+            wrote the case — why it is here, what it tests — and never sent to the agent or the judge. */}
+        {field("notes", example.notes ?? "", "+ note")}
       </div>
       {/* SEEN BY A KEYBOARD, AND ONLY ITS OWN SIZE. It was invisible to Tab and stretched down the
           case's whole right edge — 242px on a long case — so a stray click there deleted the case. It
@@ -450,6 +472,8 @@ export function DatasetBuilder() {
   const setError = useEvalStore((s) => s.setError);
 
   const [newInput, setNewInput] = useState("");
+  /** What the case list is narrowed to. Cases are long, and there can be many. */
+  const [query, setQuery] = useState("");
   const [importNote, setImportNote] = useState<string | null>(null);
   /**
    * The dataset's new name while it is being typed, or null when nobody is renaming.
@@ -467,9 +491,13 @@ export function DatasetBuilder() {
     (e) => !(pendingDelete?.kind === "case" && pendingDelete.id === e.id),
   );
   const selected = datasets.find((d) => d.id === selectedDatasetId);
+  const needle = query.trim().toLowerCase();
+  const shownCases = examples
+    .map((e, i) => ({ e, i }))
+    .filter(({ e }) => !needle || [e.input, e.expected ?? "", e.notes ?? ""].some((t) => t.toLowerCase().includes(needle)));
   // A half-typed rename belongs to the dataset it was started on, not to the next one picked — and so
   // does the note about an import, which stayed across every switch until somebody dismissed it.
-  useEffect(() => { setRenaming(null); setRenameError(null); setImportNote(null); }, [selectedDatasetId]);
+  useEffect(() => { setRenaming(null); setRenameError(null); setImportNote(null); setQuery(""); }, [selectedDatasetId]);
   // A dataset this tab just created opens with its name ready to edit.
   useEffect(() => {
     if (renameRequest && selected?.id === renameRequest) {
@@ -627,6 +655,28 @@ export function DatasetBuilder() {
             }}
           />
           <button
+            onClick={() => {
+              const filename = `${selected.name.replace(/[^\w.-]+/g, "-").replace(/^-|-$/g, "") || "dataset"}.csv`;
+              download(filename, examplesToCsv(examples), "text/csv");
+              useUiStore.getState().showToast(`Saved to Downloads as ${filename}`, "ok");
+            }}
+            disabled={!examples.length}
+            title={examples.length ? "Export these cases as a CSV you can import again" : "Nothing to export yet"}
+            aria-label="Export these cases as a CSV"
+            className="rounded-control p-1 text-faint transition-colors hover:bg-active active:bg-chrome hover:text-ink disabled:opacity-30"
+          >
+            <Icon.evals.exportCsv size={ICON.xs} />
+          </button>
+          <button
+            onClick={() => sendDuplicateDataset(selected.id)}
+            disabled={!connected}
+            title="Duplicate this dataset — its cases, check and rubric"
+            aria-label="Duplicate this dataset"
+            className="rounded-control p-1 text-faint transition-colors hover:bg-active active:bg-chrome hover:text-ink disabled:opacity-30"
+          >
+            <Icon.evals.duplicateDataset size={ICON.xs} />
+          </button>
+          <button
             // UNDOABLE FOR FIVE SECONDS rather than gone in one click — see lib/evalUndo.ts.
             onClick={() => deleteWithUndo({
               kind: "dataset", id: selected.id, datasetId: selected.id, agentId: activeAgentId,
@@ -679,7 +729,21 @@ export function DatasetBuilder() {
             {/* §4.2's case list. A dataset's examples arrive with the dataset — `examplesOf` reads
                 what the payload carried, and there is no cursor — so the length is a total. */}
             <SectionHeader name="Cases" count={examples.length} className="pb-1" />
-            {examples.map((e, i) => (
+            {/* SEARCH, for a list of long cases. The numbers stay each case's own, so "case 7" is case 7. */}
+            {examples.length > 5 && (
+              <div className="flex items-center gap-2 pb-1">
+                <input
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="Find a case"
+                  aria-label="Find a case"
+                  spellCheck={false}
+                  className="min-w-0 flex-1 rounded-input border border-edge bg-elevated px-2 py-1 text-tiny text-ink placeholder:text-faint outline-none focus:shadow-focusring"
+                />
+                {query.trim() && <span className="shrink-0 text-tiny text-faint">{shownCases.length} of {examples.length}</span>}
+              </div>
+            )}
+            {shownCases.map(({ e, i }) => (
               <ExampleRow key={e.id} example={e} index={i} datasetId={selected.id} agentId={activeAgentId} />
             ))}
           </>

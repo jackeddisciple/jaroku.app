@@ -11671,6 +11671,21 @@ async function handleEvalCommand(ctx: TenantContext, cmd: ForwardedCommand): Pro
         relay.broadcastEval(ctx, { type: "judge", ...(await judgeState(ctx)) });
         return;
       }
+      case "duplicateDataset": {
+        // A COPY TO CHANGE WITHOUT TOUCHING THE ORIGINAL: its cases in order, its check and its rubric,
+        // under a name nobody on the agent has — and opened, like a new dataset, ready to rename.
+        const source = await evalStore.getDataset(ctx, cmd.datasetId);
+        const copy = await evalStore.duplicateDataset(ctx, cmd.datasetId);
+        if (!source || !copy) {
+          reply({ type: "error", message: "that dataset no longer exists" });
+          return;
+        }
+        console.log(`[eval] dataset "${source.name}" duplicated as "${copy.name}"`);
+        await broadcastDatasets(ctx, source.agent_id);
+        await broadcastDataset(ctx, copy.id);
+        if (origin) relay.broadcastEval(ctx, { type: "datasetCreated", datasetId: copy.id, agentId: source.agent_id, origin });
+        return;
+      }
       case "setDatasetCheck": {
         // How this dataset's answers are checked against `expected`. Off is null.
         const mode = cmd.mode === null || cmd.mode === undefined ? null : isCheckMode(cmd.mode) ? cmd.mode : undefined;

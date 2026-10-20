@@ -93,6 +93,16 @@ export function resultsToCsv(results: EvalResults, context: ExportContext = {}):
   return rows([header, ...body]);
 }
 
+/**
+ * A dataset as the CSV it could be imported from: `input`, `expected`, `notes`, in its own order.
+ *
+ * IMPORT EXISTED AND EXPORT DID NOT, so a dataset built by hand in the tab could not leave it — not
+ * to be reviewed, versioned, or carried to another agent.
+ */
+export function examplesToCsv(examples: readonly { input: string; expected: string | null; notes: string | null }[]): string {
+  return rows([["input", "expected", "notes"], ...examples.map((e) => [e.input, e.expected ?? "", e.notes ?? ""])]);
+}
+
 /** Provider-summary CSV: the comparison table as it appears on screen, caveats intact. */
 export function summaryToCsv(results: EvalResults, context: ExportContext = {}): string {
   const header = [

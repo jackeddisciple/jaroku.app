@@ -89,6 +89,16 @@ async function suite(label: string, db: Db): Promise<void> {
   const first = (await evals.listExamples(ctx, imported.id))[0]!;
   await evals.updateExample(ctx, first.id, { input: "order-check 01 (edited)" });
   check(`[${label}] and editing the first leaves it first`, (await evals.listExamples(ctx, imported.id))[0]?.id === first.id);
+  // A COPY: the cases in order, the check, the rubric — and a name of its own.
+  await evals.setCheckMode(ctx, imported.id, "word");
+  await evals.putRubric(ctx, { dataset_id: imported.id, name: "Custom", criteria: [{ id: "tone", label: "Tone", description: "kind", weight: 1 }] });
+  const copy = (await evals.duplicateDataset(ctx, imported.id))!;
+  check(`[${label}] a duplicate takes a name of its own`, copy.name === "Imported copy", copy.name);
+  const copied = (await evals.listExamples(ctx, copy.id)).map((e) => e.input);
+  const original = (await evals.listExamples(ctx, imported.id)).map((e) => e.input);
+  check(`[${label}] and the cases, in order`, JSON.stringify(copied) === JSON.stringify(original), `${copied.length}`);
+  check(`[${label}] and the check and rubric`, (await evals.getDataset(ctx, copy.id))?.check_mode === "word" && (await evals.rubricForDataset(ctx, copy.id))?.criteria[0]?.id === "tone");
+  check(`[${label}] a second duplicate does not repeat the name`, (await evals.duplicateDataset(ctx, imported.id))?.name === "Imported copy 2");
   check(`[${label}] and an eval from before reads null, not version 0`,
     (await evals.getEvalRun(ctx, old))?.agent_version === null, String((await evals.getEvalRun(ctx, old))?.agent_version));
 }

@@ -346,6 +346,10 @@ export const MANIFEST = {
   evals: {
     addExample: "AddCircleIcon",
     importCsv: "FileImportIcon",
+    // Import's opposite, so the pair reads as one: a dataset out as the CSV it could be imported from.
+    exportCsv: "FileExportIcon",
+    // A dataset copied with its cases, rubric and check — the same mark as "another of these" elsewhere.
+    duplicateDataset: "CopyPlusIcon",
     deleteDataset: "Delete01Icon",
     renameDataset: "PencilEdit01Icon",
     editRubric: "Edit01Icon",

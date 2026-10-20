@@ -78,5 +78,39 @@ console.log("\nthe builder, rendered");
     "a dataset says how its answers are checked against expected", words.slice(0, 300));
 }
 
+console.log("\na dataset can leave the tab, be found in, and keep its notes");
+{
+  const { examplesToCsv } = await import("../lib/evalExport.ts");
+  const { csvToExamples } = await import("../lib/csv.ts");
+  const cases = [
+    { input: 'Role: QA\n---\nCandidate said "I test things"', expected: "decline", notes: "the classic" },
+    { input: "Role: SRE", expected: null, notes: null },
+  ];
+  const back = csvToExamples(examplesToCsv(cases)).examples;
+  check(back.length === 2 && back[0]?.input === cases[0]!.input && back[0]?.expected === "decline",
+    "an exported dataset imports back as it was — newlines, quotes and all", JSON.stringify(back[0]));
+
+  const { createElement } = await import("react");
+  const { markup, seed } = await import("../lib/testRender.ts");
+  const { useBuildStore } = await import("../store/buildStore.ts");
+  const { useEvalStore } = await import("../store/evalStore.ts");
+  const { DatasetBuilder } = await import("./DatasetBuilder.tsx");
+  seed(useBuildStore, { activeAgentId: "liven" } as never);
+  const long = Array.from({ length: 8 }, (_, i) => `line ${i}`).join("\n");
+  seed(useEvalStore, {
+    datasetsByAgent: { liven: [{ id: "d1", agent_id: "liven", name: "Screening cases", created_at: "", updated_at: "" }] },
+    selectedDatasetByAgent: { liven: "d1" },
+    examplesByDataset: { d1: Array.from({ length: 7 }, (_, i) => ({
+      id: `x${i}`, dataset_id: "d1", input: i === 0 ? long : `case ${i}`, expected: null, notes: i === 1 ? "why this case exists" : null, position: i, created_at: "",
+    })) },
+  } as never);
+  const html = markup(createElement(DatasetBuilder));
+  const words = html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
+  check(/aria-label="Find a case"/.test(html), "a long list of cases can be searched");
+  check(words.includes("show more"), "a long case folds, with a way to read the rest");
+  check(words.includes("why this case exists") && words.includes("+ note"), "notes are shown, and can be added", words.slice(0, 200));
+  check(/aria-label="Export these cases as a CSV"/.test(html) && /aria-label="Duplicate this dataset"/.test(html), "and a dataset can be exported and duplicated");
+}
+
 console.log(failures === 0 ? "\nALL CORRECT" : `\n${failures} FAILURES`);
 (globalThis as { process?: { exit(code: number): void } }).process?.exit(failures === 0 ? 0 : 1);

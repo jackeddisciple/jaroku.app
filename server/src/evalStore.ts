@@ -349,6 +349,23 @@ export class EvalStore {
     return row;
   }
 
+  /**
+   * A copy of a dataset to change without touching the original: its cases in order, its check and
+   * its rubric, under a name nobody on the agent has. Undefined when the source is gone.
+   */
+  async duplicateDataset(ctx: TenantContext, sourceId: string): Promise<Dataset | undefined> {
+    const source = await this.getDataset(ctx, sourceId);
+    if (!source) return undefined;
+    const taken = (await this.listDatasets(ctx, source.agent_id)).map((d) => d.name);
+    const copy = await this.createDataset(ctx, source.agent_id, uniqueDatasetName(taken, `${source.name.slice(0, 70)} copy`));
+    const examples = await this.listExamples(ctx, source.id);
+    if (examples.length) await this.addExamples(ctx, copy.id, examples.map((e) => ({ input: e.input, expected: e.expected, notes: e.notes })));
+    if (source.check_mode) await this.setCheckMode(ctx, copy.id, source.check_mode);
+    const rubric = await this.rubricForDataset(ctx, source.id);
+    if (rubric) await this.putRubric(ctx, { dataset_id: copy.id, name: "Custom", criteria: rubric.criteria });
+    return { ...copy, check_mode: source.check_mode ?? null };
+  }
+
   /** How this dataset's answers are checked against `expected` — see expectedMatch.ts. Null turns it off. */
   async setCheckMode(ctx: TenantContext, datasetId: string, mode: string | null): Promise<void> {
     await this.q(ctx).run(`UPDATE datasets SET check_mode = ?, updated_at = ? WHERE id = ? AND workspace_id = ?`, [

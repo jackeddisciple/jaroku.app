@@ -2635,6 +2635,7 @@ export type ClientCommand =
   | { cmd: "resetRubric"; datasetId: string; origin?: string }
   | { cmd: "loadJudge"; origin?: string }
   | { cmd: "setDatasetCheck"; datasetId: string; mode: string | null; origin?: string }
+  | { cmd: "duplicateDataset"; datasetId: string; origin?: string }
   | { cmd: "setJudgeOwnKey"; on: boolean; origin?: string }
   // MCP: server registry. Same discipline as the eval commands — every mutation comes back
   // as a full snapshot on the "mcp" channel.
