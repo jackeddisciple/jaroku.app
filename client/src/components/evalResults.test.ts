@@ -283,5 +283,12 @@ console.log("\nan eval in the Activity feed says when it stopped, and opens on i
   check(useUiStore.getState().rightTab === "evals" && closed, "in the Evals panel, with the overlay closed");
 }
 
+console.log("\nthe rail says that pressing the tab already showing hides the panel");
+{
+  const { railTip } = await import("../lib/railTip.ts");
+  check(railTip("Evals", true) === "Evals · Press again to hide the panel", "the Evals mark, with Evals open, says a second press hides the panel");
+  check(railTip("Evals", false) === "Evals", "and with another tab open it is only its name");
+}
+
 console.log(failures === 0 ? "\nALL CORRECT" : `\n${failures} FAILURES`);
 (globalThis as { process?: { exit(code: number): void } }).process?.exit(failures === 0 ? 0 : 1);

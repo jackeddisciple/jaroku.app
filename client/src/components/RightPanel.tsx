@@ -31,6 +31,7 @@ import { AgentDetail } from "./AgentDetail.tsx";
 import { useAgentGridStore } from "../store/agentGridStore.ts";
 import { ICON } from "../lib/tokens.ts";
 import { Tip } from "./ui/tooltip.tsx";
+import { railTip } from "../lib/railTip.ts";
 import { Icon, type IconComponent } from "../lib/icons/registry.ts";
 import {
   AlertTriangleIcon, ArrowDownIcon, ArrowUpDownIcon, ArrowUpIcon, ChevronLeftIcon, RefreshIcon,
@@ -352,11 +353,14 @@ export function RightPanelRail() {
           // LIT ONLY WHILE THE PANEL SHOWS IT. A closed panel still has a tab in the store and
           // nothing on screen, and a highlighted cell would say otherwise.
           const shown = open && active;
-          const tip = t.id === "github" && githubBadge
-            ? `GitHub: ${githubBadge}`
-            : t.id === "secrets" && secretsNeedAttention
-              ? `${t.label} · A credential needs attention`
-              : t.label;
+          const tip = railTip(
+            t.id === "github" && githubBadge
+              ? `GitHub: ${githubBadge}`
+              : t.id === "secrets" && secretsNeedAttention
+                ? `${t.label} · A credential needs attention`
+                : t.label,
+            shown,
+          );
           // A hairline after the last of a group, while another tab follows it.
           const divider = GROUP_ENDS.has(t.id) && i < visible.length - 1;
           return (
