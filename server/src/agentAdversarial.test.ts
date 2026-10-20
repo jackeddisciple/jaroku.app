@@ -54,7 +54,7 @@ async function agentRow(
 }
 
 const leg = (over: Partial<ProviderMetrics>): ProviderMetrics => ({
-  provider: "anthropic", model: "m", total: 2, succeeded: 2, failed: 0, successRate: 1,
+  provider: "anthropic", model: "m", total: 2, succeeded: 2, failed: 0, cancelled: 0, pending: 0, successRate: 1,
   comparisonCostUsd: 0.01, costPerRunUsd: 0.005, spentUsd: 0.01, tokens: 100,
   latencyP50Ms: 100, latencyP95Ms: 200, costUnknown: false, costIncomplete: false,
   qualityScore: 0.5, scored: 2, unscored: 0,

@@ -118,5 +118,28 @@ console.log("\na case keeps its line breaks, and one response has nothing to ste
   check(prev !== "" && !/\sdisabled=""/.test(prev), "and enabled with two", prev);
 }
 
+console.log("\nthe table compares only what can be compared");
+{
+  const { ComparisonTable } = await import("./EvalDashboard.tsx");
+  const { fmtBudget } = await import("../lib/format.ts");
+  const leg = (over: Partial<import("../types.ts").ProviderMetrics>): import("../types.ts").ProviderMetrics => ({
+    provider: "anthropic", model: "m", total: 6, succeeded: 0, failed: 6, cancelled: 0, pending: 0, successRate: 0,
+    comparisonCostUsd: 0, costPerRunUsd: null, spentUsd: 0.008, tokens: 0, latencyP50Ms: null, latencyP95Ms: null,
+    costUnknown: false, costIncomplete: false, qualityScore: null, scored: 0, unscored: 0, ...over,
+  });
+  const sonnet = leg({ model: "claude-sonnet-5" });
+  const haiku = leg({ model: "claude-haiku-4-5", total: 15, succeeded: 2, failed: 0, cancelled: 13, successRate: 1, comparisonCostUsd: 0.004, costPerRunUsd: 0.002, latencyP50Ms: 900 });
+  const html = markup(createElement(ComparisonTable, { results: results({ providers: [sonnet, haiku] }) }));
+  const words = text(html);
+  check(!/\$0\.00\b/.test(words.split("claude-haiku-4-5")[0] ?? ""), "a model that went 0 of 6 shows no $0.00 cost", words);
+  check(words.includes("Ran OK") && !words.includes("Passed"), "the column says what it counts — ran OK, not passed", words);
+  check(words.includes("2/2") && words.includes("100%") && words.includes("13 cancelled"), "two of two that ran, with the thirteen cancelled said apart", words);
+  check(words.includes("0/6") && words.includes("0%"), "and the percentage shows when nothing failed too", words);
+  check(!/title="(cheapest per run|fastest)"/.test(html), "no lead mark where only one model has the figure", html.match(/title="[^"]*"/g)?.join(" ") ?? "");
+  check(words.includes("of $0.001 budget"), "the budget reads as typed", words);
+  check(fmtBudget(0.2) === "$0.20" && fmtBudget(0.05) === "$0.05" && fmtBudget(1.5) === "$1.50" && fmtBudget(0.001) === "$0.001",
+    `a budget is $0.20, not $0.2000 (${fmtBudget(0.2)}, ${fmtBudget(0.001)})`);
+}
+
 console.log(failures === 0 ? "\nALL CORRECT" : `\n${failures} FAILURES`);
 (globalThis as { process?: { exit(code: number): void } }).process?.exit(failures === 0 ? 0 : 1);

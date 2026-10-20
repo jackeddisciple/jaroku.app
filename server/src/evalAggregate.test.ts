@@ -215,6 +215,30 @@ console.log("\nan eval shows the cases it ran, whatever happens to the dataset a
   check("and which models it compared, in the order chosen", res.targets.length === 1 && res.targets[0]?.model === "claude-haiku-4-5");
 }
 
+console.log("\nwork that never ran is not counted against a model, and models stay in the order chosen");
+{
+  const ds = await evalStore.createDataset(ctx, "a", "Budget stop");
+  const ex = await evalStore.addExample(ctx, ds.id, "case", null);
+  const run = await evalStore.createEvalRun(ctx, {
+    dataset_id: ds.id, agent_id: "a", rubric_id: "r", budget_usd: 0.001,
+    targets: [{ provider: "anthropic", model: "claude-sonnet-5" }, { provider: "anthropic", model: "claude-haiku-4-5" }],
+  });
+  const spec = [
+    ...Array.from({ length: 3 }, () => ({ example_id: ex.id, provider: "anthropic", model: "claude-sonnet-5" })),
+    ...Array.from({ length: 15 }, () => ({ example_id: ex.id, provider: "anthropic", model: "claude-haiku-4-5" })),
+  ];
+  const jobs = await evalStore.createJobs(ctx, run.id, spec);
+  const haiku = jobs.filter((j) => j.model === "claude-haiku-4-5");
+  for (const j of haiku.slice(0, 2)) await evalStore.finishJob(ctx, j.id, "succeeded", { cost_usd: 0.002 });
+  await evalStore.cancelQueuedJobs(ctx, run.id, "budget ceiling reached");
+  const res = (await aggregateEval(ctx, evalStore, run.id))!;
+  const h = res.providers.find((p) => p.model === "claude-haiku-4-5")!;
+  check("two of two that ran succeeded, not two of fifteen", h.successRate === 1 && h.succeeded === 2, `${h.successRate}`);
+  check("and the thirteen that never ran are counted as cancelled", h.cancelled === 13, `${h.cancelled}`);
+  check("the table lists the models in the order they were chosen, not alphabetically",
+    res.providers.map((p) => p.model).join(",") === "claude-sonnet-5,claude-haiku-4-5", res.providers.map((p) => p.model).join(","));
+}
+
 await store.close();
 rmSync(DB, { force: true });
 rmSync(`${DB}-wal`, { force: true });

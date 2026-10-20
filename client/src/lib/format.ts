@@ -172,6 +172,20 @@ export function fmtCost(cost: number | null | undefined): string {
 }
 
 /**
+ * A spending ceiling somebody typed, as they typed it: "$0.20", "$0.05", "$0.001", "$1.50".
+ *
+ * NOT `fmtCost`, which is for MEASURED money and pads to four or five places so a column of spend
+ * lines up. A budget is a round number a person chose, and "$0.2000" beside "$0.00859" read as two
+ * different kinds of precision for one currency.
+ */
+export function fmtBudget(usd: number | null | undefined): string {
+  if (usd == null) return "—";
+  const trimmed = usd.toFixed(6).replace(/0+$/, "");
+  const [whole = "0", frac = ""] = trimmed.split(".");
+  return `$${whole}.${frac.padEnd(2, "0")}`;
+}
+
+/**
  * A count, shortened past a thousand: "999" / "11.6k" / "1.2M".
  *
  * THE ONE PLACE THE THRESHOLD AND THE SUFFIXES ARE DECIDED. There were two implementations of

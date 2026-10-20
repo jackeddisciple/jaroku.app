@@ -11,7 +11,8 @@
 //   * The comparison cost and the true spend are shown as separate things, because they
 //     answer different questions: "which is cheaper per run" and "what did this cost me".
 
-import { fmtCost, fmtLatency, fmtPercent } from "../lib/format.ts";
+import { useEffect, useRef, useState } from "react";
+import { fmtBudget, fmtCost, fmtLatency, fmtPercent } from "../lib/format.ts";
 import {
   download,
   exportStem,
@@ -38,8 +39,17 @@ function LeadMark({ title }: { title: string }) {
   );
 }
 
-/** Cost cell. The three states — known, unknown, floor — must stay visually distinct. */
+/** Cost cell. The four states — known, unknown, floor, nothing to compare — must stay visually distinct. */
 function CostCell({ p }: { p: ProviderMetrics }) {
+  // NOTHING SUCCEEDED, NOTHING TO COMPARE. "$0.00" here read as "this model is free" for a model that
+  // went 0 of 6 — and whose failed attempts did cost money, which is in Spent below.
+  if (p.succeeded === 0) {
+    return (
+      <span className="text-faint" title="Nothing succeeded, so there is no per-run cost to compare. What the attempts cost is under Spent.">
+        —
+      </span>
+    );
+  }
   if (p.costUnknown) {
     return (
       <span className="text-faint" title={`No pricing entry for ${p.model} — cost is unknown, not zero`}>
@@ -75,24 +85,81 @@ function QualityCell({ p }: { p: ProviderMetrics }) {
   );
 }
 
-/** The best (lowest cost / highest quality / fastest) leg, for a subtle lead marker. */
-function leaders(providers: ProviderMetrics[]) {
+/**
+ * The best (lowest cost / highest quality / fastest) leg, for a subtle lead marker.
+ *
+ * ONLY WHERE THERE IS A COMPARISON. With one model holding a figure, "cheapest" and "fastest" were
+ * drawn beside it anyway — a lead over nobody.
+ */
+export function leaders(providers: ProviderMetrics[]) {
   const priced = providers.filter((p) => !p.costUnknown && p.comparisonCostUsd !== null && p.succeeded > 0);
   const scored = providers.filter((p) => p.qualityScore !== null);
   const timed = providers.filter((p) => p.latencyP50Ms !== null);
   return {
     // Cheapest is per-run, not total: totals differ if some legs had more failures.
-    cheapest: priced.length
+    cheapest: priced.length > 1
       ? priced.reduce((a, b) => ((a.costPerRunUsd ?? Infinity) <= (b.costPerRunUsd ?? Infinity) ? a : b)).model
       : null,
-    best: scored.length
+    best: scored.length > 1
       ? scored.reduce((a, b) => ((a.qualityScore ?? 0) >= (b.qualityScore ?? 0) ? a : b)).model
       : null,
-    fastest: timed.length
+    fastest: timed.length > 1
       ? timed.reduce((a, b) => ((a.latencyP50Ms ?? Infinity) <= (b.latencyP50Ms ?? Infinity) ? a : b)).model
       : null,
   };
 }
+
+/**
+ * "Ran OK": how many of the jobs that RAN finished without failing, with what did not run said apart.
+ *
+ * IT WAS "PASSED", AND IT MEANT NEITHER. It meant the run did not crash — not that the judge passed
+ * it — and its denominator counted work that never ran: `2/15` after a budget stop cancelled
+ * thirteen, `0/6` while five were still queued. The percentage only appeared when something failed.
+ */
+function RanOk({ p }: { p: ProviderMetrics }) {
+  const ran = p.succeeded + p.failed;
+  const notes = [
+    (p.cancelled ?? 0) > 0 ? `${p.cancelled} cancelled` : null,
+    (p.pending ?? 0) > 0 ? `${p.pending} waiting` : null,
+  ].filter(Boolean);
+  return (
+    <span className="whitespace-nowrap tabular-nums">
+      <span className={p.failed > 0 ? "text-err" : "text-muted"}>
+        {p.succeeded}/{ran}
+      </span>
+      {ran > 0 && <span className="text-faint text-tiny ml-1">{fmtPercent(p.successRate, "share")}</span>}
+      {notes.length > 0 && <span className="text-faint text-tiny ml-1">· {notes.join(" · ")}</span>}
+    </span>
+  );
+}
+
+/** The table's row as a card, for a panel too narrow for seven columns. */
+function ProviderCard({ p, lead }: { p: ProviderMetrics; lead: ReturnType<typeof leaders> }) {
+  const fact = (label: string, value: React.ReactNode) => (
+    <div className="flex items-baseline justify-between gap-2">
+      <span className="text-faint">{label}</span>
+      <span className="text-right">{value}</span>
+    </div>
+  );
+  return (
+    <div className="rounded-card border border-hair px-3 py-2 text-caption">
+      <div className="pb-1">
+        <span className="text-ink">{p.model}</span>
+        <span className="text-faint ml-1.5 text-tiny">{p.provider}</span>
+      </div>
+      <div className="space-y-0.5 text-tiny">
+        {fact("Quality", <><QualityCell p={p} />{lead.best === p.model && <LeadMark title="highest quality" />}</>)}
+        {fact("Cost", <CostCell p={p} />)}
+        {fact("Per run", <span className="text-muted tabular-nums">{p.costUnknown || p.succeeded === 0 ? "—" : fmtCost(p.costPerRunUsd ?? 0)}{lead.cheapest === p.model && <LeadMark title="cheapest per run" />}</span>)}
+        {fact("p50 · p95", <span className="text-muted tabular-nums">{fmtLatency(p.latencyP50Ms)} · {fmtLatency(p.latencyP95Ms)}{lead.fastest === p.model && <LeadMark title="fastest" />}</span>)}
+        {fact("Ran OK", <RanOk p={p} />)}
+      </div>
+    </div>
+  );
+}
+
+/** Narrower than this, the table's seven columns are clipped; the rows become cards. */
+const STACK_BELOW_PX = 560;
 
 export function ComparisonTable({
   results,
@@ -104,9 +171,24 @@ export function ComparisonTable({
   const lead = leaders(results.providers);
   const { totals } = results;
   const overBudget = totals.budgetUsd !== null && totals.trueSpendUsd >= totals.budgetUsd;
+  // HOW WIDE THE PANEL ACTUALLY IS. Below about 600px the columns were clipped with nothing to say so.
+  const box = useRef<HTMLDivElement>(null);
+  const [narrow, setNarrow] = useState(false);
+  useEffect(() => {
+    const el = box.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(([entry]) => setNarrow((entry?.contentRect.width ?? Infinity) < STACK_BELOW_PX));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-3" ref={box}>
+      {narrow ? (
+        <div className="space-y-2">
+          {results.providers.map((p) => <ProviderCard key={`${p.provider} ${p.model}`} p={p} lead={lead} />)}
+        </div>
+      ) : (
       <div className="overflow-x-auto">
         <table className="w-full text-caption border-separate border-spacing-0">
           <thead>
@@ -117,7 +199,7 @@ export function ComparisonTable({
               <th className="text-right font-normal pb-1.5 px-2">Per run</th>
               <th className="text-right font-normal pb-1.5 px-2">p50</th>
               <th className="text-right font-normal pb-1.5 px-2">p95</th>
-              <th className="text-right font-normal pb-1.5 pl-2">Passed</th>
+              <th className="text-right font-normal pb-1.5 pl-2" title="Of the jobs that ran, how many finished without failing. Not a judgement of the answer.">Ran OK</th>
             </tr>
           </thead>
           <tbody>
@@ -137,41 +219,37 @@ export function ComparisonTable({
                   <span className="whitespace-nowrap text-ink">{p.model}</span>
                   <span className="text-faint ml-1.5 text-tiny">{p.provider}</span>
                 </td>
-                <td className="py-1.5 px-2 text-right">
+                <td className="py-1.5 px-2 text-right whitespace-nowrap">
                   <QualityCell p={p} />
                   {lead.best === p.model && p.qualityScore !== null && (
                     <LeadMark title="highest quality" />
                   )}
                 </td>
                 <td className="py-1.5 px-2 text-right"><CostCell p={p} /></td>
-                <td className="py-1.5 px-2 text-right">
+                <td className="py-1.5 px-2 text-right whitespace-nowrap">
                   <span className="text-muted tabular-nums">
-                    {p.costUnknown ? "—" : fmtCost(p.costPerRunUsd ?? 0)}
+                    {p.costUnknown || p.succeeded === 0 ? "—" : fmtCost(p.costPerRunUsd ?? 0)}
                   </span>
                   {lead.cheapest === p.model && !p.costUnknown && (
                     <LeadMark title="cheapest per run" />
                   )}
                 </td>
-                <td className="py-1.5 px-2 text-right text-muted tabular-nums">
+                <td className="py-1.5 px-2 text-right text-muted tabular-nums whitespace-nowrap">
                   {fmtLatency(p.latencyP50Ms)}
                   {lead.fastest === p.model && p.latencyP50Ms !== null && (
                     <LeadMark title="fastest" />
                   )}
                 </td>
                 <td className="py-1.5 px-2 text-right text-muted tabular-nums">{fmtLatency(p.latencyP95Ms)}</td>
-                <td className="py-1.5 pl-2 text-right tabular-nums">
-                  <span className={p.failed > 0 ? "text-err" : "text-muted"}>
-                    {p.succeeded}/{p.total}
-                  </span>
-                  {p.failed > 0 && (
-                    <span className="text-faint text-tiny ml-1">{fmtPercent(p.successRate, "share")}</span>
-                  )}
+                <td className="py-1.5 pl-2 text-right">
+                  <RanOk p={p} />
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
+      )}
 
       {/* Spend, kept deliberately apart from the comparison figures above. The table answers
           "which provider is cheaper per run"; this answers "what did this eval cost me" —
@@ -185,7 +263,7 @@ export function ComparisonTable({
         <span className="text-muted">{fmtCost(totals.judgeCostUsd)} judge</span>
         {totals.budgetUsd !== null && (
           <span className={overBudget ? "text-err" : "text-faint"}>
-            of {fmtCost(totals.budgetUsd)} budget{overBudget ? " — ceiling reached" : ""}
+            of {fmtBudget(totals.budgetUsd)} budget{overBudget ? " — ceiling reached" : ""}
           </span>
         )}
         {results.providers.some((p) => p.costIncomplete) && (

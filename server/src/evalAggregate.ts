@@ -119,7 +119,16 @@ export interface ProviderMetrics {
   total: number;
   succeeded: number;
   failed: number;
-  /** succeeded / total, 0..1. */
+  /** Jobs a ceiling or a Cancel stopped before they ran. Not a failure, and not in the rate below. */
+  cancelled: number;
+  /** Jobs still queued or running. */
+  pending: number;
+  /**
+   * succeeded / (succeeded + failed), 0..1 — of the jobs that RAN.
+   *
+   * It was succeeded / total, so work that never ran counted against a model: `2/15` after a budget
+   * stop that cancelled thirteen, and `0/6` while five were still queued.
+   */
   successRate: number;
   /** Cost of SUCCEEDED runs only — the like-for-like comparison figure. */
   comparisonCostUsd: number | null;
@@ -278,6 +287,9 @@ export async function aggregateEval(
     const [provider = "", model = ""] = key.split(" ");
     const succeeded = group.filter((j) => j.status === "succeeded");
     const failed = group.filter((j) => j.status === "failed" || j.status === "timed_out");
+    const cancelled = group.filter((j) => j.status === "cancelled").length;
+    const pending = group.filter((j) => j.status === "queued" || j.status === "running").length;
+    const ran = succeeded.length + failed.length;
 
     // Spend counts EVERY attempt — a failed run still burned tokens on the way down, and
     // a retried one burned them more than once. `spent_usd` is the cumulative column;
@@ -312,7 +324,9 @@ export async function aggregateEval(
       total: group.length,
       succeeded: succeeded.length,
       failed: failed.length,
-      successRate: group.length ? succeeded.length / group.length : 0,
+      cancelled,
+      pending,
+      successRate: ran ? succeeded.length / ran : 0,
       comparisonCostUsd: comparisonCost,
       costPerRunUsd:
         comparisonCost !== null && succeeded.length ? round8(comparisonCost / succeeded.length) : null,
@@ -330,8 +344,14 @@ export async function aggregateEval(
     });
   }
 
-  // Stable order so the dashboard doesn't reshuffle between refreshes.
-  providers.sort((a, b) => (a.provider + a.model).localeCompare(b.provider + b.model));
+  // THE ORDER THE MODELS WERE CHOSEN IN, which is the order a case's chips are in — the table was
+  // alphabetical, so the two lists of the same models read in different orders. Stable between
+  // refreshes either way; a leg the targets do not name (an eval from before they were kept in order)
+  // falls back to its name.
+  const chosen = new Map(evalRun.targets.map((t, i) => [`${t.provider} ${t.model}`, i]));
+  providers.sort((a, b) =>
+    (chosen.get(`${a.provider} ${a.model}`) ?? Number.MAX_SAFE_INTEGER) - (chosen.get(`${b.provider} ${b.model}`) ?? Number.MAX_SAFE_INTEGER) ||
+    (a.provider + a.model).localeCompare(b.provider + b.model));
 
   // Per-example rows, in the order the eval ran them, each carrying one cell per (provider, model)
   // leg. Built here rather than in the UI so the dashboard grid and the drill-down are always

@@ -540,6 +540,10 @@ export interface ProviderMetrics {
   total: number;
   succeeded: number;
   failed: number;
+  /** Stopped before they ran (a ceiling or a Cancel), and still queued or running. Not failures. */
+  cancelled?: number;
+  pending?: number;
+  /** Of the jobs that RAN — cancelled and waiting ones are not in it. */
   successRate: number;
   /** Succeeded runs only — the like-for-like figure. null when the model is unpriced. */
   comparisonCostUsd: number | null;

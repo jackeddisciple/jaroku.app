@@ -24,7 +24,7 @@ import { EVAL_PHASE } from "../lib/domainPhase.ts";
 import { StatusGlyph } from "./StatusGlyph.tsx";
 import type { EvalResults, EvalRunStatus } from "../types.ts";
 import type { EvalProgress } from "../store/evalStore.ts";
-import { fmtCost } from "../lib/format.ts";
+import { fmtBudget, fmtCost } from "../lib/format.ts";
 
 /**
  * This panel's word for each eval status, beside the phase's shape.
@@ -74,7 +74,7 @@ export function ResultsHeader({ results, live }: { results: EvalResults; live: E
         </span>
         <span title={results.startedAt}>{relTime(results.startedAt)}</span>
         <span className="tabular-nums">
-          {fmtCost(totals.trueSpendUsd)} spent{totals.budgetUsd !== null ? ` of ${fmtCost(totals.budgetUsd)}` : ""}
+          {fmtCost(totals.trueSpendUsd)} spent{totals.budgetUsd !== null ? ` of ${fmtBudget(totals.budgetUsd)}` : ""}
         </span>
         <span className="min-w-0 truncate" title={models.join(", ")}>{models.join(" · ")}</span>
       </div>
