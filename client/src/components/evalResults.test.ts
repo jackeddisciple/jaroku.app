@@ -96,6 +96,12 @@ console.log("\na cell that did not succeed says which of five things happened");
   check(/err/.test(cellLook("failed")!.tone) && /err/.test(cellLook("timed_out")!.tone), "failing is");
   check(cellLook("cancelled")!.struck === true, "and a cancelled cell is struck through");
   check(cellLook("succeeded") === null, "a succeeded cell shows its score instead");
+  const { unscoredLook } = await import("./EvalDrillDown.tsx");
+  // With the judge off every ran cell is unscored, and "—" beside "cancelled" read as nothing having run.
+  check(unscoredLook({ matches: null }).label === "ran", "and with no score, that it ran — not a dash");
+  check(unscoredLook({ matches: true }).label === "match" && /ok/.test(unscoredLook({ matches: true }).tone)
+    && unscoredLook({ matches: false }).label === "no match" && /err/.test(unscoredLook({ matches: false }).tone),
+    "or, when answers are checked, whether it matched");
 }
 
 console.log("\na case keeps its line breaks, and one response has nothing to step to");

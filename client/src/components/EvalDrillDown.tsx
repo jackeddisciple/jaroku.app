@@ -41,17 +41,30 @@ export function cellLook(status: string): { label: string; tone: string; struck?
   }
 }
 
+/**
+ * What a ran cell's chip says when it has no score — which, with the judge off, is every cell.
+ *
+ * IT SAID "—", which beside "cancelled" read as nothing having happened. The check against
+ * expected is the answer when there is one; otherwise that it ran.
+ */
+export function unscoredLook(cell: Pick<ExampleCell, "matches">): { label: string; tone: string } {
+  if (cell.matches === true) return { label: "match", tone: "text-ok" };
+  if (cell.matches === false) return { label: "no match", tone: "text-err" };
+  return { label: "ran", tone: "text-muted" };
+}
+
 /** Compact score chip. A score, unscored, or the job's state — see `cellLook`. */
 function ScoreChip({ cell, active, onClick }: { cell: ExampleCell; active: boolean; onClick: () => void }) {
   const look = cellLook(cell.status);
-  const label = look ? look.label : cell.score === null ? "—" : (cell.score * 100).toFixed(0);
+  const unscored = cell.score === null ? unscoredLook(cell) : null;
+  const label = look ? look.label : unscored ? unscored.label : (cell.score! * 100).toFixed(0);
   const tone = look
     ? look.tone
-    : cell.score === null
-      ? "text-faint"
-      : cell.score >= 0.8
+    : unscored
+      ? unscored.tone
+      : cell.score! >= 0.8
         ? "text-ok"
-        : cell.score < 0.4
+        : cell.score! < 0.4
           ? "text-err"
           : "text-ink";
   const why = look
