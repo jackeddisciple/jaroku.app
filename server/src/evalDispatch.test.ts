@@ -281,5 +281,114 @@ console.log("\ncancelling an eval purges its still-queued jobs from the dispatch
   }
 }
 
+console.log("\ntwo runs exiting together: nothing reports progress after the eval finished");
+{
+  const pool = new FakePool(2);
+  const dispatcher = new Dispatcher(new InMemoryQueueBackend());
+  // One ordered log of both callbacks, because the bug was their ORDER: a progress event that
+  // arrived after the finish told the client the eval was still running.
+  const events: string[] = [];
+  const logged: string[] = [];
+  const log = console.log;
+  console.log = (...args: unknown[]) => { logged.push(args.map(String).join(" ")); log(...args); };
+
+  const runner = new EvalRunner({
+    pool: pool as unknown as RunPool,
+    store,
+    dispatcher,
+    evalStore,
+    runtimeDir: ".",
+    context: () => ctx,
+    markEvalRun: () => {},
+    onStarted: () => {},
+    onProgress: (p) => events.push(`progress ${p.done}/${p.total}`),
+    onFinished: (e) => events.push(`finished ${e.status}`),
+  });
+
+  const ds = await evalStore.createDataset(ctx, "agent_race", "race path");
+  for (let i = 0; i < 2; i++) await evalStore.addExample(ctx, ds.id, `hello-${i}`, null, null);
+  const rubric = await evalStore.putRubric(ctx, { dataset_id: null, name: "r", criteria: [] });
+
+  const started = await runner.start({
+    ctx, datasetId: ds.id, agentId: "agent_race", rubricId: rubric.id,
+    targets: [{ provider: "fake", model: "fake" }], budgetUsd: null,
+  });
+  if ("error" in started) { check(false, `start failed: ${started.error}`); }
+  else {
+    for (let i = 0; i < 40 && pool.started.length < 2; i++) await sleep(15);
+    check(pool.started.length === 2, `both jobs started (${pool.started.length})`);
+    for (const launch of pool.started) {
+      await store.upsertRun(ctx, {
+        id: launch.runId, agent_id: "agent_race", provider: "fake", model: "fake", status: "completed",
+        started_at: new Date().toISOString(), ended_at: new Date().toISOString(), cost: 0, tokens: 0, error: null,
+      });
+    }
+    // In the same tick, so their two pumps would have overlapped.
+    for (const launch of pool.started) pool.finish(launch.runId);
+    for (let i = 0; i < 60 && !events.some((e) => e.startsWith("finished")); i++) await sleep(15);
+    await sleep(200);
+    const at = events.findIndex((e) => e.startsWith("finished"));
+    check(at >= 0, `the eval finished (${events.join(" · ")})`);
+    check(at === events.length - 1, `nothing came after the finish (${events.join(" · ")})`);
+    check(events.filter((e) => e.startsWith("finished")).length === 1, "and it finished once");
+    const line = logged.find((l) => l.includes(`${started.evalId} completed`));
+    check(line?.includes("2/2 succeeded, 0 failed, 0 cancelled") === true, `the log counts what ran (${line})`);
+  }
+  console.log = log;
+}
+
+console.log("\na ceiling stop is recorded once, and the log does not count cancelled jobs as successes");
+{
+  const pool = new FakePool(1);
+  const dispatcher = new Dispatcher(new InMemoryQueueBackend());
+  const logged: string[] = [];
+  const log = console.log;
+  console.log = (...args: unknown[]) => { logged.push(args.map(String).join(" ")); log(...args); };
+  const finished: string[] = [];
+
+  const runner = new EvalRunner({
+    pool: pool as unknown as RunPool,
+    store,
+    dispatcher,
+    evalStore,
+    runtimeDir: ".",
+    context: () => ctx,
+    markEvalRun: () => {},
+    onStarted: () => {},
+    onProgress: () => {},
+    onFinished: (e) => finished.push(e.status),
+  });
+
+  const ds = await evalStore.createDataset(ctx, "agent_ceiling", "ceiling path");
+  for (let i = 0; i < 4; i++) await evalStore.addExample(ctx, ds.id, `hello-${i}`, null, null);
+  const rubric = await evalStore.putRubric(ctx, { dataset_id: null, name: "r", criteria: [] });
+
+  const started = await runner.start({
+    ctx, datasetId: ds.id, agentId: "agent_ceiling", rubricId: rubric.id,
+    targets: [{ provider: "fake", model: "fake" }], budgetUsd: 0.001,
+  });
+  if ("error" in started) { check(false, `start failed: ${started.error}`); }
+  else {
+    for (let i = 0; i < 40 && pool.started.length < 1; i++) await sleep(15);
+    const runId = pool.started[0]!.runId;
+    await store.upsertRun(ctx, {
+      id: runId, agent_id: "agent_ceiling", provider: "fake", model: "fake", status: "completed",
+      started_at: new Date().toISOString(), ended_at: new Date().toISOString(), cost: 0.01, tokens: 10, error: null,
+    });
+    // The spend the ceiling sees is the job's, so put the money where the runner reads it.
+    const job = (await evalStore.jobsForEval(ctx, started.evalId)).find((j) => j.run_id === runId)!;
+    await evalStore.finishJob(ctx, job.id, "succeeded", { cost_usd: 0.01 });
+    await evalStore.markJobRunning(ctx, job.id, runId, 0);
+    pool.finish(runId);
+    for (let i = 0; i < 60 && finished.length < 1; i++) await sleep(15);
+    await sleep(200);
+    check(finished.length === 1 && finished[0] === "aborted_over_budget", `it stopped over budget, once (${finished.join(", ")})`);
+    check(logged.filter((l) => l.includes(`${started.evalId} stopped`)).length === 1, "the stop is logged once");
+    const line = logged.find((l) => l.includes(`${started.evalId} aborted_over_budget`));
+    check(line?.includes("succeeded") === true && line.includes("3 cancelled") && !line.includes("4/4"), `the log counts the cancelled apart (${line})`);
+  }
+  console.log = log;
+}
+
 console.log(failures === 0 ? "\nALL CORRECT" : `\n${failures} FAILURES`);
 process.exit(failures === 0 ? 0 : 1);

@@ -2199,7 +2199,7 @@ export type EvalEvent =
   // completion, so §7.1's "no polling channel" rule is untouched.
   | {
       type: "evalProgress"; evalId: string; total: number; done: number; running: number;
-      queued: number; failed: number; spentDeltaUsd: number;
+      queued: number; failed: number; succeeded: number; cancelled: number; spentDeltaUsd: number;
     }
   | { type: "evalFinished"; evalId: string; status: string; error?: string }
   | { type: "rubric"; datasetId: string; rubric: unknown; isDefault: boolean }

@@ -107,6 +107,12 @@ export interface EvalProgress {
   queued: number;
   failed: number;
   /**
+   * The two halves of `done` that are not failures. A cancelled job never ran: counting it with the
+   * successes logged a budget stop after two runs as "15/15 succeeded".
+   */
+  succeeded: number;
+  cancelled: number;
+  /**
    * What this eval has spent SINCE the last progress event (§4.3.3).
    *
    * THE ONE THING THIS CHANNEL DID NOT CARRY, and the reason §4.3.3's worked example was
@@ -427,13 +433,38 @@ export class EvalRunner {
 
   // --- draining --------------------------------------------------------------
 
+  /** Each live eval's latest pump, so the next one runs after it. See `pump`. */
+  private pumps = new Map<string, Promise<void>>();
+
+  /**
+   * Run one pass of `pumpOnce` for this eval, AFTER any pass already running for it.
+   *
+   * TWO PASSES USED TO OVERLAP, and the second one outlived the eval. Two jobs exiting together each
+   * pumped; the first finished the eval and announced it, the second had already read the counts and
+   * announced progress after the finish — which the client took as "still running", leaving a
+   * finished eval on `running 15/15` with a Cancel that cancelled nothing. Both also passed the
+   * budget check, so a ceiling stop was recorded and logged twice. One at a time, a pass that starts
+   * after the finish finds no live eval and does nothing.
+   */
+  private pump(evalId: string): Promise<void> {
+    const before = this.pumps.get(evalId) ?? Promise.resolve();
+    const next = before.catch(() => {}).then(() => this.pumpOnce(evalId));
+    this.pumps.set(evalId, next);
+    void next
+      .finally(() => {
+        if (this.pumps.get(evalId) === next) this.pumps.delete(evalId);
+      })
+      .catch(() => {});
+    return next;
+  }
+
   /**
    * Dispatch as many queued jobs as the caps allow, then stop.
    *
    * Deliberately not a loop with a timer: it is called on start and on each job's exit, so
    * it advances exactly when capacity frees up. Nothing polls, and nothing can spin.
    */
-  private async pump(evalId: string): Promise<void> {
+  private async pumpOnce(evalId: string): Promise<void> {
     const live = this.live.get(evalId);
     if (!live) return;
 
@@ -827,6 +858,8 @@ export class EvalRunner {
       running: by("running"),
       queued: by("queued"),
       failed: by("failed") + by("timed_out"),
+      succeeded: by("succeeded"),
+      cancelled: by("cancelled"),
     };
   }
 
@@ -869,7 +902,7 @@ export class EvalRunner {
       current === "aborted_over_budget" ? current : live.cancelled ? "cancelled" : "completed";
     if (current !== "aborted_over_budget") await this.deps.evalStore.setEvalStatus(this.ctx(evalId), evalId, status);
     console.log(
-      `[eval] ${evalId} ${status} — ${c.total - c.failed}/${c.total} succeeded, ${c.failed} failed`,
+      `[eval] ${evalId} ${status} — ${c.succeeded}/${c.total} succeeded, ${c.failed} failed, ${c.cancelled} cancelled`,
     );
     this.deps.onFinished({ evalId, status });
   }
