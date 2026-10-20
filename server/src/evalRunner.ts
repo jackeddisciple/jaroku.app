@@ -489,6 +489,9 @@ export class EvalRunner {
     );
     const dataset = await this.deps.evalStore.getDataset(req.ctx, req.datasetId);
     const agentVersion = (await this.deps.agentVersion?.(req.ctx, req.agentId).catch(() => null)) ?? null;
+    // The criteria it will be scored on, copied now: an edit to the rubric mid-eval must not change
+    // what the rest of this eval is judged against.
+    const rubric = await this.deps.evalStore.getRubric(req.ctx, req.rubricId);
 
     const evalRun = await this.deps.evalStore.createEvalRun(req.ctx, {
       id: evalId,
@@ -499,6 +502,7 @@ export class EvalRunner {
       budget_usd: req.budgetUsd,
       dataset_name: dataset?.name ?? null,
       agent_version: agentVersion,
+      rubric: rubric?.criteria ?? null,
     });
     // Rows first, dispatch second. If the process dies right here, the eval is recoverable
     // rather than a set of runs nothing points at.

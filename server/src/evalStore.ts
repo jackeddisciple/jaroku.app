@@ -105,6 +105,11 @@ export interface EvalRun {
   dataset_name: string | null;
   /** The agent's version when the eval started (migration 090). Null for an eval from before it was kept. */
   agent_version: number | null;
+  /**
+   * The rubric's criteria when the eval started (migration 091). What its judge scores on and what its
+   * results label scores with — an edit or a reset afterwards changes the next eval, not this one.
+   */
+  rubric: RubricCriterion[] | null;
 }
 
 export type EvalJobStatus =
@@ -185,7 +190,7 @@ const nowIso = (): string => new Date().toISOString();
 // workspace_id into the object that goes onto the wire.
 const RUBRIC_COLUMNS = `id, dataset_id, name, criteria, created_at, updated_at`;
 const EVAL_RUN_COLUMNS = `id, dataset_id, agent_id, rubric_id, status, targets, budget_usd,
-                          judge_cost_usd, started_at, ended_at, error, dataset_name, agent_version`;
+                          judge_cost_usd, started_at, ended_at, error, dataset_name, agent_version, rubric`;
 const EVAL_JOB_COLUMNS = `id, eval_id, example_id, provider, model, status, attempt, run_id,
                           cost_usd, tokens, latency_ms, cost_complete, error, started_at,
                           ended_at, retry_not_before, spent_usd, input, expected`;
@@ -489,6 +494,17 @@ export class EvalStore {
     return row ? this.hydrateRubric(row) : undefined;
   }
 
+  /**
+   * Drop a dataset's own rubric, so it scores against the workspace's built-in one again.
+   *
+   * SAFE TO DELETE OUTRIGHT because every eval keeps the criteria it was scored on (migration 091) —
+   * the history does not need the row. Before that copy, a custom rubric could only ever be edited.
+   */
+  async deleteRubricForDataset(ctx: TenantContext, datasetId: string): Promise<number> {
+    const res = await this.q(ctx).run(`DELETE FROM rubrics WHERE dataset_id = ? AND workspace_id = ?`, [datasetId, ctx.workspaceId]);
+    return res.changes;
+  }
+
   /** The rubric a dataset scores against, if it has customized one. */
   async rubricForDataset(ctx: TenantContext, datasetId: string): Promise<Rubric | undefined> {
     const row = await this.q(ctx).get<Record<string, unknown>>(
@@ -528,6 +544,7 @@ export class EvalStore {
       ...row,
       targets: this.parseJson<EvalTarget[]>(row["targets"], []),
       agent_version: version === null || version === undefined ? null : asInt(version),
+      rubric: row["rubric"] === null || row["rubric"] === undefined ? null : this.parseJson<RubricCriterion[] | null>(row["rubric"], null),
     } as EvalRun;
   }
 
@@ -540,6 +557,7 @@ export class EvalStore {
     budget_usd: number | null;
     dataset_name?: string | null;
     agent_version?: number | null;
+    rubric?: RubricCriterion[] | null;
   }): Promise<EvalRun> {
     const row: EvalRun = {
       id: r.id ?? randomUUID(),
@@ -555,14 +573,16 @@ export class EvalStore {
       error: null,
       dataset_name: r.dataset_name ?? null,
       agent_version: r.agent_version ?? null,
+      rubric: r.rubric ?? null,
     };
     await this.q(ctx).run(
       `INSERT INTO eval_runs (id, workspace_id, dataset_id, agent_id, rubric_id, status,
-         targets, budget_usd, judge_cost_usd, started_at, ended_at, error, dataset_name, agent_version)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, NULL, NULL, ?, ?)`,
+         targets, budget_usd, judge_cost_usd, started_at, ended_at, error, dataset_name, agent_version, rubric)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, NULL, NULL, ?, ?, ?)`,
       [
         row.id, ctx.workspaceId, row.dataset_id, row.agent_id, row.rubric_id, row.status,
         JSON.stringify(row.targets), row.budget_usd, row.started_at, row.dataset_name, row.agent_version,
+        row.rubric ? JSON.stringify(row.rubric) : null,
       ],
     );
     return row;
@@ -887,9 +907,10 @@ export class EvalStore {
     );
     if (!row) return undefined;
     const evalRun = await this.getEvalRun(ctx, job.eval_id);
-    const rubric = evalRun ? await this.getRubric(ctx, evalRun.rubric_id) : undefined;
+    // The criteria the eval was scored on, as it kept them; the rubric row only for an eval from before.
+    const criteriaOf = evalRun?.rubric ?? (evalRun ? (await this.getRubric(ctx, evalRun.rubric_id))?.criteria : undefined) ?? [];
     const scores = this.parseJson<Record<string, number> | null>(row["per_criterion"], null) ?? {};
-    const labelled = (rubric?.criteria ?? []).filter((c) => typeof scores[c.id] === "number");
+    const labelled = criteriaOf.filter((c) => typeof scores[c.id] === "number");
     const known = new Set(labelled.map((c) => c.id));
     const criteria = [
       ...labelled.map((c) => ({ id: c.id, label: c.label, score: scores[c.id]! })),

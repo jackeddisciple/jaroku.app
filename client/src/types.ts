@@ -2571,6 +2571,7 @@ export type ClientCommand =
   | { cmd: "estimateEval"; datasetId: string; agentId: string; targets: EvalTarget[]; origin?: string }
   | { cmd: "loadRubric"; datasetId: string; origin?: string }
   | { cmd: "saveRubric"; datasetId: string; name?: string; criteria: RubricCriterion[]; origin?: string }
+  | { cmd: "resetRubric"; datasetId: string; origin?: string }
   // MCP: server registry. Same discipline as the eval commands — every mutation comes back
   // as a full snapshot on the "mcp" channel.
   | { cmd: "listMcpServers" }

@@ -68,6 +68,17 @@ async function suite(label: string, db: Db): Promise<void> {
     dataset_id: theirs.id, agent_id: "noisy", rubric_id: rubric, targets: [], budget_usd: null, agent_version: 7,
   });
   check(`[${label}] an eval keeps the agent version it ran against`, (await evals.getEvalRun(ctx, versioned.id))?.agent_version === 7);
+  // THE CRITERIA IT WAS SCORED ON (migration 091), kept through an edit and a reset of the rubric.
+  const custom = await evals.putRubric(ctx, { dataset_id: theirs.id, name: "Custom", criteria: [{ id: "tone", label: "Tone", description: "kind", weight: 1 }] });
+  const judged = await evals.createEvalRun(ctx, {
+    dataset_id: theirs.id, agent_id: "noisy", rubric_id: custom.id, targets: [], budget_usd: null, rubric: custom.criteria,
+  });
+  await evals.putRubric(ctx, { id: custom.id, dataset_id: theirs.id, name: "Custom", criteria: [{ id: "speed", label: "Speed", description: "fast", weight: 1 }] });
+  await evals.deleteRubricForDataset(ctx, theirs.id);
+  const kept = (await evals.getEvalRun(ctx, judged.id))?.rubric;
+  check(`[${label}] an eval keeps the criteria it was scored on through an edit and a reset`,
+    kept?.length === 1 && kept[0]?.id === "tone", JSON.stringify(kept));
+  check(`[${label}] and the reset removed the dataset's own rubric`, (await evals.rubricForDataset(ctx, theirs.id)) === undefined);
   check(`[${label}] and an eval from before reads null, not version 0`,
     (await evals.getEvalRun(ctx, old))?.agent_version === null, String((await evals.getEvalRun(ctx, old))?.agent_version));
 }

@@ -8,7 +8,7 @@
 //
 //   npm run test:judge
 
-import { DEFAULT_CRITERIA, buildJudgePrompt, parseJudgeVerdict, SCALE_MAX } from "./rubric.ts";
+import { DEFAULT_CRITERIA, buildJudgePrompt, parseJudgeVerdict, SCALE_MAX, validateRubric } from "./rubric.ts";
 import { extractAgentOutput } from "./output.ts";
 import type { Step } from "../types.ts";
 import type { RubricCriterion } from "../evalStore.ts";
@@ -201,6 +201,27 @@ const C = DEFAULT_CRITERIA;
   check("reports 'none' rather than passing off a tool result as the answer",
     none.text === "" && none.source === "none");
   check("empty trace yields none", extractAgentOutput([]).source === "none");
+}
+
+console.log("\na submitted rubric is checked, not trusted");
+{
+  const ok = (c: Partial<RubricCriterion>): Partial<RubricCriterion> => ({ id: "x", label: "X", description: "is it x", weight: 1, ...c });
+  const err = (input: unknown): string => {
+    const r = validateRubric(input);
+    return "error" in r ? r.error : "";
+  };
+  check("the built-in rubric passes as it is", !("error" in validateRubric(DEFAULT_CRITERIA)));
+  check("two criteria under one id are refused — their scores would collapse into one",
+    /share the id criterion_5/.test(err([ok({ id: "criterion_5" }), ok({ id: "criterion_5", label: "Y" })])));
+  check("a criterion with no name is refused", /needs a name/.test(err([ok({ label: "  " })])));
+  check("so is one with no description — it would be a blank line in the judge's prompt", /needs a description/.test(err([ok({ description: "" })])));
+  check("a weight that is not a number is refused", /weight must be a number/.test(err([ok({ weight: Number.NaN })])));
+  check("so is a negative one", /weight must be a number/.test(err([ok({ weight: -1 })])));
+  check("all weights at zero is still refused", /weight above zero/.test(err([ok({ weight: 0 })])));
+  check("an empty rubric is refused", /at least one criterion/.test(err([])));
+  const tidy = validateRubric([ok({ id: " a ", label: " Tone ", description: " is it kind ", weight: 0.25 })]);
+  check("what passes is trimmed, and a decimal weight is kept as one",
+    !("error" in tidy) && tidy.criteria[0]?.id === "a" && tidy.criteria[0]?.label === "Tone" && tidy.criteria[0]?.weight === 0.25);
 }
 
 console.log(fail === 0 ? "\nALL CORRECT" : `\n${fail} FAILURES`);

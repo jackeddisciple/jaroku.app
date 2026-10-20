@@ -2394,6 +2394,10 @@ export function sendEstimateEval(datasetId: string, agentId: string, targets: Ev
 export function sendLoadRubric(datasetId: string): void {
   send({ cmd: "loadRubric", datasetId, origin: EVAL_ORIGIN });
 }
+/** Back to the built-in rubric for this dataset. Past evals keep the criteria they were scored on. */
+export function sendResetRubric(datasetId: string): void {
+  send({ cmd: "resetRubric", datasetId, origin: EVAL_ORIGIN });
+}
 export function sendSaveRubric(datasetId: string, criteria: RubricCriterion[], name?: string): void {
   send({ cmd: "saveRubric", datasetId, criteria, name, origin: EVAL_ORIGIN });
 }

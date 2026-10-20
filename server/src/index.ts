@@ -34,7 +34,7 @@ import { readRoleFacts, rlsRefusal } from "./db/rlsGuard.ts";
 import { newRequestId, systemContext, systemContextFor, type TenantContext } from "./db/tenant.ts";
 import { EvalStore, type Rubric, type RubricCriterion } from "./evalStore.ts";
 import { EvalRunner, evalRunsOwnedElsewhere } from "./evalRunner.ts";
-import { DEFAULT_CRITERIA } from "./judge/rubric.ts";
+import { DEFAULT_CRITERIA, validateRubric } from "./judge/rubric.ts";
 import { JudgeScorer } from "./judge/score.ts";
 import { aggregateEval, bestByQuality } from "./evalAggregate.ts";
 import { estimateEval, estimateRun } from "./evalEstimate.ts";
@@ -11487,29 +11487,36 @@ async function handleEvalCommand(ctx: TenantContext, cmd: ForwardedCommand): Pro
         return;
       }
       case "saveRubric": {
-        // Validated here rather than trusted: a rubric with no criteria, or with all-zero
-        // weights, produces scores that look real and mean nothing.
-        const criteria = (cmd.criteria ?? []).filter(
-          (c): c is RubricCriterion =>
-            typeof c?.id === "string" && c.id.trim() !== "" && typeof c.description === "string",
-        );
-        if (!criteria.length) {
-          reply({ type: "error", message: "a rubric needs at least one criterion" });
+        // Validated here rather than trusted: a rubric with no criteria, all-zero weights, two
+        // criteria under one id (their scores collapse into one) or a criterion with no name or
+        // description (a blank line in the judge's prompt) produces scores that look real and mean
+        // nothing. See validateRubric.
+        const checked = validateRubric(cmd.criteria);
+        if ("error" in checked) {
+          reply({ type: "error", datasetId: cmd.datasetId, message: checked.error });
           return;
         }
-        if (!criteria.some((c) => c.weight > 0)) {
-          reply({ type: "error", message: "a rubric needs at least one criterion with weight above zero" });
-          return;
-        }
+        const criteria = checked.criteria;
         const existing = await evalStore.rubricForDataset(ctx, cmd.datasetId);
         const saved = await evalStore.putRubric(ctx, {
           id: existing?.id,
           dataset_id: cmd.datasetId, // dataset-scoped: never overwrites the shared default
-          name: cmd.name ?? existing?.name ?? "Custom",
+          // ALWAYS "Custom". The client sent the rubric's name back, and the rubric it had loaded was
+          // the built-in one — so every customised rubric was saved, and then shown, as "Default".
+          name: "Custom",
           criteria,
         });
         console.log(`[eval] rubric saved for dataset ${cmd.datasetId} — ${criteria.length} criteria`);
         relay.broadcastEval(ctx, { type: "rubric", datasetId: cmd.datasetId, rubric: saved, isDefault: false });
+        return;
+      }
+      case "resetRubric": {
+        // BACK TO THE BUILT-IN ONE. Every eval keeps the criteria it was scored on (migration 091),
+        // so dropping the dataset's own rubric takes nothing from the history.
+        const removed = await evalStore.deleteRubricForDataset(ctx, cmd.datasetId);
+        console.log(`[eval] rubric reset to built-in for dataset ${cmd.datasetId}${removed ? "" : " (it had none of its own)"}`);
+        const r = await rubricFor(ctx, cmd.datasetId);
+        relay.broadcastEval(ctx, { type: "rubric", datasetId: cmd.datasetId, rubric: r, isDefault: r.dataset_id === null });
         return;
       }
       case "promoteTestInput": {

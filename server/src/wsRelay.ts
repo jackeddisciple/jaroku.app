@@ -531,6 +531,8 @@ export type EstimateEvalCommand = {
   targets: { provider: string; model: string }[];
   origin?: string;
 };
+/** Drop a dataset's own rubric, so it scores against the built-in one again. */
+export type ResetRubricCommand = { cmd: "resetRubric"; datasetId: string; origin?: string };
 export type SaveRubricCommand = {
   cmd: "saveRubric";
   datasetId: string;
@@ -1941,6 +1943,7 @@ export type EvalCommand =
   | CancelEvalCommand
   | LoadRubricCommand
   | SaveRubricCommand
+  | ResetRubricCommand
   | LoadEvalResultsCommand
   | ListEvalsCommand
   | EstimateEvalCommand;
@@ -1948,7 +1951,7 @@ export type EvalCommand =
 const EVAL_COMMANDS = new Set([
   "createDataset", "renameDataset", "deleteDataset", "listDatasets",
   "loadDataset", "addExample", "updateExample", "deleteExample", "promoteTestInput",
-  "startEval", "cancelEval", "loadRubric", "saveRubric",
+  "startEval", "cancelEval", "loadRubric", "saveRubric", "resetRubric",
   "loadEvalResults", "listEvals", "estimateEval",
 ]);
 
@@ -4012,7 +4015,7 @@ export const COMMAND_CHANNEL: Record<string, string> = {
   createDataset: "eval", renameDataset: "eval", deleteDataset: "eval", listDatasets: "eval",
   loadDataset: "eval", addExample: "eval", updateExample: "eval", deleteExample: "eval",
   promoteTestInput: "eval", startEval: "eval", cancelEval: "eval", loadRubric: "eval",
-  saveRubric: "eval", loadEvalResults: "eval", listEvals: "eval", estimateEval: "eval",
+  saveRubric: "eval", resetRubric: "eval", loadEvalResults: "eval", listEvals: "eval", estimateEval: "eval",
   listMcpServers: "mcp", addMcpServer: "mcp", removeMcpServer: "mcp", rediscoverMcpServer: "mcp",
   setMcpServerAuth: "mcp", setMcpToolImpact: "mcp", resolveMcpConfirm: "mcp",
   listProviders: "providers", setOwnKeyForPlatform: "providers",

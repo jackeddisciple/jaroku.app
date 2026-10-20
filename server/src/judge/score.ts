@@ -206,8 +206,10 @@ export class JudgeScorer {
     if (!example) { await this.markUnscored(evalId, job, "the example no longer exists"); return; }
     if (!job.run_id) { await this.markUnscored(evalId, job, "the job has no run to score"); return; }
 
-    const rubric = await this.deps.evalStore.getRubric(this.deps.context(evalId), evalRun.rubric_id);
-    const criteria: RubricCriterion[] = rubric?.criteria ?? [];
+    // The criteria this eval was started with (migration 091); the rubric row only for an eval from
+    // before the copy. An edit made while the eval is still being judged is the next eval's.
+    const criteria: RubricCriterion[] =
+      evalRun.rubric ?? (await this.deps.evalStore.getRubric(this.deps.context(evalId), evalRun.rubric_id))?.criteria ?? [];
     if (!criteria.length) { await this.markUnscored(evalId, job, "the rubric has no criteria"); return; }
 
     const steps = await this.deps.store.stepsForRun(this.deps.context(evalId), job.run_id);

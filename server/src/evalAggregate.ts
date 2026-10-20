@@ -31,7 +31,7 @@
 
 import type { TraceStore } from "./store.ts";
 import type { TenantContext } from "./db/tenant.ts";
-import type { EvalStore, EvalJob, EvalTarget } from "./evalStore.ts";
+import type { EvalStore, EvalJob, EvalTarget, RubricCriterion } from "./evalStore.ts";
 import { asInt } from "./db/db.ts";
 import { isPriced, round8 } from "./pricing.ts";
 
@@ -235,6 +235,8 @@ export interface EvalAggregate {
   stopReason: string | null;
   /** The ceiling it was given, and the (provider, model) legs it compared, in the order they were chosen. */
   targets: EvalTarget[];
+  /** The criteria it was scored on, so a score can be shown with its label rather than its id. */
+  rubric: RubricCriterion[];
   startedAt: string;
   endedAt: string | null;
   providers: ProviderMetrics[];
@@ -391,6 +393,7 @@ export async function aggregateEval(
     agentVersion: evalRun.agent_version ?? null,
     stopReason: evalRun.error ?? null,
     targets: evalRun.targets,
+    rubric: evalRun.rubric ?? (await evalStore.getRubric(ctx, evalRun.rubric_id))?.criteria ?? [],
     status: evalRun.status,
     startedAt: evalRun.started_at,
     endedAt: evalRun.ended_at,

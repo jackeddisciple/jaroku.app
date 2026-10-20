@@ -110,6 +110,48 @@ function renderCriteria(criteria: RubricCriterion[]): string {
 /** The allowed score values, as an explicit set. */
 const SCALE_VALUES = Array.from({ length: SCALE_MAX + 1 }, (_, i) => i);
 
+/** The most criteria one rubric may have: each is a line in every judge prompt, paid per cell. */
+export const MAX_CRITERIA = 20;
+/** The largest weight. Weights are normalised, so this bounds a typo, not a meaning. */
+export const MAX_WEIGHT = 100;
+
+/**
+ * A rubric as somebody submitted it, checked and tidied — or the sentence saying what is wrong.
+ *
+ * THE SERVER IS THE AUTHORITY, and it checked two things: at least one criterion, and one weight
+ * above zero. So two criteria could share an id — and verdicts are keyed by id, so they collapsed
+ * into one score — and a criterion with no name or no description went into the judge's prompt as a
+ * blank line. A client that refuses these too is a convenience; this is the rule.
+ */
+export function validateRubric(input: unknown): { criteria: RubricCriterion[] } | { error: string } {
+  if (!Array.isArray(input) || input.length === 0) return { error: "a rubric needs at least one criterion" };
+  if (input.length > MAX_CRITERIA) return { error: `a rubric can have at most ${MAX_CRITERIA} criteria` };
+  const seen = new Set<string>();
+  const criteria: RubricCriterion[] = [];
+  for (const [i, raw] of input.entries()) {
+    const c = (raw ?? {}) as Partial<Record<keyof RubricCriterion, unknown>>;
+    const id = typeof c.id === "string" ? c.id.trim() : "";
+    const label = typeof c.label === "string" ? c.label.trim() : "";
+    const description = typeof c.description === "string" ? c.description.trim() : "";
+    const name = label || `criterion ${i + 1}`;
+    if (!id) return { error: `${name} has no id` };
+    if (id.length > 64) return { error: `${name}'s id is longer than 64 characters` };
+    if (seen.has(id)) return { error: `two criteria share the id ${id} — scores are kept by id, so they would be one score` };
+    seen.add(id);
+    if (!label) return { error: `criterion ${i + 1} needs a name` };
+    if (label.length > 80) return { error: `"${label.slice(0, 40)}…" is longer than 80 characters` };
+    if (!description) return { error: `"${label}" needs a description — it is what the judge is asked` };
+    if (description.length > 1000) return { error: `"${label}"'s description is longer than 1000 characters` };
+    const weight = typeof c.weight === "number" ? c.weight : Number.NaN;
+    if (!Number.isFinite(weight) || weight < 0 || weight > MAX_WEIGHT) {
+      return { error: `"${label}"'s weight must be a number from 0 to ${MAX_WEIGHT}` };
+    }
+    criteria.push({ id, label, description, weight });
+  }
+  if (!criteria.some((c) => c.weight > 0)) return { error: "a rubric needs at least one criterion with weight above zero" };
+  return { criteria };
+}
+
 /**
  * JSON Schema for the verdict: one score per criterion, plus a short rationale.
  *

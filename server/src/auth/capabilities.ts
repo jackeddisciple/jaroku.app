@@ -788,6 +788,7 @@ export const COMMAND_CAPABILITY: Record<string, Capability> = {
   deleteExample: "eval:write",
   promoteTestInput: "eval:write",
   saveRubric: "eval:write",
+  resetRubric: "eval:write",
   startEval: "eval:run",
   cancelEval: "eval:run",
 

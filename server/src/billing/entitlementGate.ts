@@ -222,6 +222,7 @@ export const COMMAND_ENTITLEMENT: Record<string, EntitlementKind | typeof NO_ENT
   updateExample: NO_ENTITLEMENT,
   deleteExample: NO_ENTITLEMENT,
   saveRubric: NO_ENTITLEMENT,
+  resetRubric: NO_ENTITLEMENT,
   loadRubric: NO_ENTITLEMENT,
   listEvals: NO_ENTITLEMENT,
   loadEvalResults: NO_ENTITLEMENT,

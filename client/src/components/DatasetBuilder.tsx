@@ -22,6 +22,7 @@ import {
   sendLoadDataset,
   sendLoadRubric,
   sendRenameDataset,
+  sendResetRubric,
   sendSaveRubric,
   sendUpdateExample,
 } from "../lib/socket.ts";
@@ -147,37 +148,93 @@ function ExampleRow({
  * rubric is one object whose parts only make sense together: a half-saved rubric is a scoring
  * standard nobody chose, and it would be applied to the next eval.
  */
+/** A criterion as it is being typed: the weight is the text in its field until it is saved. */
+type DraftCriterion = Omit<RubricCriterion, "weight"> & { weight: string };
+
+/** A weight field's text, as a weight — or null when it is not one. */
+export function parseWeight(text: string): number | null {
+  const t = text.trim();
+  if (!/^\d*\.?\d+$|^\d+\.$/.test(t)) return null;
+  const n = Number(t);
+  return Number.isFinite(n) && n >= 0 && n <= 100 ? n : null;
+}
+
+/**
+ * The next criterion's id: one past the highest `criterion_N` there is, never one in use.
+ *
+ * FROM THE COUNT IT REPEATED. Add two, remove the first, add another, and there were two
+ * `criterion_5`s — and verdicts are kept by id, so their scores collapsed into one.
+ */
+export function nextCriterionId(criteria: readonly { id: string }[]): string {
+  const taken = new Set(criteria.map((c) => c.id));
+  let n = criteria.reduce((max, c) => Math.max(max, Number(/^criterion_(\d+)$/.exec(c.id)?.[1] ?? 0)), 0) + 1;
+  while (taken.has(`criterion_${n}`)) n++;
+  return `criterion_${n}`;
+}
+
+/** The first thing wrong with a draft, in the words the server would use — or null. Mirrors validateRubric. */
+export function rubricProblem(criteria: readonly DraftCriterion[]): string | null {
+  if (criteria.length === 0) return "a rubric needs at least one criterion";
+  const seen = new Set<string>();
+  for (const [i, c] of criteria.entries()) {
+    if (seen.has(c.id)) return `two criteria share the id ${c.id}`;
+    seen.add(c.id);
+    const name = c.label.trim();
+    if (!name) return `criterion ${i + 1} needs a name`;
+    if (!c.description.trim()) return `"${name}" needs a description — it is what the judge is asked`;
+    if (parseWeight(c.weight) === null) return `"${name}"'s weight must be a number from 0 to 100`;
+  }
+  if (!criteria.some((c) => (parseWeight(c.weight) ?? 0) > 0)) return "a rubric needs at least one criterion with weight above zero";
+  return null;
+}
+
+/**
+ * The rubric the judge scores against — §6.4's "editable rubric", finally editable.
+ *
+ * WHAT WAS MISSING WAS ONLY THIS. `rubrics` is a table, `loadRubric` and `saveRubric` are commands
+ * with capability entries, the store has the state, both senders exist, and `EvalDrillDown` already
+ * renders per-criterion score breakdowns. No component read the state and neither sender was ever
+ * called — so every eval in the product scored against the built-in rubric. ADR-012 is titled *with a
+ * data-driven rubric*; the data was not user-supplied anywhere.
+ *
+ * IT LIVES BESIDE THE EXAMPLES, in the dataset builder, because a rubric is dataset-scoped: saving
+ * one writes a row against THIS dataset and never touches the shared default. "Correct" for a refund
+ * bot is not "correct" for a SQL agent, which is the whole reason the table exists.
+ *
+ * EDITED AS A DRAFT, saved in one command — and the draft is THIS DATASET'S. The editor is keyed by
+ * its dataset where it is mounted, so switching datasets with criteria half-added no longer carried
+ * them over, under another dataset's name, with Save ready to write them there.
+ */
 function RubricEditor({ datasetId }: { datasetId: string }) {
-  // THIS DATASET'S RUBRIC, by its id. It was one value for the whole tab, so a rubric loaded or saved
-  // for another dataset — by you or by anyone in the workspace — became the one this editor showed.
-  const rubric = useEvalStore((s) => s.rubricByDataset[datasetId]?.rubric ?? null);
-  const isDefault = useEvalStore((s) => s.rubricByDataset[datasetId]?.isDefault ?? true);
+  const loaded = useEvalStore((s) => s.rubricByDataset[datasetId]);
+  const rubric = loaded?.rubric ?? null;
+  const isDefault = loaded?.isDefault ?? true;
   const connected = useTraceStore((s) => s.connection === "open");
   const [open, setOpen] = useState(false);
-  const [draft, setDraft] = useState<RubricCriterion[] | null>(null);
+  const [draft, setDraft] = useState<DraftCriterion[] | null>(null);
 
-  // Loaded when the block is opened rather than with the dataset: the eval channel already carries
-  // a snapshot per mutation, and a rubric nobody has looked at is a query per dataset click.
+  // Loaded with the dataset, so the line above the cases says how many criteria there really are —
+  // it read "0 criteria" for a rubric nobody had opened yet.
   useEffect(() => {
-    if (open && connected) sendLoadRubric(datasetId);
-  }, [open, connected, datasetId]);
+    if (connected) sendLoadRubric(datasetId);
+  }, [connected, datasetId]);
 
   // The draft starts as whatever the server last said — which for a dataset with no rubric of its
   // own is the BUILT-IN one, so editing starts from the real criteria rather than from an empty
   // list somebody has to reinvent.
-  const criteria = draft ?? rubric?.criteria ?? [];
+  const saved: DraftCriterion[] = (rubric?.criteria ?? []).map((c) => ({ ...c, weight: String(c.weight) }));
+  const criteria = draft ?? saved;
   const dirty = draft !== null;
-  const total = criteria.reduce((sum, c) => sum + (Number.isFinite(c.weight) ? c.weight : 0), 0);
+  const problem = dirty ? rubricProblem(criteria) : null;
+  const total = criteria.reduce((sum, c) => sum + (parseWeight(c.weight) ?? 0), 0);
 
-  const edit = (index: number, patch: Partial<RubricCriterion>): void => {
+  const edit = (index: number, patch: Partial<DraftCriterion>): void => {
     setDraft(criteria.map((c, i) => (i === index ? { ...c, ...patch } : c)));
   };
 
   const save = (): void => {
-    // The server refuses an empty rubric and one whose weights are all zero, in those words. Sent
-    // anyway rather than pre-empted: its refusal is the authority, and a second copy of the rule
-    // here is a second thing to get out of step.
-    sendSaveRubric(datasetId, criteria, rubric?.name);
+    if (rubricProblem(criteria)) return;
+    sendSaveRubric(datasetId, criteria.map((c) => ({ ...c, weight: parseWeight(c.weight) ?? 0 })));
     setDraft(null);
   };
 
@@ -186,13 +243,15 @@ function RubricEditor({ datasetId }: { datasetId: string }) {
       <button
         className="flex w-full items-center gap-2 py-1.5 text-left"
         onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
       >
         {/* THE DISCLOSURE IS THE EDIT — opening this is how a rubric gets changed, so the mark
             goes here rather than on a second control that would do the same thing. */}
         <Icon.evals.editRubric size={ICON.xs} className="shrink-0 text-faint" />
         <span className="text-tiny uppercase tracking-wider text-faint">Judge rubric</span>
         <span className="text-tiny text-muted">
-          {isDefault ? "built-in" : (rubric?.name ?? "custom")} · {criteria.length} criteria
+          {!loaded ? "loading…" : `${isDefault ? "Built-in" : "Custom"} · ${(rubric?.criteria ?? []).length} criteria`}
+          {dirty && " · unsaved changes"}
         </span>
         <span className="ml-auto text-faint">
           {open ? <ChevronDownIcon size={ICON.xs} /> : <ChevronRightIcon size={ICON.xs} />}
@@ -200,7 +259,9 @@ function RubricEditor({ datasetId }: { datasetId: string }) {
       </button>
 
       {open && (
-        <div className="space-y-2 pb-1">
+        // ITS OWN SCROLL AREA. It could not shrink, so five criteria pushed the case list to nothing and
+        // drew the add field over the model chips.
+        <div className="max-h-[40vh] space-y-2 overflow-y-auto pb-1">
           <p className="text-tiny leading-[1.55] text-faint">
             Each criterion is scored 0–4 against shared anchors and combined by weight; weights are
             normalised, so they do not have to add up. Saving writes a rubric for{" "}
@@ -213,6 +274,7 @@ function RubricEditor({ datasetId }: { datasetId: string }) {
                   value={c.label}
                   onChange={(e) => edit(i, { label: e.target.value })}
                   placeholder="name"
+                  aria-label={`Criterion ${i + 1} name`}
                   className="min-w-0 flex-1 rounded-input border border-edge bg-elevated px-2 py-1 text-caption text-ink placeholder:text-faint outline-none focus-visible:shadow-focusring"
                 />
                 {/* THE ID IS NOT EDITABLE ONCE IT EXISTS. It is what a stored verdict's
@@ -223,16 +285,24 @@ function RubricEditor({ datasetId }: { datasetId: string }) {
                 <span className="shrink-0 text-tiny text-faint" title="the key stored verdicts are recorded against">
                   {c.id}
                 </span>
+                {/* THE TEXT AS TYPED, not a number re-rendered from it. `Number("0.")` is 0, so the
+                    point vanished as it was typed and "0.25" became "25" — a criterion that then
+                    outweighed every other one 125 to 1. */}
                 <input
-                  value={String(c.weight)}
-                  onChange={(e) => edit(i, { weight: Number(e.target.value) })}
+                  value={c.weight}
+                  onChange={(e) => edit(i, { weight: e.target.value })}
                   inputMode="decimal"
-                  title="Relative weight"
-                  className="w-14 shrink-0 rounded-input border border-edge bg-elevated px-1.5 py-1 text-tiny text-ink outline-none focus-visible:shadow-focusring"
+                  aria-label={`Criterion ${i + 1} weight`}
+                  title="Relative weight, 0 to 100"
+                  aria-invalid={parseWeight(c.weight) === null}
+                  className={`w-14 shrink-0 rounded-input border bg-elevated px-1.5 py-1 text-tiny text-ink outline-none focus-visible:shadow-focusring ${
+                    parseWeight(c.weight) === null ? "border-err" : "border-edge"
+                  }`}
                 />
                 <button
                   onClick={() => setDraft(criteria.filter((_, j) => j !== i))}
                   title="Remove this criterion"
+                  aria-label={`Remove criterion ${i + 1}`}
                   className="shrink-0 text-faint transition-colors hover:text-err"
                 >
                   <XIcon size={ICON.xs} />
@@ -241,12 +311,16 @@ function RubricEditor({ datasetId }: { datasetId: string }) {
               <textarea
                 value={c.description}
                 onChange={(e) => edit(i, { description: e.target.value })}
-                rows={2}
+                // Grows with what it holds, so a sentence is not cut at the second line.
+                rows={Math.min(8, Math.max(2, Math.ceil(c.description.length / 70) + c.description.split("\n").length - 1))}
                 placeholder="what the judge should look for, phrased so a higher score is better"
+                aria-label={`Criterion ${i + 1} description`}
                 className="mt-1 w-full resize-none rounded-input border border-edge bg-elevated px-2 py-1 text-tiny leading-[1.5] text-muted placeholder:text-faint outline-none focus-visible:shadow-focusring"
               />
             </div>
           ))}
+
+          {problem && <div className="text-tiny text-err">{problem}</div>}
 
           <div className="flex flex-wrap items-center gap-2">
             <button
@@ -254,20 +328,32 @@ function RubricEditor({ datasetId }: { datasetId: string }) {
               onClick={() =>
                 setDraft([
                   ...criteria,
-                  // A NEW ID FROM THE COUNT, not from the label. It has to be stable and it has to
-                  // be a key, and deriving it from prose would change every time somebody edited
-                  // the name — which is exactly what must not happen to the field verdicts are
-                  // recorded against.
-                  { id: `criterion_${criteria.length + 1}`, label: "", description: "", weight: 0.1 },
+                  // A NEW ID, never one in use. It has to be stable and it has to be a key, and
+                  // deriving it from prose would change every time somebody edited the name — which
+                  // is exactly what must not happen to the field verdicts are recorded against.
+                  { id: nextCriterionId(criteria), label: "", description: "", weight: "0.1" },
                 ])
               }
             >
               + Criterion
             </button>
             <span className="text-tiny text-faint">weights total {total.toFixed(2)}</span>
+            {/* BACK TO THE BUILT-IN RUBRIC. A saved custom rubric could only ever be edited. Past evals
+                keep the criteria they were scored on, so this changes the next eval only. */}
+            {!isDefault && !dirty && (
+              <button
+                onClick={() => sendResetRubric(datasetId)}
+                disabled={!connected}
+                title="Score this dataset against the built-in rubric again. Past evals keep theirs."
+                className="rounded-control px-2 py-1 text-tiny text-muted transition-colors hover:text-ink disabled:opacity-30"
+              >
+                Reset to built-in
+              </button>
+            )}
             <button
               onClick={save}
-              disabled={!connected || !dirty || criteria.length === 0}
+              disabled={!connected || !dirty || problem !== null}
+              title={!connected ? "Not connected" : problem ?? (dirty ? "Save this rubric for this dataset" : "Nothing to save")}
               className="ml-auto rounded-control bg-active px-2.5 py-1 text-tiny text-ink transition-opacity disabled:opacity-30"
             >
               {dirty ? "Save rubric" : "Saved"}
@@ -471,7 +557,7 @@ export function DatasetBuilder() {
 
       {/* The judge's rubric for THIS dataset. Under the dataset actions and above the examples,
           because it is the standard those examples will be scored against. */}
-      {selected && <RubricEditor datasetId={selected.id} />}
+      {selected && <RubricEditor key={selected.id} datasetId={selected.id} />}
 
       {(error || importNote) && (
         <div className="px-4 pb-2 shrink-0 flex items-center gap-2 text-tiny">
