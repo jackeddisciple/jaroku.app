@@ -24,6 +24,7 @@ import { Chip } from "./Chip.tsx";
 import { EmptyState } from "./EmptyState.tsx";
 import { ActivityIcon, DatabaseIcon } from "./panelIcons.tsx";
 import { ICON } from "../lib/tokens.ts";
+import { Icon } from "../lib/icons/registry.ts";
 import { EVAL_PHASE } from "../lib/domainPhase.ts";
 import { StatusGlyph } from "./StatusGlyph.tsx";
 import type { EvalResults, EvalRunStatus } from "../types.ts";
@@ -169,6 +170,32 @@ export function EvalActions({ results }: { results: EvalResults }) {
           Run again
         </button>
       )}
+    </div>
+  );
+}
+
+/**
+ * What the server refused, on Results as well as on Dataset.
+ *
+ * RETRY AND RUN AGAIN ARE PRESSED HERE, and their refusals ("28 of 20 eval runs per month used…")
+ * were drawn only on the Dataset half — so on Results the button did nothing at all, as far as
+ * anybody could see.
+ */
+export function EvalRefusal() {
+  const error = useEvalStore((s) => s.error);
+  const setError = useEvalStore((s) => s.setError);
+  if (!error) return null;
+  return (
+    <div className="flex items-start gap-2 pb-3 text-tiny" role="alert">
+      <span className="text-err">{error}</span>
+      <button
+        onClick={() => setError(null)}
+        title="Dismiss"
+        aria-label="Dismiss"
+        className="ml-auto shrink-0 text-faint transition-colors duration-fast hover:text-ink"
+      >
+        <Icon.global.dismissNotice size={ICON.xs} />
+      </button>
     </div>
   );
 }
@@ -335,6 +362,7 @@ export function EvalsPanel() {
         </div>
       ) : (
         <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-4">
+          <EvalRefusal />
           {/* Past evals — a comparison keeps its value after the run that produced it. Shown with a
               single eval too: the scope switch is the only way to a deleted dataset's evals, and
               hiding it until this dataset had two left them out of reach. */}

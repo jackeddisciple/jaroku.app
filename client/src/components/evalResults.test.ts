@@ -311,6 +311,17 @@ console.log("\na dataset with one eval still offers the agent's evals on every d
     "the switch to every dataset is there with only one eval", text(html).slice(0, 200));
 }
 
+console.log("\na refused Retry says why on Results, where it was pressed");
+{
+  const { EvalRefusal } = await import("./EvalsPanel.tsx");
+  const { useEvalStore } = await import("../store/evalStore.ts");
+  seed(useEvalStore, { error: "28 of 20 eval runs per month used on the free plan" } as never);
+  const html = markup(createElement(EvalRefusal));
+  check(/role="alert"/.test(html) && text(html).includes("28 of 20 eval runs"), "the refusal is drawn", text(html));
+  seed(useEvalStore, { error: null } as never);
+  check(markup(createElement(EvalRefusal)) === "", "and nothing when there is none");
+}
+
 console.log("\nthe rail says that pressing the tab already showing hides the panel");
 {
   const { railTip } = await import("../lib/railTip.ts");
