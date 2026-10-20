@@ -18,6 +18,7 @@ import { ComparisonTable } from "./EvalDashboard.tsx";
 import { ExampleDrillDown } from "./EvalDrillDown.tsx";
 import { EvalRunBar } from "./EvalRunBar.tsx";
 import { EvalUndoToast } from "./EvalUndoToast.tsx";
+import { EvalCompare } from "./EvalCompare.tsx";
 import { relTime } from "../lib/format.ts";
 import { Chip } from "./Chip.tsx";
 import { EmptyState } from "./EmptyState.tsx";
@@ -255,6 +256,10 @@ export function EvalsPanel() {
   const [shown, setShown] = useState(6);
   const shownEvalId = selectedEvalId ?? evals[0]?.id ?? null;
   const results = shownEvalId ? resultsByEval[shownEvalId] : undefined;
+  // WHAT CHANGED SINCE: the eval the shown one is compared with, when one is chosen.
+  const compareWith = useEvalStore((s) => (activeAgentId ? (s.compareWithByAgent[activeAgentId] ?? null) : null));
+  const [picking, setPicking] = useState(false);
+  const comparing = compareWith && compareWith !== shownEvalId ? resultsByEval[compareWith] : undefined;
   const running = progress !== null && (progress.status === undefined || progress.scoring === true);
 
   // Whether Quality will be scored here — asked once the socket is up.
@@ -276,6 +281,9 @@ export function EvalsPanel() {
   useEffect(() => {
     if (connected && shownEvalId && !resultsByEval[shownEvalId]) sendLoadEvalResults(shownEvalId);
   }, [connected, shownEvalId]);
+  useEffect(() => {
+    if (connected && compareWith && !resultsByEval[compareWith]) sendLoadEvalResults(compareWith);
+  }, [connected, compareWith]);
 
   if (!activeAgentId) {
     return (
@@ -362,6 +370,16 @@ export function EvalsPanel() {
                   {e.status !== "completed" && <span className="text-muted">{EVAL_WORD[e.status]}</span>}
                 </Chip>
               ))}
+              {/* COMPARE WITH ANOTHER EVAL — the regression question, "what changed since then". */}
+              {shownEvalId && evals.length > 1 && !picking && (
+                <button
+                  onClick={() => setPicking(true)}
+                  className="rounded-control px-2 py-1 text-tiny text-muted transition-colors hover:bg-active active:bg-chrome hover:text-ink"
+                  title="Line this eval up against an earlier one: each model's figures, and every case whose outcome changed"
+                >
+                  Compare with…
+                </button>
+              )}
               {/* OLDER COMPARISONS. It widens the strip first and then asks the server for a bigger
                   window when the loaded ones run out, so one control answers "show me more" whichever
                   of the two ceilings is the one in the way. It disappears when both are exhausted. */}
@@ -379,6 +397,23 @@ export function EvalsPanel() {
             </div>
           )}
 
+          {picking && activeAgentId && (
+            <div className="flex flex-wrap items-center gap-1.5 pb-3 text-tiny" role="group" aria-label="Compare with an earlier eval">
+              <span className="text-faint">Compare with</span>
+              {evals.filter((e) => e.id !== shownEvalId).slice(0, 12).map((e) => (
+                <Chip
+                  key={e.id}
+                  tone="faint"
+                  onClick={() => { useEvalStore.getState().setCompareWith(activeAgentId, e.id); setPicking(false); }}
+                  title={`${EVAL_WORD[e.status]} · ${e.targets.map((t) => t.model).join(", ")}`}
+                >
+                  {relTime(e.started_at)}
+                </Chip>
+              ))}
+              <button onClick={() => setPicking(false)} className="text-faint hover:text-ink">Cancel</button>
+            </div>
+          )}
+
           {progress && !progress.status && progress.evalId === shownEvalId && (
             <div className="text-tiny text-muted pb-3">
               {progress.done}/{progress.total} runs done · {progress.running} in flight
@@ -392,6 +427,12 @@ export function EvalsPanel() {
               <ResultsHeader results={results} live={progress} />
               <EvalActions results={results} />
               <JudgeLine />
+              {comparing && activeAgentId && (
+                // Older first, whichever was picked: "before → after" reads in time order.
+                Date.parse(comparing.startedAt) <= Date.parse(results.startedAt)
+                  ? <EvalCompare before={comparing} after={results} onClose={() => useEvalStore.getState().setCompareWith(activeAgentId, null)} />
+                  : <EvalCompare before={results} after={comparing} onClose={() => useEvalStore.getState().setCompareWith(activeAgentId, null)} />
+              )}
               <ComparisonTable results={results} />
               <ExampleDrillDown results={results} />
             </>

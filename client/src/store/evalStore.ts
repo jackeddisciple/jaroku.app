@@ -117,6 +117,9 @@ interface EvalState {
   /** An agent whose run bar should open its estimate — Run again's hand-off. Consumed by the bar. */
   estimateRequest: string | null;
   requestEstimate: (agentId: string | null) => void;
+  /** agent -> the older eval the selected one is being compared with, or null. */
+  compareWithByAgent: Record<string, string | null>;
+  setCompareWith: (agentId: string, evalId: string | null) => void;
 
   // --- eval runs ---
   /** evalListKey(agent, dataset) -> that scope's history, newest first. */
@@ -218,6 +221,8 @@ export const useEvalStore = create<EvalState>((set) => ({
   setOpenCell: (evalId, jobId) => set((s) => ({ openCellByEval: { ...s.openCellByEval, [evalId]: jobId } })),
   estimateRequest: null,
   requestEstimate: (estimateRequest) => set({ estimateRequest }),
+  compareWithByAgent: {},
+  setCompareWith: (agentId, evalId) => set((s) => ({ compareWithByAgent: { ...s.compareWithByAgent, [agentId]: evalId } })),
 
   evalLists: {},
   selectedEvalByAgent: {},
