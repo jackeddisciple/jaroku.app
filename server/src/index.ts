@@ -212,7 +212,7 @@ import { sideEffectsAfter } from "./sideEffects.ts";
 import { threadTitle, topicTitle } from "./threadTitle.ts";
 import { InboxStore } from "./inbox/inboxStore.ts";
 import { InboxReconciler, describeReconcile } from "./inbox/reconciler.ts";
-import { inboxFacts, type FactDeps } from "./inbox/facts.ts";
+import { holdsProviderKey, inboxFacts, type FactDeps } from "./inbox/facts.ts";
 import { deriveInboxItems, disablesConfirmGate } from "./inbox/derive.ts";
 import {
   UndoLedger,
@@ -7807,7 +7807,7 @@ async function boardFor(ctx: TenantContext): Promise<InboxSnapshot> {
   // Floating and caught: a board must render whatever happened to a welcome item.
   try {
     await seedOnboardingItems(inboxStore, ctx, async () => ({
-      hasProviderKey: (await secretRefs.list(ctx)).some((r) => r.configured && r.kind === "provider_key"),
+      hasProviderKey: holdsProviderKey(await secretRefs.list(ctx)),
       agentCount: agents.length,
     }));
   } catch (err) {

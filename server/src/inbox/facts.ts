@@ -22,6 +22,7 @@
 // value could travel in.
 
 import { driftOf } from "../agentHealth.ts";
+import { PROVIDER_ENV_KEY } from "../providers.ts";
 import type { TenantContext } from "../db/tenant.ts";
 import { COST_ANOMALY_MULTIPLE, type AgentInboxFacts, type InboxFacts, type McpInboxFacts } from "./registry.ts";
 
@@ -157,6 +158,21 @@ export interface FactDeps {
  * dependency, so the pass that §6.3 calls the highest-risk code in the feature cannot answer for a
  * workspace it was not asked about — there is no call below that could.
  */
+/** The names a provider's key goes by — what a run reads its key from. */
+const PROVIDER_KEY_NAMES = new Set<string>(Object.values(PROVIDER_ENV_KEY));
+
+/**
+ * Whether the workspace has a key its agents can run on.
+ *
+ * BY NAME AS WELL AS BY KIND. A run reads `ANTHROPIC_API_KEY` from the vault whatever the row's
+ * `kind` says, and a key saved under Custom, or before keys were classified, stays `custom` — so
+ * "Add a provider key so your agents can run" stayed open for weeks over a workspace whose runs were
+ * succeeding on exactly that key.
+ */
+export function holdsProviderKey(refs: readonly { name: string; configured: boolean; kind?: string }[]): boolean {
+  return refs.some((r) => r.configured && (r.kind === "provider_key" || PROVIDER_KEY_NAMES.has(r.name)));
+}
+
 export async function inboxFacts(deps: FactDeps, ctx: TenantContext, now: number = Date.now()): Promise<InboxFacts> {
   const since = new Date(now - ANOMALY_RECENT_MS - ANOMALY_WINDOW_MS).toISOString();
   const sinceRecent = new Date(now - ANOMALY_RECENT_MS).toISOString();
@@ -182,7 +198,7 @@ export async function inboxFacts(deps: FactDeps, ctx: TenantContext, now: number
 
   // §2.5's `setup_api_key` waits on this and nothing else. A provider key is the one credential a
   // workspace cannot build anything without.
-  const hasProviderKey = refs.some((r) => r.configured && r.kind === "provider_key");
+  const hasProviderKey = holdsProviderKey(refs);
 
   const impactByRef = new Map(tools.map((t) => [`${t.server_id}/${t.name}`, t.impact]));
   const spendBySlug = new Map(spend.map((s) => [s.agentId ?? "", s]));

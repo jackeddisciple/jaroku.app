@@ -27,7 +27,7 @@ import {
   type InboxPayload,
   type McpInboxFacts,
 } from "./registry.ts";
-import { anomalySpend } from "./facts.ts";
+import { anomalySpend, holdsProviderKey } from "./facts.ts";
 
 let failures = 0;
 const check = (name: string, ok: boolean): void => {
@@ -413,6 +413,13 @@ console.log("\nthe two seeded items resolve by the thing actually being done");
     inboxType("setup_api_key").severity !== "blocking");
   check("...and it says what a key is for", /so your agents can run/.test(inboxType("setup_api_key").subjectLine({} as InboxPayload)));
   check("adding one anywhere resolves it", isResolved(key, facts({ hasProviderKey: true })));
+  // A key saved under Custom, or before keys were classified, is still the key a run reads.
+  const ref = (name: string, kind: string, configured = true) => ({ name, kind, configured });
+  check("a configured ANTHROPIC_API_KEY counts even when it was filed as custom",
+    holdsProviderKey([ref("ANTHROPIC_API_KEY", "custom")]));
+  check("...as does any key classified as a provider's", holdsProviderKey([ref("MY_KEY", "provider_key")]));
+  check("...but not one only declared, nor some other custom secret",
+    !holdsProviderKey([ref("ANTHROPIC_API_KEY", "custom", false), ref("SLACK_TOKEN", "custom")]));
 
   const first = item("setup_first_agent", { subject_id: null });
   check("a workspace with no agents is unresolved", !isResolved(first, facts({ agentCount: 0 })));
