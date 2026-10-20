@@ -288,6 +288,31 @@ console.log("\nan answer is checked against what the case expected, without a ju
   check("by the mode the eval started with, not the dataset's mode now", res.checkMode === "word");
 }
 
+console.log("\nan eval's runs are tagged in history and left out of the agent's health");
+{
+  const now = new Date().toISOString();
+  const own = randomUUID();
+  const ofEval = randomUUID();
+  for (const [id, status] of [[own, "completed"], [ofEval, "error"]] as const) {
+    await store.upsertRun(ctx, { id, agent_id: "liven", provider: "anthropic", model: id === own ? "claude-sonnet-5" : "claude-haiku-4-5", status, started_at: now, ended_at: now, cost: 0, tokens: 0, error: null });
+  }
+  const ds = await evalStore.createDataset(ctx, "liven", "health");
+  const ex = await evalStore.addExample(ctx, ds.id, "case", null);
+  const run = await evalStore.createEvalRun(ctx, { dataset_id: ds.id, agent_id: "liven", rubric_id: "r", targets: [], budget_usd: null });
+  const [job] = await evalStore.createJobs(ctx, run.id, [{ example_id: ex.id, provider: "anthropic", model: "claude-haiku-4-5" }]);
+  await evalStore.markJobRunning(ctx, job!.id, ofEval, 0);
+
+  const facts = (await store.agentRunFacts(ctx, new Date(Date.now() - 86_400_000).toISOString(), 20)).get("liven");
+  check("the eval's failed run is not in the agent's 7-day errors", facts?.errors7d === 0 && facts.runs7d === 1, JSON.stringify({ r: facts?.runs7d, e: facts?.errors7d }));
+  check("nor in its recent runs, so its health and last model are its own",
+    facts?.recent.length === 1 && facts.recent[0]?.runId === own, JSON.stringify(facts?.recent.map((r) => r.runId)));
+  check("nor in its latest run", (await store.latestRunFor(ctx, "liven"))?.id === own);
+  const history = await store.listRuns(ctx, 50);
+  check("while the run history keeps it, tagged with its eval",
+    (history.find((r) => r.id === ofEval) as { eval_id?: string } | undefined)?.eval_id === run.id
+    && (history.find((r) => r.id === own) as { eval_id?: string | null } | undefined)?.eval_id == null);
+}
+
 await store.close();
 rmSync(DB, { force: true });
 rmSync(`${DB}-wal`, { force: true });

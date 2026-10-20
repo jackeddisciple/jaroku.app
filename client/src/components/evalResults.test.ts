@@ -244,5 +244,24 @@ console.log("\na finished eval can retry its unfinished cells, or run again");
   check(text(markup(createElement(EvalActions, { results: running }))) === "", "and a running one offers neither");
 }
 
+console.log("\nan eval's run is tagged in Runs");
+{
+  const { RunsPanel } = await import("./RunsPanel.tsx");
+  const { useTraceStore } = await import("../store/traceStore.ts");
+  const { useBuildStore } = await import("../store/buildStore.ts");
+  const { TooltipProvider } = await import("./ui/tooltip.tsx");
+  const now = new Date().toISOString();
+  seed(useBuildStore, { activeAgentId: "liven", agents: [{ agent_id: "liven", name: "Liven" }] } as never);
+  seed(useTraceStore, {
+    runs: {
+      a: { id: "a", agent_id: "liven", provider: "anthropic", model: "m", status: "completed", started_at: now, ended_at: now, eval_id: "e1" },
+      b: { id: "b", agent_id: "liven", provider: "anthropic", model: "m", status: "completed", started_at: now, ended_at: now, eval_id: null },
+    },
+  } as never);
+  const html = markup(createElement(TooltipProvider, null, createElement(RunsPanel)));
+  const tags = (html.match(/title="One run of an eval/g) ?? []).length;
+  check(tags === 1, `the eval's run carries an eval tag, and the agent's own does not (${tags})`);
+}
+
 console.log(failures === 0 ? "\nALL CORRECT" : `\n${failures} FAILURES`);
 (globalThis as { process?: { exit(code: number): void } }).process?.exit(failures === 0 ? 0 : 1);

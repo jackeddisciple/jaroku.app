@@ -15,6 +15,7 @@
 // their columns for exactly that reason: `SELECT *` puts it into the object handed to the
 // broadcast, and the exception stops being one.
 
+import { evalIdOfRun, notEvalRun } from "./evalRuns.ts";
 import { randomUUID } from "node:crypto";
 import { asInt, asIntOrNull, jsonFromColumn, type Db, type Queryable } from "./db/db.ts";
 import type { TenantContext } from "./db/tenant.ts";
@@ -183,7 +184,10 @@ export class TraceStore {
       `SELECT ${cols(RUN_COLUMNS, "r")},
               (SELECT COUNT(*) FROM steps s
                 WHERE s.run_id = r.id AND s.workspace_id = r.workspace_id) AS step_count,
-              CASE WHEN r.input IS NULL THEN 0 ELSE 1 END AS has_input
+              CASE WHEN r.input IS NULL THEN 0 ELSE 1 END AS has_input,
+              -- WHICH EVAL, for a run that is one of an eval's: Runs listed them as ordinary runs,
+              -- with no tag and no way back to the comparison they were a cell of.
+              ${evalIdOfRun("r")} AS eval_id
          FROM runs r
         WHERE r.workspace_id = ?
         ORDER BY r.started_at DESC LIMIT ?`,
@@ -206,8 +210,9 @@ export class TraceStore {
    */
   async listRunsForAgent(ctx: TenantContext, agentSlug: string, limit = 20): Promise<Run[]> {
     return (await this.q(ctx).all<Record<string, unknown>>(
+      // The agent's own runs — an eval's are left out of the latency and recent runs; see evalRuns.ts.
       `SELECT ${cols(RUN_COLUMNS)} FROM runs
-        WHERE workspace_id = ? AND agent_id = ?
+        WHERE workspace_id = ? AND agent_id = ? AND ${notEvalRun("runs")}
         ORDER BY started_at DESC, id DESC LIMIT ?`,
       [ctx.workspaceId, agentSlug, limit],
     )) as unknown as Run[];
@@ -662,9 +667,11 @@ export class TraceStore {
     // questions about the last seven days — an agent whose only run was a fortnight ago is Quiet and
     // still has a last-active date, and one paused for a fortnight is still paused.
     const counts = await this.q(ctx).all<Record<string, unknown>>(
+      // AN EVAL'S RUNS ARE NOT IN THE 7-DAY HEALTH COUNTS (evalRuns.ts) — they still count as the agent
+      // being busy and as when it last did anything.
       `SELECT agent_id AS agent_id,
-              COUNT(CASE WHEN started_at >= ? THEN 1 END) AS runs_7d,
-              COUNT(CASE WHEN started_at >= ? AND status = 'error' THEN 1 END) AS errors_7d,
+              COUNT(CASE WHEN started_at >= ? AND ${notEvalRun("runs")} THEN 1 END) AS runs_7d,
+              COUNT(CASE WHEN started_at >= ? AND status = 'error' AND ${notEvalRun("runs")} THEN 1 END) AS errors_7d,
               COUNT(CASE WHEN status = 'running' THEN 1 END) AS live_runs,
               COUNT(CASE WHEN status = 'paused'  THEN 1 END) AS paused_runs,
               MAX(started_at) AS last_run_at
@@ -694,7 +701,7 @@ export class TraceStore {
          SELECT id, agent_id, status, started_at, ended_at, error, provider, model,
                 ROW_NUMBER() OVER (PARTITION BY agent_id ORDER BY started_at DESC, id DESC) AS rn
            FROM runs
-          WHERE workspace_id = ?
+          WHERE workspace_id = ? AND ${notEvalRun("runs")}
        ) ranked
         WHERE rn <= ?
         ORDER BY agent_id ASC, started_at ASC, id ASC`,
@@ -812,7 +819,7 @@ export class TraceStore {
   async latestRunFor(ctx: TenantContext, agentSlug: string): Promise<Run | null> {
     const row = await this.q(ctx).get<Record<string, unknown>>(
       `SELECT ${cols(RUN_COLUMNS)} FROM runs
-        WHERE workspace_id = ? AND agent_id = ?
+        WHERE workspace_id = ? AND agent_id = ? AND ${notEvalRun("runs")}
         ORDER BY started_at DESC, id ASC
         LIMIT 1`,
       [ctx.workspaceId, agentSlug],

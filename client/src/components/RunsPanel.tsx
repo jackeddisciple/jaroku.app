@@ -9,6 +9,7 @@ import { useState } from "react";
 import { absTime, relTime } from "../lib/format.ts";
 import { Icon } from "../lib/icons/registry.ts";
 import { openRun, runAgain, runAgainBlocked } from "../lib/runActions.ts";
+import { openEvalResults } from "../lib/evalNav.ts";
 import { outcomePhase, runOutcome } from "../lib/runOutcome.ts";
 import { selectAgent } from "../lib/selection.ts";
 import { sendLoadHistory } from "../lib/socket.ts";
@@ -173,6 +174,18 @@ function RunRow({ run, runs, agentId }: { run: RunSummary; runs: RunSummary[]; a
             : duration && <span className="shrink-0">{duration}</span>}
         </span>
       </button>
+      {/* AN EVAL'S RUN SAYS SO, and leads back to the comparison it was a cell of. They were listed
+          as ordinary runs, numbered among the agent's own, with nothing to say where they came from. */}
+      {run.eval_id && (
+        <button
+          type="button"
+          onClick={() => openEvalResults(run.agent_id, run.eval_id!)}
+          title="One run of an eval — press to open its results"
+          className="shrink-0 rounded-control px-1.5 py-0.5 text-tiny text-muted transition-colors hover:bg-active hover:text-ink focus-visible:outline-none focus-visible:shadow-focusring"
+        >
+          eval
+        </button>
+      )}
       <RunOverflow run={run} agentId={agentId} />
     </div>
   );

@@ -84,6 +84,8 @@ const MIGRATIONS = join(fileURLToPath(new URL("..", import.meta.url)), "migratio
 interface Fixture {
   ctx: TenantContext;
   runId: string;
+  /** A run of the agent's own, not an eval's — the eval's is left out of the agent's runs (evalRuns.ts). */
+  plainRunId: string;
   datasetId: string;
   exampleId: string;
   evalId: string;
@@ -129,6 +131,8 @@ async function populate(db: Db, label: string): Promise<Fixture> {
     cost: 0.01, tokens: 10, error: null,
   };
   await trace.upsertRun(ctx, run);
+  const plainRunId = randomUUID();
+  await trace.upsertRun(ctx, { ...run, id: plainRunId });
   const step: Step = {
     id: randomUUID(), run_id: runId, seq: 0, type: "llm_call", name: "model",
     input: { q: label }, output: { a: label }, state_before: null, state_after: null,
@@ -217,7 +221,7 @@ async function populate(db: Db, label: string): Promise<Fixture> {
   await work.markRunning(workCtx, workItem.id);
 
   return {
-    ctx, runId, datasetId: dataset.id, exampleId: example.id, evalId: evalRun.id,
+    ctx, runId, plainRunId, datasetId: dataset.id, exampleId: example.id, evalId: evalRun.id,
     jobId: job!.id, serverId: "mock", deploymentId: deployment.id, agentSlug: "support_bot",
     inboxItemId: item.id, userId: member.user.id, stepId: step.id,
     workCtx, workAgentId: agentRow.id, workItemId: workItem.id, workRunId,
@@ -267,8 +271,9 @@ async function suite(label: string, db: Db): Promise<void> {
 
   // Both really do have their own, or the assertions above pass on an empty database.
   check((await trace.listRuns(A.ctx)).some((r) => r.id === A.runId), "...while A sees its own run");
-  check((await trace.listRunsForAgent(A.ctx, "agent_a")).some((r) => r.id === A.runId),
-    "...and finds it again through its agent");
+  const agentRuns = await trace.listRunsForAgent(A.ctx, "agent_a");
+  check(agentRuns.some((r) => r.id === A.plainRunId), "...and finds its own run again through its agent");
+  check(!agentRuns.some((r) => r.id === A.runId), "...where an eval's run is not one of the agent's own");
   check((await agents.list(A.ctx)).some((a) => a.display_name === "support (a)"), "...and its own agent");
   check((await inbox.listOpen(A.ctx)).some((i) => i.id === A.inboxItemId), "...and its own Inbox item");
 

@@ -61,6 +61,8 @@ export type RunSummary = Run & {
    * On history rows only; undefined on a run heard of from its live events, which the server has.
    */
   has_input?: boolean;
+  /** The eval this run was one cell of, when it was — history rows only. Runs tags it and leads back. */
+  eval_id?: string | null;
 };
 
 export type TraceEvent =

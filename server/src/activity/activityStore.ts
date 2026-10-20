@@ -35,6 +35,7 @@
 // population a retry storm produces. The usage row is written per STEP, as the step arrives, so a
 // crashed run's completed steps hold their real spend and are counted.
 
+import { notEvalRun } from "../evalRuns.ts";
 import { asInt, type Db, type Queryable } from "../db/db.ts";
 import type { TenantContext } from "../db/tenant.ts";
 import { TraceStore } from "../store.ts";
@@ -708,6 +709,8 @@ export class ActivityStore {
             -- The branch's own work only. See the note above.
             AND (r.branch_from_seq IS NULL OR s.seq > r.branch_from_seq)
           WHERE r.workspace_id = ? AND r.started_at >= ? AND r.started_at < ?
+            -- How the agents do their work: an eval's runs are a test of it, not part of it.
+            AND ${notEvalRun("r")}
           GROUP BY r.id, r.status, r.error, cur
        ),
        settled AS (
@@ -810,7 +813,7 @@ export class ActivityStore {
               COUNT(*)                                        AS runs,
               COUNT(CASE WHEN status = 'error' THEN 1 END)    AS errors
          FROM runs
-        WHERE workspace_id = ? AND started_at >= ? AND started_at < ?
+        WHERE workspace_id = ? AND started_at >= ? AND started_at < ? AND ${notEvalRun("runs")}
         GROUP BY k`,
       [length, ...bounds(ctx, w)],
     );
@@ -919,6 +922,7 @@ export class ActivityStore {
             -- The branch's own work only, exactly as the health strip does it.
             AND (r.branch_from_seq IS NULL OR s.seq > r.branch_from_seq)
           WHERE r.workspace_id = ? AND r.started_at >= ? AND r.started_at < ?
+            AND ${notEvalRun("r")}
           GROUP BY r.agent_id, r.id, r.status, r.error, r.started_at
        ),
        ranked AS (
@@ -1043,6 +1047,8 @@ export class ActivityStore {
          FROM usage_events
         WHERE workspace_id = ? AND occurred_at >= ? AND occurred_at < ?
           AND model IS NOT NULL AND model <> ''
+          -- Which models the agents RUN ON: an eval tries models, it does not choose them.
+          AND (run_id IS NULL OR ${notEvalRun("usage_events", "run_id")})
         GROUP BY model, COALESCE(provider, '')`,
       bounds(ctx, w),
     );
