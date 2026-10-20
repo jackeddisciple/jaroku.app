@@ -78,6 +78,18 @@ console.log("\neach agent keeps its own datasets, selection and history");
   check("the selected eval is this agent's", useEvalStore.getState().selectedEvalByAgent["bruno"] === undefined);
 }
 
+console.log("\nnothing listed yet is one value, so a selector reading it settles");
+{
+  // A fresh `[]` per call is a snapshot that never settles: opening Evals before the datasets
+  // arrived blanked the app with "Maximum update depth exceeded".
+  const { examplesOf } = await import("./evalStore.ts");
+  const none = useEvalStore.getState().datasetsByAgent;
+  check("an agent with no datasets listed reads the same empty list every time",
+    datasetsOf(none, "not-listed-yet") === datasetsOf(none, "not-listed-yet") && datasetsOf(none, null) === datasetsOf(none, null));
+  check("and so does a dataset whose cases have not arrived",
+    examplesOf({}, "d-pending") === examplesOf({}, "d-pending") && examplesOf({}, null) === examplesOf({}, null));
+}
+
 console.log(fail === 0 ? "\nALL CORRECT" : `\n${fail} FAILURES`);
 // `globalThis.process` rather than `process`: the client tsconfig has no node types.
 (globalThis as { process?: { exit(code: number): void } }).process?.exit(fail === 0 ? 0 : 1);

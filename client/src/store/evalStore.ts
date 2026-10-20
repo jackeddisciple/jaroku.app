@@ -283,18 +283,28 @@ export const useEvalStore = create<EvalState>((set) => ({
   setEstimate: (estimate) => set({ estimate }),
 }));
 
-/** Examples of a dataset in position order. `[]` when not loaded yet. */
+/**
+ * NOTHING YET, AS ONE VALUE — never a fresh `[]`. `datasetsOf` is read inside selectors
+ * (`useEvalStore((s) => datasetsOf(...))`), and a new array per call is a snapshot that never
+ * settles: opening Evals on an agent whose datasets were still in flight blanked the whole app with
+ * "Maximum update depth exceeded". The same trap as chatStore's `NO_TURNS`. Frozen, so nobody pushes
+ * into the shared value.
+ */
+const NO_DATASETS = Object.freeze([]) as unknown as Dataset[];
+const NO_EXAMPLES = Object.freeze([]) as unknown as DatasetExample[];
+
+/** Examples of a dataset in position order. Empty when not loaded yet. */
 export function examplesOf(
   byDataset: Record<string, DatasetExample[]>,
   datasetId: string | null,
 ): DatasetExample[] {
-  if (!datasetId) return [];
-  return byDataset[datasetId] ?? [];
+  if (!datasetId) return NO_EXAMPLES;
+  return byDataset[datasetId] ?? NO_EXAMPLES;
 }
 
-/** One agent's datasets, newest first. `[]` until they are listed. */
+/** One agent's datasets, newest first. Empty until they are listed. */
 export function datasetsOf(byAgent: Record<string, Dataset[]>, agentId: string | null): Dataset[] {
-  return agentId ? (byAgent[agentId] ?? []) : [];
+  return agentId ? (byAgent[agentId] ?? NO_DATASETS) : NO_DATASETS;
 }
 
 /**
