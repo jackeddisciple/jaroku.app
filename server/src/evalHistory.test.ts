@@ -79,6 +79,16 @@ async function suite(label: string, db: Db): Promise<void> {
   check(`[${label}] an eval keeps the criteria it was scored on through an edit and a reset`,
     kept?.length === 1 && kept[0]?.id === "tone", JSON.stringify(kept));
   check(`[${label}] and the reset removed the dataset's own rubric`, (await evals.rubricForDataset(ctx, theirs.id)) === undefined);
+  // AN IMPORT ARRIVES IN THE FILE'S ORDER, and an edit does not move a row.
+  const imported = await evals.createDataset(ctx, "quiet", "Imported");
+  const lines = Array.from({ length: 12 }, (_, i) => ({ input: `order-check ${String(i + 1).padStart(2, "0")}` }));
+  await evals.addExamples(ctx, imported.id, [...lines, { input: 'Quote, "with" commas' }]);
+  const order = (await evals.listExamples(ctx, imported.id)).map((e) => e.input);
+  check(`[${label}] thirteen imported rows keep the file's order`,
+    JSON.stringify(order) === JSON.stringify([...lines.map((l) => l.input), 'Quote, "with" commas']), order.join(" | "));
+  const first = (await evals.listExamples(ctx, imported.id))[0]!;
+  await evals.updateExample(ctx, first.id, { input: "order-check 01 (edited)" });
+  check(`[${label}] and editing the first leaves it first`, (await evals.listExamples(ctx, imported.id))[0]?.id === first.id);
   check(`[${label}] and an eval from before reads null, not version 0`,
     (await evals.getEvalRun(ctx, old))?.agent_version === null, String((await evals.getEvalRun(ctx, old))?.agent_version));
 }

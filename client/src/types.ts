@@ -2561,6 +2561,7 @@ export type ClientCommand =
   | { cmd: "listDatasets"; agentId?: string }
   | { cmd: "loadDataset"; datasetId: string }
   | { cmd: "addExample"; datasetId: string; input: string; expected?: string | null; notes?: string | null; origin?: string }
+  | { cmd: "addExamples"; datasetId: string; rows: { input: string; expected?: string | null }[]; origin?: string }
   | { cmd: "updateExample"; datasetId: string; exampleId: string; input?: string; expected?: string | null; notes?: string | null; origin?: string }
   | { cmd: "deleteExample"; datasetId: string; exampleId: string; origin?: string }
   | { cmd: "promoteTestInput"; agentId: string; agentName?: string; input: string; expected?: string | null; origin?: string }

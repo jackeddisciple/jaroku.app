@@ -11265,6 +11265,9 @@ async function broadcastDataset(ctx: TenantContext, datasetId: string): Promise<
   });
 }
 
+/** The most cases one import may add. A CSV a person wrote by hand is a fraction of this. */
+const MAX_IMPORT_ROWS = 2_000;
+
 async function handleEvalCommand(ctx: TenantContext, cmd: ForwardedCommand): Promise<void> {
   // WHO ASKED, so the answer reaches only them. Every eval message goes to every socket in the
   // workspace — right for state, which each client files under what it names, and wrong for a reply:
@@ -11309,6 +11312,32 @@ async function handleEvalCommand(ctx: TenantContext, cmd: ForwardedCommand): Pro
           return;
         }
         await evalStore.addExample(ctx, cmd.datasetId, input, cmd.expected ?? null, cmd.notes ?? null);
+        await broadcastDataset(ctx, cmd.datasetId);
+        await broadcastDatasets(ctx, (await evalStore.getDataset(ctx, cmd.datasetId))?.agent_id ?? null);
+        return;
+      }
+      case "addExamples": {
+        // A CSV, as one write in its own order. Empty inputs are dropped here as `addExample` refuses
+        // them, and the count says so; a dataset is capped well above any file a person types.
+        const rows = (Array.isArray(cmd.rows) ? cmd.rows : [])
+          .map((r) => ({
+            input: typeof r?.input === "string" ? r.input.trim() : "",
+            expected: typeof r?.expected === "string" && r.expected.trim() ? r.expected : null,
+          }))
+          .filter((r) => r.input);
+        if (!rows.length) {
+          reply({ type: "error", datasetId: cmd.datasetId, message: "nothing to import — every row's input was empty" });
+          return;
+        }
+        if (rows.length > MAX_IMPORT_ROWS) {
+          reply({ type: "error", datasetId: cmd.datasetId, message: `that is ${rows.length} rows; one import takes at most ${MAX_IMPORT_ROWS}` });
+          return;
+        }
+        if (!(await evalStore.getDataset(ctx, cmd.datasetId))) {
+          reply({ type: "error", datasetId: cmd.datasetId, message: "that dataset no longer exists" });
+          return;
+        }
+        await evalStore.addExamples(ctx, cmd.datasetId, rows);
         await broadcastDataset(ctx, cmd.datasetId);
         await broadcastDatasets(ctx, (await evalStore.getDataset(ctx, cmd.datasetId))?.agent_id ?? null);
         return;

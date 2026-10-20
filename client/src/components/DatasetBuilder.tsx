@@ -15,6 +15,7 @@ import { datasetsOf, examplesOf, useEvalStore } from "../store/evalStore.ts";
 import { useTraceStore } from "../store/traceStore.ts";
 import {
   sendAddExample,
+  sendAddExamples,
   sendCreateDataset,
   sendDeleteDataset,
   sendDeleteExample,
@@ -428,7 +429,9 @@ export function DatasetBuilder() {
   const importCsv = async (file: File) => {
     const { examples: rows, warnings } = csvToExamples(await file.text());
     if (!selectedDatasetId) return;
-    for (const r of rows) sendAddExample(selectedDatasetId, r.input, r.expected);
+    // ONE COMMAND, NOT ONE PER ROW. Rows sent separately were written concurrently, took the same
+    // positions and came back scrambled; the batch is written in the file's order.
+    if (rows.length) sendAddExamples(selectedDatasetId, rows.map((r) => ({ input: r.input, expected: r.expected })));
     setImportNote(
       rows.length
         ? `imported ${rows.length} example${rows.length === 1 ? "" : "s"}${warnings.length ? ` · ${warnings.join("; ")}` : ""}`

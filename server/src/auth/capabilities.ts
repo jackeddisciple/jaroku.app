@@ -784,6 +784,7 @@ export const COMMAND_CAPABILITY: Record<string, Capability> = {
   renameDataset: "eval:write",
   deleteDataset: "eval:write",
   addExample: "eval:write",
+  addExamples: "eval:write",
   updateExample: "eval:write",
   deleteExample: "eval:write",
   promoteTestInput: "eval:write",

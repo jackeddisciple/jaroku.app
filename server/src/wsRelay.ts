@@ -481,6 +481,13 @@ export type AddExampleCommand = {
   notes?: string | null;
   origin?: string;
 };
+/** Many cases in one write, in the order given — a CSV import. */
+export type AddExamplesCommand = {
+  cmd: "addExamples";
+  datasetId: string;
+  rows: { input: string; expected?: string | null }[];
+  origin?: string;
+};
 export type UpdateExampleCommand = {
   cmd: "updateExample";
   datasetId: string;
@@ -1936,6 +1943,7 @@ export type EvalCommand =
   | ListDatasetsCommand
   | LoadDatasetCommand
   | AddExampleCommand
+  | AddExamplesCommand
   | UpdateExampleCommand
   | DeleteExampleCommand
   | PromoteTestInputCommand
@@ -1950,7 +1958,7 @@ export type EvalCommand =
 
 const EVAL_COMMANDS = new Set([
   "createDataset", "renameDataset", "deleteDataset", "listDatasets",
-  "loadDataset", "addExample", "updateExample", "deleteExample", "promoteTestInput",
+  "loadDataset", "addExample", "addExamples", "updateExample", "deleteExample", "promoteTestInput",
   "startEval", "cancelEval", "loadRubric", "saveRubric", "resetRubric",
   "loadEvalResults", "listEvals", "estimateEval",
 ]);
@@ -4013,7 +4021,7 @@ export const COMMAND_CHANNEL: Record<string, string> = {
   // the fork's new turn is an ordinary question.
   editTurn: "threads",
   createDataset: "eval", renameDataset: "eval", deleteDataset: "eval", listDatasets: "eval",
-  loadDataset: "eval", addExample: "eval", updateExample: "eval", deleteExample: "eval",
+  loadDataset: "eval", addExample: "eval", addExamples: "eval", updateExample: "eval", deleteExample: "eval",
   promoteTestInput: "eval", startEval: "eval", cancelEval: "eval", loadRubric: "eval",
   saveRubric: "eval", resetRubric: "eval", loadEvalResults: "eval", listEvals: "eval", estimateEval: "eval",
   listMcpServers: "mcp", addMcpServer: "mcp", removeMcpServer: "mcp", rediscoverMcpServer: "mcp",

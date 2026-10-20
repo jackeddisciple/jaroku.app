@@ -219,6 +219,7 @@ export const COMMAND_ENTITLEMENT: Record<string, EntitlementKind | typeof NO_ENT
   listDatasets: NO_ENTITLEMENT,
   loadDataset: NO_ENTITLEMENT,
   addExample: NO_ENTITLEMENT,
+  addExamples: NO_ENTITLEMENT,
   updateExample: NO_ENTITLEMENT,
   deleteExample: NO_ENTITLEMENT,
   saveRubric: NO_ENTITLEMENT,

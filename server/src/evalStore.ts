@@ -379,6 +379,47 @@ export class EvalStore {
     return row;
   }
 
+  /**
+   * Many cases at once, in the order given, in one transaction.
+   *
+   * A CSV IMPORT USED TO BE ONE `addExample` PER ROW, sent without waiting, and the server took them
+   * concurrently: each read `MAX(position) + 1` before any of the others had written, so rows shared
+   * positions, came back in whatever order Postgres chose for the tie — `01, 11, 04, 06, …` — and an
+   * edit later moved a row because an UPDATE moves it in the heap. Here the positions are counted
+   * out one after another inside one transaction, so a file arrives in the order it was written.
+   */
+  async addExamples(
+    ctx: TenantContext,
+    datasetId: string,
+    rows: { input: string; expected?: string | null; notes?: string | null }[],
+  ): Promise<DatasetExample[]> {
+    const out: DatasetExample[] = [];
+    await this.db.scoped(ctx.workspaceId, async (tx: Queryable) => {
+      const next = await tx.get<{ p: unknown }>(
+        `SELECT COALESCE(MAX(position), -1) + 1 AS p FROM dataset_examples
+          WHERE dataset_id = ? AND workspace_id = ?`,
+        [datasetId, ctx.workspaceId],
+      );
+      let position = asInt(next?.p);
+      const at = nowIso();
+      for (const r of rows) {
+        const row: DatasetExample = {
+          id: randomUUID(), dataset_id: datasetId, input: r.input, expected: r.expected ?? null,
+          notes: r.notes ?? null, position: position++, created_at: at,
+        };
+        await tx.run(
+          `INSERT INTO dataset_examples
+             (id, workspace_id, dataset_id, input, expected, notes, position, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          [row.id, ctx.workspaceId, row.dataset_id, row.input, row.expected, row.notes, row.position, row.created_at],
+        );
+        out.push(row);
+      }
+      await tx.run(`UPDATE datasets SET updated_at = ? WHERE id = ? AND workspace_id = ?`, [at, datasetId, ctx.workspaceId]);
+    });
+    return out;
+  }
+
   async updateExample(
     ctx: TenantContext,
     exampleId: string,
@@ -429,8 +470,10 @@ export class EvalStore {
 
   async listExamples(ctx: TenantContext, datasetId: string): Promise<DatasetExample[]> {
     return (await this.q(ctx).all(
+      // Position first, then the order rows were written, then id: rows that already share a position
+      // (an import from before `addExamples`) keep one order rather than whatever the planner picks.
       `SELECT id, dataset_id, input, expected, notes, position, created_at
-         FROM dataset_examples WHERE dataset_id = ? AND workspace_id = ? ORDER BY position ASC`,
+         FROM dataset_examples WHERE dataset_id = ? AND workspace_id = ? ORDER BY position ASC, created_at ASC, id ASC`,
       [datasetId, ctx.workspaceId],
     )) as unknown as DatasetExample[];
   }

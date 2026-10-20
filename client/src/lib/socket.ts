@@ -2322,6 +2322,10 @@ export function sendAddExample(
 ): void {
   send({ cmd: "addExample", datasetId, input, expected, notes, origin: EVAL_ORIGIN });
 }
+/** A CSV's rows as one command, so the server writes them in the order they were in the file. */
+export function sendAddExamples(datasetId: string, rows: { input: string; expected?: string | null }[]): void {
+  send({ cmd: "addExamples", datasetId, rows, origin: EVAL_ORIGIN });
+}
 export function sendUpdateExample(
   datasetId: string,
   exampleId: string,
