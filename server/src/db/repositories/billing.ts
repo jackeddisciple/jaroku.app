@@ -47,6 +47,12 @@ export interface BalanceRow {
    * is a use they did not consent to, whatever the accounting says. See migration 023.
    */
   own_key_for_platform: boolean;
+  /**
+   * The same consent for ONE call: the eval judge (migration 093). The Evals tab's switch — it spends
+   * the workspace's key on verdicts and on nothing else, where `own_key_for_platform` moves generation,
+   * edits and chat onto it too.
+   */
+  judge_own_key: boolean;
   updated_at: string;
 }
 
@@ -294,6 +300,15 @@ export class BillingRepository {
     );
   }
 
+  /** Turn the judge-only opt-in on or off. See `judge_own_key`. */
+  async setJudgeOwnKey(ctx: TenantContext, on: boolean): Promise<void> {
+    await this.balance(ctx);
+    await this.q(ctx).run(
+      `UPDATE workspace_balances SET judge_own_key = ?, updated_at = ? WHERE workspace_id = ?`,
+      [on ? 1 : 0, nowIso(), ctx.workspaceId],
+    );
+  }
+
   /** Replace this workspace's negotiated exceptions to its plan's limits. */
   async setLimitOverrides(ctx: TenantContext, overrides: Record<string, unknown>): Promise<void> {
     await this.balance(ctx);
@@ -306,7 +321,7 @@ export class BillingRepository {
   private async readBalance(q: Queryable, workspaceId: string): Promise<BalanceRow | undefined> {
     const row = await q.get<Record<string, unknown>>(
       `SELECT workspace_id, balance_usd, reserved_usd, ceiling_usd, limit_overrides,
-              own_key_for_platform, updated_at
+              own_key_for_platform, judge_own_key, updated_at
          FROM workspace_balances WHERE workspace_id = ?`,
       [workspaceId],
     );
@@ -322,6 +337,7 @@ export class BillingRepository {
       limit_overrides:
         overrides && typeof overrides === "object" ? (overrides as Record<string, unknown>) : {},
       own_key_for_platform: asBool(row["own_key_for_platform"]),
+      judge_own_key: asBool(row["judge_own_key"]),
       updated_at: String(row["updated_at"]),
     };
   }

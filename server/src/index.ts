@@ -5679,7 +5679,9 @@ const judge = new JudgeScorer({
   context: (evalId) => contextForEval(evalId),
   // The eval's own workspace, resolved at the moment of use. A judge verdict is a platform call
   // like a generation, and it bills to the platform's key unless the workspace opted its own in.
-  apiKey: async (evalId) => providerKeys.platformKey(contextForEval(evalId)),
+  // The workspace's own Anthropic key when it opted in — for every platform call, or for the judge
+  // alone (migration 093) — else the platform's.
+  apiKey: async (evalId) => providerKeys.judgeKey(contextForEval(evalId)),
   onScored: (e) => relay.broadcastEval(contextForEval(e.evalId), { type: "scored", ...e }),
   // The judge's own spend, in the workspace's ledger. NOT a replacement for `addJudgeCost`,
   // which keeps accumulating on the eval so the comparison can show judge overhead apart from
@@ -11282,6 +11284,33 @@ async function evalBlockedFor(ctx: TenantContext, slug: string): Promise<string 
   return `${name} has not been built yet — build it before running an eval on it`;
 }
 
+/**
+ * Whether this workspace's evals will be judged, and on whose key.
+ *
+ * THE ANSWER THE TAB NEVER HAD. The judge checked only the server's environment, so production —
+ * which has no platform judge key — scored nothing, the estimate left judge cost out even for a
+ * workspace whose own key would be billed, and every quality cell said "no ANTHROPIC_API_KEY": a
+ * variable nobody using the product can set. The workspace's own key counts when it opted in.
+ */
+interface JudgeState {
+  enabled: boolean;
+  /** Whose key a verdict is paid with, when there is one. */
+  source: "own-key" | "platform" | null;
+  /** The Evals tab's own switch: the judge alone on the workspace's key. */
+  ownKey: boolean;
+  /** The workspace-wide switch (every platform call on its key), which covers the judge too. */
+  platformOptIn: boolean;
+  /** Whether the workspace has an Anthropic key in Secrets at all. */
+  keyPresent: boolean;
+}
+async function judgeState(ctx: TenantContext): Promise<JudgeState> {
+  const keyPresent = (await providerKeys.configuredNames(ctx)).has(PROVIDER_ENV_KEY.anthropic);
+  const optIn = await providerKeys.judgeOwnKey(ctx);
+  const own = keyPresent && (optIn.judge || optIn.platform);
+  const source = own ? "own-key" : JudgeScorer.available() ? "platform" : null;
+  return { enabled: source !== null, source, ownKey: optIn.judge, platformOptIn: optIn.platform, keyPresent };
+}
+
 /** The most cases one import may add. A CSV a person wrote by hand is a fraction of this. */
 const MAX_IMPORT_ROWS = 2_000;
 
@@ -11292,7 +11321,7 @@ async function handleEvalCommand(ctx: TenantContext, cmd: ForwardedCommand): Pro
   // everybody's dataset view, and their "saved to …" flashed in every composer. A reply carries the
   // asking tab's `origin` and a client applies only its own.
   const origin = typeof (cmd as { origin?: unknown }).origin === "string" ? (cmd as { origin: string }).origin : undefined;
-  const reply = (event: Extract<EvalEvent, { type: "error" | "estimate" | "promoted" }>): void =>
+  const reply = (event: Extract<EvalEvent, { type: "error" | "estimate" | "promoted" | "judge" }>): void =>
     relay.broadcastEval(ctx, origin ? { ...event, origin } : event);
   try {
     switch (cmd.cmd) {
@@ -11431,7 +11460,7 @@ async function handleEvalCommand(ctx: TenantContext, cmd: ForwardedCommand): Pro
           datasetId: cmd.datasetId,
           agentId: cmd.agentId,
           targets: cmd.targets ?? [],
-          judgeEnabled: JudgeScorer.available(),
+          judgeEnabled: (await judgeState(ctx)).enabled,
           budget: await budgetGate.status(ctx),
         }).catch(() => null);
         const verdict = await budgetGate.mayStart(ctx, {
@@ -11511,7 +11540,7 @@ async function handleEvalCommand(ctx: TenantContext, cmd: ForwardedCommand): Pro
             datasetId: cmd.datasetId,
             agentId: cmd.agentId,
             targets: cmd.targets ?? [],
-            judgeEnabled: JudgeScorer.available(),
+            judgeEnabled: (await judgeState(ctx)).enabled,
             // The same status the gate itself decides with, so what this dialog says before
             // the button and what a refusal says after it cannot disagree.
             budget: await budgetGate.status(ctx),
@@ -11589,6 +11618,24 @@ async function handleEvalCommand(ctx: TenantContext, cmd: ForwardedCommand): Pro
         });
         console.log(`[eval] rubric saved for dataset ${cmd.datasetId} — ${criteria.length} criteria`);
         relay.broadcastEval(ctx, { type: "rubric", datasetId: cmd.datasetId, rubric: saved, isDefault: false });
+        return;
+      }
+      case "loadJudge": {
+        reply({ type: "judge", ...(await judgeState(ctx)) });
+        return;
+      }
+      case "setJudgeOwnKey": {
+        const on = cmd.on === true;
+        // Refused rather than accepted and inert, as the workspace-wide switch is: turned on with no
+        // key, it would promise scores that the next eval could not pay for.
+        if (on && !(await providerKeys.configuredNames(ctx)).has(PROVIDER_ENV_KEY.anthropic)) {
+          reply({ type: "error", message: "add an Anthropic key in Secrets first — it is the key the judge would use" });
+          return;
+        }
+        await providerKeys.setJudgeOwnKey(ctx, on);
+        console.log(`[eval] judge on the workspace's own key: ${on ? "on" : "off"} (${ctx.workspaceId})`);
+        // State, not a reply: everyone's Evals tab should say whether quality will be scored.
+        relay.broadcastEval(ctx, { type: "judge", ...(await judgeState(ctx)) });
         return;
       }
       case "resetRubric": {

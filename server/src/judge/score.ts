@@ -36,6 +36,10 @@ import { jobClassConfig } from "../queue/jobs.ts";
 /** Budget model by default (doc: the judge is per-example-per-provider; cost multiplies). */
 export const JUDGE_MODEL = process.env.JAROKU_JUDGE_MODEL ?? "claude-haiku-4-5";
 
+/** Why a cell was not scored when there is no judge to score it — and what turns one on. */
+export const JUDGE_OFF =
+  "not scored — the judge is off. Turn on “Judge with my Anthropic key” in the Evals tab to score the next eval";
+
 /** Verdicts are small; this is a ceiling against a runaway, not a target. */
 const JUDGE_MAX_TOKENS = 1024;
 
@@ -193,7 +197,9 @@ export class JudgeScorer {
     if (!JudgeScorer.available() && !(await this.deps.apiKey?.(evalId))) {
       // The free dry-run path still produces a complete eval: every other column is real,
       // and the quality column says plainly why it's blank.
-      await this.markUnscored(evalId, job, "not scored — no ANTHROPIC_API_KEY for the judge");
+      // IN WORDS SOMEBODY USING THE PRODUCT CAN ACT ON. It named a server environment variable, which
+      // nobody but the operator can set, and said nothing about what to do.
+      await this.markUnscored(evalId, job, JUDGE_OFF);
       return;
     }
 

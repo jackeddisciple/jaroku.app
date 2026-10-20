@@ -9,7 +9,9 @@ import { useEffect, useState } from "react";
 import { useBuildStore } from "../store/buildStore.ts";
 import { datasetsOf, evalListKey, liveEvalOf, useEvalStore } from "../store/evalStore.ts";
 import { useTraceStore } from "../store/traceStore.ts";
-import { sendListEvals, sendLoadEvalResults } from "../lib/socket.ts";
+import { sendListEvals, sendLoadEvalResults, sendLoadJudge, sendSetJudgeOwnKey } from "../lib/socket.ts";
+import { useCanRun } from "../lib/useCapability.ts";
+import { useUiStore } from "../store/uiStore.ts";
 import { DatasetBuilder } from "./DatasetBuilder.tsx";
 import { ComparisonTable } from "./EvalDashboard.tsx";
 import { ExampleDrillDown } from "./EvalDrillDown.tsx";
@@ -86,6 +88,55 @@ export function ResultsHeader({ results, live }: { results: EvalResults; live: E
   );
 }
 
+/**
+ * Whether Quality will be filled in, and the one control that fills it.
+ *
+ * A "—" IN EVERY QUALITY CELL, WITH NOTHING TO DO ABOUT IT. Production has no platform judge key, so
+ * every eval came back unscored, and nothing on the panel led anywhere that could change that. The
+ * workspace's own Anthropic key can judge, if somebody allowed to decide whose key pays says so.
+ */
+export function JudgeLine() {
+  const judge = useEvalStore((s) => s.judge);
+  const canSwitch = useCanRun("setJudgeOwnKey");
+  if (!judge) return null;
+  if (judge.enabled) {
+    if (judge.source !== "own-key" || !judge.ownKey) return null;
+    return (
+      <div className="flex flex-wrap items-center gap-2 pb-3 text-tiny text-faint">
+        <span>Quality is judged on this workspace's Anthropic key.</span>
+        {canSwitch && (
+          <button onClick={() => sendSetJudgeOwnKey(false)} className="text-muted underline underline-offset-2 transition-colors hover:text-ink">
+            Turn off
+          </button>
+        )}
+      </div>
+    );
+  }
+  return (
+    <div className="flex flex-wrap items-center gap-2 pb-3 text-tiny" role="status">
+      <span className="text-muted">Quality isn't scored — the judge is off.</span>
+      {!judge.keyPresent ? (
+        <button
+          onClick={() => useUiStore.getState().openSecretsForProvider("anthropic")}
+          className="text-ink underline underline-offset-2"
+        >
+          Add an Anthropic key in Secrets →
+        </button>
+      ) : canSwitch ? (
+        <button
+          onClick={() => sendSetJudgeOwnKey(true)}
+          title="Score answers with this workspace's Anthropic key. It is used for the judge and nothing else."
+          className="text-ink underline underline-offset-2"
+        >
+          Judge with my Anthropic key
+        </button>
+      ) : (
+        <span className="text-faint">An admin can turn on judging with the workspace's Anthropic key.</span>
+      )}
+    </div>
+  );
+}
+
 type Mode = "dataset" | "results";
 
 export function EvalsPanel() {
@@ -125,6 +176,11 @@ export function EvalsPanel() {
   const shownEvalId = selectedEvalId ?? evals[0]?.id ?? null;
   const results = shownEvalId ? resultsByEval[shownEvalId] : undefined;
   const running = progress !== null && (progress.status === undefined || progress.scoring === true);
+
+  // Whether Quality will be scored here — asked once the socket is up.
+  useEffect(() => {
+    if (connected) sendLoadJudge();
+  }, [connected]);
 
   // Past evals for this scope, so a finished comparison stays reachable.
   useEffect(() => {
@@ -254,6 +310,7 @@ export function EvalsPanel() {
           {results ? (
             <>
               <ResultsHeader results={results} live={progress} />
+              <JudgeLine />
               <ComparisonTable results={results} />
               <ExampleDrillDown results={results} />
             </>

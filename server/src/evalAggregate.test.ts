@@ -239,6 +239,21 @@ console.log("\nwork that never ran is not counted against a model, and models st
     res.providers.map((p) => p.model).join(",") === "claude-sonnet-5,claude-haiku-4-5", res.providers.map((p) => p.model).join(","));
 }
 
+console.log("\nan estimate says when quality won't be scored");
+{
+  const { estimateEval } = await import("./evalEstimate.ts");
+  const ds = await evalStore.createDataset(ctx, "a", "Judge off");
+  await evalStore.addExample(ctx, ds.id, "case", null);
+  const off = await estimateEval(ctx, store, evalStore, {
+    datasetId: ds.id, agentId: "a", targets: [{ provider: "anthropic", model: "claude-haiku-4-5" }], judgeEnabled: false,
+  });
+  check("with the judge off it says so before Run", off.judgeEnabled === false && off.notes.some((n) => /won't be scored/.test(n)), off.notes.join(" | "));
+  const on = await estimateEval(ctx, store, evalStore, {
+    datasetId: ds.id, agentId: "a", targets: [{ provider: "anthropic", model: "claude-haiku-4-5" }], judgeEnabled: true,
+  });
+  check("and with it on, counts its cost instead", on.judgeEnabled === true && on.judgeHighUsd > 0 && !on.notes.some((n) => /won't be scored/.test(n)));
+}
+
 await store.close();
 rmSync(DB, { force: true });
 rmSync(`${DB}-wal`, { force: true });

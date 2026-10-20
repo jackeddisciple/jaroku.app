@@ -539,6 +539,10 @@ export type EstimateEvalCommand = {
   targets: { provider: string; model: string }[];
   origin?: string;
 };
+/** Whether this workspace's evals will be judged, and on whose key. */
+export type LoadJudgeCommand = { cmd: "loadJudge"; origin?: string };
+/** The Evals tab's switch: the judge, and only the judge, on the workspace's own Anthropic key. */
+export type SetJudgeOwnKeyCommand = { cmd: "setJudgeOwnKey"; on: boolean; origin?: string };
 /** Drop a dataset's own rubric, so it scores against the built-in one again. */
 export type ResetRubricCommand = { cmd: "resetRubric"; datasetId: string; origin?: string };
 export type SaveRubricCommand = {
@@ -1953,6 +1957,8 @@ export type EvalCommand =
   | LoadRubricCommand
   | SaveRubricCommand
   | ResetRubricCommand
+  | LoadJudgeCommand
+  | SetJudgeOwnKeyCommand
   | LoadEvalResultsCommand
   | ListEvalsCommand
   | EstimateEvalCommand;
@@ -1960,7 +1966,7 @@ export type EvalCommand =
 const EVAL_COMMANDS = new Set([
   "createDataset", "renameDataset", "deleteDataset", "listDatasets",
   "loadDataset", "addExample", "addExamples", "updateExample", "deleteExample", "promoteTestInput",
-  "startEval", "cancelEval", "loadRubric", "saveRubric", "resetRubric",
+  "startEval", "cancelEval", "loadRubric", "saveRubric", "resetRubric", "loadJudge", "setJudgeOwnKey",
   "loadEvalResults", "listEvals", "estimateEval",
 ]);
 
@@ -2236,6 +2242,11 @@ export type EvalEvent =
   // guessing what it already has.
   | { type: "evals"; agentId?: string | null; datasetId?: string | null; evals: unknown[]; complete?: boolean; window?: number }
   | { type: "estimate"; estimate: unknown; origin?: string }
+  // Whether evals here will be judged and on whose key — after a switch, to everybody; on load, to the asker.
+  | {
+      type: "judge"; enabled: boolean; source: "own-key" | "platform" | null; ownKey: boolean;
+      platformOptIn: boolean; keyPresent: boolean; origin?: string;
+    }
   | { type: "error"; message: string; datasetId?: string; origin?: string };
 
 // MCP rides its own channel too, parallel to trace/gen/edit/debug/reply/eval.
@@ -4026,7 +4037,7 @@ export const COMMAND_CHANNEL: Record<string, string> = {
   createDataset: "eval", renameDataset: "eval", deleteDataset: "eval", listDatasets: "eval",
   loadDataset: "eval", addExample: "eval", addExamples: "eval", updateExample: "eval", deleteExample: "eval",
   promoteTestInput: "eval", startEval: "eval", cancelEval: "eval", loadRubric: "eval",
-  saveRubric: "eval", resetRubric: "eval", loadEvalResults: "eval", listEvals: "eval", estimateEval: "eval",
+  saveRubric: "eval", resetRubric: "eval", loadJudge: "eval", setJudgeOwnKey: "eval", loadEvalResults: "eval", listEvals: "eval", estimateEval: "eval",
   listMcpServers: "mcp", addMcpServer: "mcp", removeMcpServer: "mcp", rediscoverMcpServer: "mcp",
   setMcpServerAuth: "mcp", setMcpToolImpact: "mcp", resolveMcpConfirm: "mcp",
   listProviders: "providers", setOwnKeyForPlatform: "providers",

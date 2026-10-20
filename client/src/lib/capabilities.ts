@@ -237,6 +237,8 @@ export const COMMAND_CAPABILITY: Record<string, string> = {
   promoteTestInput: "eval:write",
   saveRubric: "eval:write",
   resetRubric: "eval:write",
+  loadJudge: "eval:read",
+  setJudgeOwnKey: "provider:manage",
   startEval: "eval:run",
   cancelEval: "eval:run",
 

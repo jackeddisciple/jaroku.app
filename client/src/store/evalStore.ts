@@ -17,7 +17,7 @@
 // about, and it lands under that name; a panel reads the agent it is showing.
 
 import { create } from "zustand";
-import type { Dataset, DatasetExample, EvalEstimate, EvalResults, EvalRunSummary, EvalTarget, Rubric } from "../types.ts";
+import type { Dataset, DatasetExample, EvalEstimate, EvalJudgeState, EvalResults, EvalRunSummary, EvalTarget, Rubric } from "../types.ts";
 
 /** Live counters while an eval drains. Counts only — no step traffic on this channel. */
 export interface EvalProgress {
@@ -103,6 +103,9 @@ interface EvalState {
    */
   targetsByAgent: Record<string, EvalTarget[]>;
   setTargets: (agentId: string, targets: EvalTarget[]) => void;
+  /** Whether this workspace's evals are judged, once asked. Null until the server has said. */
+  judge: EvalJudgeState | null;
+  setJudge: (judge: EvalJudgeState) => void;
 
   // --- eval runs ---
   /** evalListKey(agent, dataset) -> that scope's history, newest first. */
@@ -194,6 +197,9 @@ export const useEvalStore = create<EvalState>((set) => ({
 
   targetsByAgent: {},
   setTargets: (agentId, targets) => set((s) => ({ targetsByAgent: { ...s.targetsByAgent, [agentId]: targets } })),
+
+  judge: null,
+  setJudge: (judge) => set({ judge }),
 
   evalLists: {},
   selectedEvalByAgent: {},

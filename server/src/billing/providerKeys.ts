@@ -166,6 +166,28 @@ export class WorkspaceProviderKeys {
     return env[name];
   }
 
+  /**
+   * The key the eval JUDGE calls with: the workspace's own Anthropic key when it opted in — for every
+   * platform call, or for the judge alone — else undefined, which means the platform's.
+   */
+  async judgeKey(ctx: TenantContext): Promise<string | undefined> {
+    const balance = await this.billing.balance(ctx);
+    if (!balance.own_key_for_platform && !balance.judge_own_key) return undefined;
+    const name = PROVIDER_ENV_KEY.anthropic;
+    const env = await this.secrets.getForPlatformCall(ctx, [name]);
+    return env[name];
+  }
+
+  async setJudgeOwnKey(ctx: TenantContext, on: boolean): Promise<void> {
+    await this.billing.setJudgeOwnKey(ctx, on);
+  }
+
+  /** Whether the judge-only opt-in is on — not whether it can be used; see `judgeKey`. */
+  async judgeOwnKey(ctx: TenantContext): Promise<{ judge: boolean; platform: boolean }> {
+    const balance = await this.billing.balance(ctx);
+    return { judge: balance.judge_own_key, platform: balance.own_key_for_platform };
+  }
+
   /** Turn the opt-in on or off. Explicit, not a toggle — see the repository's own note. */
   async setOwnKeyForPlatform(ctx: TenantContext, on: boolean): Promise<void> {
     await this.billing.setOwnKeyForPlatform(ctx, on);

@@ -32,7 +32,8 @@ const { ResultsHeader } = await import("./EvalsPanel.tsx");
 type Results = import("../types.ts").EvalResults;
 
 /** Tags gone and whitespace folded, so a check reads the words a person reads. */
-const text = (html: string): string => html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+const text = (html: string): string =>
+  html.replace(/<[^>]+>/g, " ").replace(/&#x27;/g, "'").replace(/&quot;/g, '"').replace(/&amp;/g, "&").replace(/\s+/g, " ").trim();
 
 const results = (over: Partial<Results> = {}): Results => ({
   evalId: "e1",
@@ -139,6 +140,35 @@ console.log("\nthe table compares only what can be compared");
   check(words.includes("of $0.001 budget"), "the budget reads as typed", words);
   check(fmtBudget(0.2) === "$0.20" && fmtBudget(0.05) === "$0.05" && fmtBudget(1.5) === "$1.50" && fmtBudget(0.001) === "$0.001",
     `a budget is $0.20, not $0.2000 (${fmtBudget(0.2)}, ${fmtBudget(0.001)})`);
+}
+
+console.log("\nwith the judge off, the panel says so and offers the switch");
+{
+  const { JudgeLine } = await import("./EvalsPanel.tsx");
+  const { useEvalStore } = await import("../store/evalStore.ts");
+  const { useSessionStore } = await import("../store/sessionStore.ts");
+  const base = { enabled: false, source: null, ownKey: false, platformOptIn: false, keyPresent: true };
+  const asRole = (role: string) => seed(useSessionStore, {
+    status: "ready", workspaceId: "ws-a",
+    workspaces: [{ id: "ws-a", slug: "a", name: "Alpha", kind: "team", role, plan: { id: "free", label: "Free" } }],
+  } as never);
+  asRole("owner");
+  seed(useEvalStore, { judge: base } as never);
+  let words = text(markup(createElement(JudgeLine)));
+  check(words.includes("the judge is off") && words.includes("Judge with my Anthropic key"), "an owner is offered the switch", words);
+  seed(useEvalStore, { judge: { ...base, keyPresent: false } } as never);
+  words = text(markup(createElement(JudgeLine)));
+  check(words.includes("Add an Anthropic key in Secrets"), "with no key, it leads to Secrets instead", words);
+  asRole("member");
+  seed(useEvalStore, { judge: base } as never);
+  words = text(markup(createElement(JudgeLine)));
+  check(!words.includes("Judge with my Anthropic key") && words.includes("An admin can turn on judging"), "a member is told who can", words);
+  asRole("owner");
+  seed(useEvalStore, { judge: { ...base, enabled: true, source: "own-key", ownKey: true } } as never);
+  words = text(markup(createElement(JudgeLine)));
+  check(words.includes("judged on this workspace's Anthropic key") && words.includes("Turn off"), "once on, it says whose key and can be turned off", words);
+  seed(useEvalStore, { judge: { ...base, enabled: true, source: "platform" } } as never);
+  check(text(markup(createElement(JudgeLine))) === "", "and with the platform's judge it says nothing");
 }
 
 console.log(failures === 0 ? "\nALL CORRECT" : `\n${failures} FAILURES`);

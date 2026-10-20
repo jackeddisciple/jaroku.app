@@ -790,6 +790,9 @@ export const COMMAND_CAPABILITY: Record<string, Capability> = {
   promoteTestInput: "eval:write",
   saveRubric: "eval:write",
   resetRubric: "eval:write",
+  loadJudge: "eval:read",
+  // WHOSE KEY PAYS for verdicts — the same authority as the workspace-wide switch beside it.
+  setJudgeOwnKey: "provider:manage",
   startEval: "eval:run",
   cancelEval: "eval:run",
 

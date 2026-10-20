@@ -690,6 +690,19 @@ export interface EvalEstimate {
    * billing to report (a local install). It was computed and sent, and this type dropped it.
    */
   affordability?: EvalAffordability | null;
+  /** Whether the answers will be judged. False means an empty Quality column — said before Run. */
+  judgeEnabled?: boolean;
+}
+
+/** Whether a workspace's evals are judged, and on whose key (server `judgeState`). */
+export interface EvalJudgeState {
+  enabled: boolean;
+  source: "own-key" | "platform" | null;
+  /** The Evals tab's switch: the judge alone on the workspace's own Anthropic key. */
+  ownKey: boolean;
+  /** The workspace-wide switch, which covers the judge too. */
+  platformOptIn: boolean;
+  keyPresent: boolean;
 }
 
 export interface EvalAffordability {
@@ -726,6 +739,7 @@ export type EvalMessage =
   | { channel: "eval"; type: "evalResults"; evalId: string; results: EvalResults }
   | { channel: "eval"; type: "evals"; agentId?: string | null; datasetId?: string | null; evals: EvalRunSummary[]; complete?: boolean; window?: number }
   | { channel: "eval"; type: "estimate"; estimate: EvalEstimate; origin?: string }
+  | ({ channel: "eval"; type: "judge"; origin?: string } & EvalJudgeState)
   | { channel: "eval"; type: "rubric"; datasetId: string; rubric: Rubric; isDefault: boolean }
   | { channel: "eval"; type: "error"; message: string; datasetId?: string; origin?: string };
 
@@ -2602,6 +2616,8 @@ export type ClientCommand =
   | { cmd: "loadRubric"; datasetId: string; origin?: string }
   | { cmd: "saveRubric"; datasetId: string; name?: string; criteria: RubricCriterion[]; origin?: string }
   | { cmd: "resetRubric"; datasetId: string; origin?: string }
+  | { cmd: "loadJudge"; origin?: string }
+  | { cmd: "setJudgeOwnKey"; on: boolean; origin?: string }
   // MCP: server registry. Same discipline as the eval commands — every mutation comes back
   // as a full snapshot on the "mcp" channel.
   | { cmd: "listMcpServers" }

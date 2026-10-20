@@ -114,6 +114,8 @@ export interface EvalEstimate {
   notes: string[];
   /** What the workspace can afford, when the caller supplied its budget. Null locally. */
   affordability: Affordability | null;
+  /** Whether the eval's answers will be judged. When false, Quality stays empty — said before Run. */
+  judgeEnabled: boolean;
 }
 
 /** Mean input/output tokens per run for this agent on this model, from real history. */
@@ -296,6 +298,9 @@ export async function estimateEval(
     notes.push("calibrated from this agent's runs on a different model — tokenizers differ, so treat it as approximate");
   }
   if (opts.judgeEnabled) notes.push(`includes one judge call per cell (${cells}) on ${JUDGE_MODEL}`);
+  // SAID BEFORE RUN. The note was only added when the judge was on, so an eval that would come back
+  // with an empty Quality column started without a word about it.
+  else notes.push("quality won't be scored — the judge is off for this workspace");
 
   const totalLow = round8(perTarget.reduce((s, t) => s + (t.lowUsd ?? 0), 0) + judgeLow);
   const totalHigh = round8(perTarget.reduce((s, t) => s + (t.highUsd ?? 0), 0) + judgeHigh);
@@ -340,5 +345,6 @@ export async function estimateEval(
     hasUnpricedTarget: hasUnpriced,
     notes,
     affordability,
+    judgeEnabled: opts.judgeEnabled,
   };
 }

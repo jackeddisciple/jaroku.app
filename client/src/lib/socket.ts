@@ -420,6 +420,10 @@ function dispatch(msg: ServerMessage): void {
       }
       else if (msg.type === "rubric") e.setRubric(msg.datasetId, msg.rubric, msg.isDefault);
       else if (msg.type === "estimate") { if (isOurs(msg.origin)) e.setEstimate(msg.estimate); }
+      else if (msg.type === "judge") {
+        const { channel: _c, type: _t, origin: _o, ...judge } = msg;
+        e.setJudge(judge);
+      }
       else if (msg.type === "error") { if (isOurs(msg.origin)) e.setError(msg.message); }
       break;
     }
@@ -2404,6 +2408,14 @@ export function sendEstimateEval(datasetId: string, agentId: string, targets: Ev
 }
 export function sendLoadRubric(datasetId: string): void {
   send({ cmd: "loadRubric", datasetId, origin: EVAL_ORIGIN });
+}
+/** Whether this workspace's evals are judged, and on whose key. */
+export function sendLoadJudge(): void {
+  send({ cmd: "loadJudge", origin: EVAL_ORIGIN });
+}
+/** Judge evals — and only evals — on this workspace's own Anthropic key. */
+export function sendSetJudgeOwnKey(on: boolean): void {
+  send({ cmd: "setJudgeOwnKey", on, origin: EVAL_ORIGIN });
 }
 /** Back to the built-in rubric for this dataset. Past evals keep the criteria they were scored on. */
 export function sendResetRubric(datasetId: string): void {

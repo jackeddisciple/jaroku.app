@@ -197,6 +197,22 @@ console.log("\nthe opt-in is one workspace's decision");
   await keys.setOwnKeyForPlatform(A, false);
 }
 
+console.log("\nthe judge can use the workspace's key on its own, without the other platform calls");
+
+{
+  // The Evals tab's switch (migration 093): verdicts on the workspace's key, nothing else on it.
+  check((await keys.judgeKey(A)) === undefined, "with nothing opted in, the judge uses the platform's key");
+  await keys.setJudgeOwnKey(A, true);
+  check((await keys.judgeKey(A)) === "sk-ant-A", "turned on, the judge gets the workspace's own key");
+  check((await keys.platformKey(A)) === undefined, "and generation, edits and chat do not");
+  check((await keys.judgeKey(B)) === undefined, "and another workspace is unaffected");
+  await keys.setJudgeOwnKey(A, false);
+  await keys.setOwnKeyForPlatform(A, true);
+  check((await keys.judgeKey(A)) === "sk-ant-A", "the workspace-wide switch covers the judge too");
+  await keys.setOwnKeyForPlatform(A, false);
+  check((await keys.judgeKey(A)) === undefined, "and with both off it is the platform's again");
+}
+
 await db.close();
 
 console.log(failures === 0 ? "\nALL CORRECT" : `\n${failures} FAILURES`);
