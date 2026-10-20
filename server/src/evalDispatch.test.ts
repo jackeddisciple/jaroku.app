@@ -12,7 +12,8 @@ import { EventEmitter } from "node:events";
 import { openTestSqlite, testContext } from "./db/testDb.ts";
 import { TraceStore } from "./store.ts";
 import { EvalStore } from "./evalStore.ts";
-import { EvalRunner, type EvalProgress } from "./evalRunner.ts";
+import { EvalRunner, retryWakeIn, type EvalProgress } from "./evalRunner.ts";
+import type { EvalJob } from "./evalStore.ts";
 import { Dispatcher } from "./queue/dispatcher.ts";
 import { InMemoryQueueBackend } from "./queue/inMemoryBackend.ts";
 import type { RunPool, RunPoolEvents, PoolRunOptions } from "./runPool.ts";
@@ -438,6 +439,25 @@ console.log("\na ceiling stop is recorded once, and the log does not count cance
     check(line?.includes("succeeded") === true && line.includes("3 cancelled") && !line.includes("4/4"), `the log counts the cancelled apart (${line})`);
   }
   console.log = log;
+}
+
+console.log("\na retry that came due between two reads of the clock still gets its wake");
+{
+  // The pump read the clock, found the retry a millisecond short of due, and skipped it; the wake,
+  // reading the clock a moment later, found it no longer in the future and scheduled nothing. Linux
+  // timers fire that early often enough that CI caught it: the retry was never dispatched.
+  const job = (over: Partial<EvalJob>): EvalJob => ({
+    id: "j1", eval_id: "e1", example_id: "x1", provider: "fake", model: "fake", status: "queued",
+    attempt: 1, run_id: null, cost_usd: null, spent_usd: 0, tokens: null, latency_ms: null,
+    cost_complete: 1, error: null, started_at: null, ended_at: null, ...over,
+  });
+  const due = 1_000_000;
+  const at = new Date(due).toISOString();
+  check(retryWakeIn([job({ retry_not_before: at })], new Set(), due - 500) === 500, "a retry in the future wakes when it is due");
+  check(retryWakeIn([job({ retry_not_before: at })], new Set(), due + 3) === 50, "a retry already due, not yet queued, wakes at once");
+  check(retryWakeIn([job({ retry_not_before: at })], new Set(["j1:1"]), due + 3) === null, "a retry already handed to the queue needs no wake");
+  check(retryWakeIn([job({ retry_not_before: at, status: "running" })], new Set(), due - 500) === null, "nor does one that is running");
+  check(retryWakeIn([job({ retry_not_before: null })], new Set(), due) === null, "and a first attempt is not a retry");
 }
 
 console.log(failures === 0 ? "\nALL CORRECT" : `\n${failures} FAILURES`);

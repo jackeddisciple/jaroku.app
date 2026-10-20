@@ -99,6 +99,24 @@ export function isTransientFailure(error: string | null, timedOut: boolean): boo
   return transient.some((m) => e.includes(m));
 }
 
+/**
+ * How long until the next backing-off retry is due, or null when no retry is waiting.
+ *
+ * EVERY QUEUED RETRY NOT YET HANDED TO THE QUEUE, DUE OR NOT. It counted only the ones still in the
+ * future, and that lost a retry at the moment it came due: a timer can fire a millisecond before
+ * `Date.now()` agrees it should, so the pump found the retry not due yet, and a few milliseconds later
+ * this found it no longer in the future — and set no wake. Nothing pumped the eval again, and it sat
+ * with a queued job and idle slots for ever. A retry already due is a wake now (the 50 ms floor).
+ */
+export function retryWakeIn(jobs: readonly EvalJob[], enqueued: ReadonlySet<string>, now: number): number | null {
+  const waiting = jobs
+    .filter((j) => j.status === "queued" && j.retry_not_before && !enqueued.has(`${j.id}:${j.attempt}`))
+    .map((j) => Date.parse(j.retry_not_before!))
+    .filter((t) => Number.isFinite(t));
+  if (!waiting.length) return null;
+  return Math.max(50, Math.min(...waiting) - now);
+}
+
 export interface EvalProgress {
   evalId: string;
   total: number;
@@ -562,14 +580,9 @@ export class EvalRunner {
     if (live.retryTimer) { clearTimeout(live.retryTimer); live.retryTimer = null; }
     if (live.cancelled) return;
 
-    const now = Date.now();
-    const waiting = (await this.deps.evalStore.jobsForEval(this.ctx(evalId), evalId))
-      .filter((j) => j.status === "queued" && j.retry_not_before)
-      .map((j) => Date.parse(j.retry_not_before!))
-      .filter((t) => t > now);
-    if (!waiting.length) return;
-
-    const wakeIn = Math.max(50, Math.min(...waiting) - now);
+    const jobs = await this.deps.evalStore.jobsForEval(this.ctx(evalId), evalId);
+    const wakeIn = retryWakeIn(jobs, live.enqueuedAttempts, Date.now());
+    if (wakeIn === null) return;
     live.retryTimer = setTimeout(() => {
       const l = this.live.get(evalId);
       if (l) l.retryTimer = null;
