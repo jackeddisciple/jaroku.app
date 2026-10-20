@@ -11,7 +11,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useBuildStore } from "../store/buildStore.ts";
-import { examplesOf, useEvalStore } from "../store/evalStore.ts";
+import { datasetsOf, examplesOf, useEvalStore } from "../store/evalStore.ts";
 import { useTraceStore } from "../store/traceStore.ts";
 import {
   sendAddExample,
@@ -148,8 +148,10 @@ function ExampleRow({
  * standard nobody chose, and it would be applied to the next eval.
  */
 function RubricEditor({ datasetId }: { datasetId: string }) {
-  const rubric = useEvalStore((s) => s.rubric);
-  const isDefault = useEvalStore((s) => s.rubricIsDefault);
+  // THIS DATASET'S RUBRIC, by its id. It was one value for the whole tab, so a rubric loaded or saved
+  // for another dataset — by you or by anyone in the workspace — became the one this editor showed.
+  const rubric = useEvalStore((s) => s.rubricByDataset[datasetId]?.rubric ?? null);
+  const isDefault = useEvalStore((s) => s.rubricByDataset[datasetId]?.isDefault ?? true);
   const connected = useTraceStore((s) => s.connection === "open");
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState<RubricCriterion[] | null>(null);
@@ -291,9 +293,10 @@ export function DatasetBuilder() {
   const activeAgentId = useBuildStore((s) => s.activeAgentId);
   const connected = useTraceStore((s) => s.connection === "open");
 
-  const datasets = useEvalStore((s) => s.datasets);
+  // This agent's datasets and selection — another agent's are kept under its own name.
+  const datasets = useEvalStore((s) => datasetsOf(s.datasetsByAgent, activeAgentId));
   const examplesByDataset = useEvalStore((s) => s.examplesByDataset);
-  const selectedDatasetId = useEvalStore((s) => s.selectedDatasetId);
+  const selectedDatasetId = useEvalStore((s) => (activeAgentId ? (s.selectedDatasetByAgent[activeAgentId] ?? null) : null));
   const selectDataset = useEvalStore((s) => s.selectDataset);
   const error = useEvalStore((s) => s.error);
   const setError = useEvalStore((s) => s.setError);
@@ -369,7 +372,7 @@ export function DatasetBuilder() {
           <Chip
             key={d.id}
             size="lg"
-            onClick={() => selectDataset(d.id)}
+            onClick={() => selectDataset(activeAgentId, d.id)}
             selected={d.id === selectedDatasetId}
             title={d.name}
             // Names come from agent names, which are generated from prompts and can be long.

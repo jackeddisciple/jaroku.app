@@ -15,7 +15,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useBuildStore } from "../store/buildStore.ts";
-import { examplesOf, useEvalStore } from "../store/evalStore.ts";
+import { examplesOf, liveEvalOf, useEvalStore } from "../store/evalStore.ts";
 import { useTraceStore } from "../store/traceStore.ts";
 import { isRunnable, modelName, runProviders, useProviderStore } from "../store/providerStore.ts";
 import { useUiStore } from "../store/uiStore.ts";
@@ -40,9 +40,10 @@ function suggestedCeiling(high: number): number {
 export function EvalRunBar() {
   const activeAgentId = useBuildStore((s) => s.activeAgentId);
   const connected = useTraceStore((s) => s.connection === "open");
-  const selectedDatasetId = useEvalStore((s) => s.selectedDatasetId);
+  const selectedDatasetId = useEvalStore((s) => (activeAgentId ? (s.selectedDatasetByAgent[activeAgentId] ?? null) : null));
   const examplesByDataset = useEvalStore((s) => s.examplesByDataset);
-  const progress = useEvalStore((s) => s.progress);
+  // THIS AGENT'S eval in flight. Cancel stops the eval shown here, never another agent's.
+  const progress = useEvalStore((s) => liveEvalOf(s.progressByEval, activeAgentId));
   const estimate = useEvalStore((s) => s.estimate);
   const setEstimate = useEvalStore((s) => s.setEstimate);
   // The legs somebody can compare are every model the price sheet knows — see providerStore. It was

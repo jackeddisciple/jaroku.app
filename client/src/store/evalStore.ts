@@ -9,6 +9,12 @@
 //
 // The server answers every mutation with a full snapshot, so every reducer below is a
 // replace, never a merge — there is no partial state to reconcile.
+//
+// KEYED BY AGENT, BY DATASET AND BY EVAL — never "the one on screen". The datasets, the selection,
+// the eval history and the live progress were each a single global value, so selecting another
+// agent while an eval ran showed that agent the first one's results, its cases and its
+// `running 2/12`, with nothing on the panel to say whose they were. Every message names what it is
+// about, and it lands under that name; a panel reads the agent it is showing.
 
 import { create } from "zustand";
 import type { Dataset, DatasetExample, EvalEstimate, EvalResults, EvalRunSummary, Rubric } from "../types.ts";
@@ -27,55 +33,68 @@ export interface EvalProgress {
   /** Set once the runs finish; scoring may still be in flight. */
   status?: string;
   scoring?: boolean;
+  /** Whose eval, from `evalStarted`. A count names only its eval, so these are kept from the start. */
+  agentId?: string;
+  datasetId?: string;
+}
+
+/** One eval history list, as the server answered it for one scope. */
+export interface EvalList {
+  evals: EvalRunSummary[];
+  /** Whether the window reached the end of this scope's history. */
+  complete: boolean;
+  /** The window it was read with. */
+  window: number;
+}
+
+/** An agent's history for one dataset, or — with no dataset — across all of its datasets. */
+export function evalListKey(agentId: string, datasetId: string | null): string {
+  return `${agentId}|${datasetId ?? "*"}`;
 }
 
 interface EvalState {
-  /** Datasets for the agent last listed, newest first. */
-  datasets: Dataset[];
+  /** agent -> its datasets, newest first. */
+  datasetsByAgent: Record<string, Dataset[]>;
   /** datasetId -> its examples, in position order. Populated on demand. */
   examplesByDataset: Record<string, DatasetExample[]>;
-  /** Which dataset the builder is showing. */
-  selectedDatasetId: string | null;
+  /** agent -> which dataset the builder is showing for it. */
+  selectedDatasetByAgent: Record<string, string | null>;
   /** Last control-plane error, surfaced inline rather than swallowed. */
   error: string | null;
   /** Transient confirmation for a one-click promotion — the composer shows it briefly so
    *  the user knows WHERE the input landed (and whether it was already there). */
   promoted: { datasetName: string; duplicate: boolean; at: number } | null;
 
-  setDatasets: (datasets: Dataset[]) => void;
+  setDatasets: (agentId: string, datasets: Dataset[]) => void;
   setExamples: (datasetId: string, examples: DatasetExample[]) => void;
   removeDataset: (datasetId: string) => void;
-  selectDataset: (id: string | null) => void;
+  selectDataset: (agentId: string, id: string | null) => void;
   setError: (message: string | null) => void;
   setPromoted: (datasetName: string, duplicate: boolean) => void;
   clearPromoted: () => void;
 
   // --- eval runs ---
-  /** Past evals for the selected dataset, newest first. */
-  evals: EvalRunSummary[];
-  /** The eval whose results the dashboard is showing. */
-  selectedEvalId: string | null;
+  /** evalListKey(agent, dataset) -> that scope's history, newest first. */
+  evalLists: Record<string, EvalList>;
+  /** agent -> the eval whose results the dashboard is showing for it. */
+  selectedEvalByAgent: Record<string, string | null>;
   /** evalId -> full results (provider rollups + per-example rows). */
   resultsByEval: Record<string, EvalResults>;
-  /** Live counters for the eval currently draining, if any. */
-  progress: EvalProgress | null;
-  /** The dataset's rubric, once loaded. */
-  rubric: Rubric | null;
-  rubricIsDefault: boolean;
-  /** The window the eval list was last read with, and whether it reached the end. */
-  evalsWindow: number;
-  evalsComplete: boolean;
+  /** evalId -> its live counters, while it drains and once it has finished. */
+  progressByEval: Record<string, EvalProgress>;
+  /** datasetId -> the rubric it scores against, once loaded. */
+  rubricByDataset: Record<string, { rubric: Rubric; isDefault: boolean }>;
 
   /**
-   * The eval history, and how much of it has been asked for.
+   * One scope's eval history, and how much of it has been asked for.
    *
-   * A growing WINDOW rather than a page — see socket.sendListEvals. `evalsComplete` starts true
-   * because nothing has asked yet: a "load more" control on a list nobody has scrolled is noise.
+   * A growing WINDOW rather than a page — see socket.sendListEvals.
    */
-  setEvals: (evals: EvalRunSummary[], meta?: { complete?: boolean; window?: number }) => void;
-  selectEval: (evalId: string | null) => void;
+  setEvals: (key: string, evals: EvalRunSummary[], meta?: { complete?: boolean; window?: number }) => void;
+  selectEval: (agentId: string, evalId: string | null) => void;
   setResults: (evalId: string, results: EvalResults) => void;
-  setProgress: (p: EvalProgress | null) => void;
+  /** An eval has started: its counters begin, filed under its agent and dataset. */
+  noteStarted: (p: EvalProgress) => void;
   /**
    * A count from the server's `evalProgress`.
    *
@@ -85,8 +104,8 @@ interface EvalState {
    * every model chip locked until a reload.
    */
   applyProgress: (p: EvalProgress) => void;
-  patchProgress: (patch: Partial<EvalProgress>) => void;
-  setRubric: (rubric: Rubric, isDefault: boolean) => void;
+  patchProgress: (evalId: string, patch: Partial<EvalProgress>) => void;
+  setRubric: (datasetId: string, rubric: Rubric, isDefault: boolean) => void;
 
   /** Pre-run cost estimate for the currently selected targets, once requested. */
   estimate: EvalEstimate | null;
@@ -94,22 +113,23 @@ interface EvalState {
 }
 
 export const useEvalStore = create<EvalState>((set) => ({
-  datasets: [],
+  datasetsByAgent: {},
   examplesByDataset: {},
-  selectedDatasetId: null,
+  selectedDatasetByAgent: {},
   error: null,
   promoted: null,
 
-  setDatasets: (datasets) =>
-    set((s) => ({
-      datasets,
-      // Keep a selection only while it still exists; otherwise fall back to the newest so
-      // the builder is never pointed at a dataset that has been deleted elsewhere.
-      selectedDatasetId:
-        s.selectedDatasetId && datasets.some((d) => d.id === s.selectedDatasetId)
-          ? s.selectedDatasetId
-          : (datasets[0]?.id ?? null),
-    })),
+  setDatasets: (agentId, datasets) =>
+    set((s) => {
+      // Keep a selection only while it still exists; otherwise fall back to the newest so the
+      // builder is never pointed at a dataset that has been deleted elsewhere.
+      const current = s.selectedDatasetByAgent[agentId];
+      const kept = current && datasets.some((d) => d.id === current) ? current : (datasets[0]?.id ?? null);
+      return {
+        datasetsByAgent: { ...s.datasetsByAgent, [agentId]: datasets },
+        selectedDatasetByAgent: { ...s.selectedDatasetByAgent, [agentId]: kept },
+      };
+    }),
 
   setExamples: (datasetId, examples) =>
     set((s) => ({ examplesByDataset: { ...s.examplesByDataset, [datasetId]: examples } })),
@@ -118,57 +138,72 @@ export const useEvalStore = create<EvalState>((set) => ({
     set((s) => {
       const examplesByDataset = { ...s.examplesByDataset };
       delete examplesByDataset[datasetId];
-      return {
-        examplesByDataset,
-        datasets: s.datasets.filter((d) => d.id !== datasetId),
-        selectedDatasetId: s.selectedDatasetId === datasetId ? null : s.selectedDatasetId,
-      };
+      const datasetsByAgent: Record<string, Dataset[]> = {};
+      for (const [agent, list] of Object.entries(s.datasetsByAgent)) datasetsByAgent[agent] = list.filter((d) => d.id !== datasetId);
+      const selectedDatasetByAgent: Record<string, string | null> = {};
+      for (const [agent, id] of Object.entries(s.selectedDatasetByAgent)) {
+        selectedDatasetByAgent[agent] = id === datasetId ? (datasetsByAgent[agent]?.[0]?.id ?? null) : id;
+      }
+      return { examplesByDataset, datasetsByAgent, selectedDatasetByAgent };
     }),
 
-  selectDataset: (selectedDatasetId) => set({ selectedDatasetId, error: null }),
+  selectDataset: (agentId, id) =>
+    set((s) => ({ selectedDatasetByAgent: { ...s.selectedDatasetByAgent, [agentId]: id }, error: null })),
 
   setError: (error) => set({ error }),
 
   setPromoted: (datasetName, duplicate) => set({ promoted: { datasetName, duplicate, at: Date.now() } }),
   clearPromoted: () => set({ promoted: null }),
 
-  evals: [],
-  selectedEvalId: null,
+  evalLists: {},
+  selectedEvalByAgent: {},
   resultsByEval: {},
-  progress: null,
-  rubric: null,
-  rubricIsDefault: true,
-  evalsWindow: 50,
-  evalsComplete: true,
+  progressByEval: {},
+  rubricByDataset: {},
 
-  setEvals: (evals, meta) =>
-    set((s) => ({
-      evals,
-      ...(meta?.complete === undefined ? {} : { evalsComplete: meta.complete }),
-      ...(meta?.window === undefined ? {} : { evalsWindow: meta.window }),
-      // Default to the newest eval so finishing one lands you on its results.
-      selectedEvalId:
-        s.selectedEvalId && evals.some((e) => e.id === s.selectedEvalId)
-          ? s.selectedEvalId
-          : (evals[0]?.id ?? null),
-    })),
+  setEvals: (key, evals, meta) =>
+    set((s) => {
+      const before = s.evalLists[key];
+      return {
+        evalLists: {
+          ...s.evalLists,
+          [key]: {
+            evals,
+            complete: meta?.complete ?? before?.complete ?? true,
+            window: meta?.window ?? before?.window ?? 50,
+          },
+        },
+      };
+    }),
 
-  selectEval: (selectedEvalId) => set({ selectedEvalId }),
+  selectEval: (agentId, evalId) =>
+    set((s) => ({ selectedEvalByAgent: { ...s.selectedEvalByAgent, [agentId]: evalId } })),
 
   setResults: (evalId, results) =>
     set((s) => ({ resultsByEval: { ...s.resultsByEval, [evalId]: results } })),
 
-  setProgress: (progress) => set({ progress }),
+  noteStarted: (p) => set((s) => ({ progressByEval: { ...s.progressByEval, [p.evalId]: { ...p } } })),
 
   applyProgress: (p) =>
-    set((s) =>
-      s.progress?.evalId === p.evalId && s.progress.status !== undefined ? {} : { progress: { ...p } },
-    ),
+    set((s) => {
+      const before = s.progressByEval[p.evalId];
+      if (before?.status !== undefined) return {};
+      return {
+        progressByEval: {
+          ...s.progressByEval,
+          [p.evalId]: { ...p, agentId: p.agentId ?? before?.agentId, datasetId: p.datasetId ?? before?.datasetId },
+        },
+      };
+    }),
 
-  patchProgress: (patch) =>
-    set((s) => (s.progress ? { progress: { ...s.progress, ...patch } } : {})),
+  patchProgress: (evalId, patch) =>
+    set((s) => {
+      const before = s.progressByEval[evalId];
+      return before ? { progressByEval: { ...s.progressByEval, [evalId]: { ...before, ...patch } } } : {};
+    }),
 
-  setRubric: (rubric, rubricIsDefault) => set({ rubric, rubricIsDefault }),
+  setRubric: (datasetId, rubric, isDefault) =>
+    set((s) => ({ rubricByDataset: { ...s.rubricByDataset, [datasetId]: { rubric, isDefault } } })),
 
   estimate: null,
   setEstimate: (estimate) => set({ estimate }),
@@ -181,4 +216,21 @@ export function examplesOf(
 ): DatasetExample[] {
   if (!datasetId) return [];
   return byDataset[datasetId] ?? [];
+}
+
+/** One agent's datasets, newest first. `[]` until they are listed. */
+export function datasetsOf(byAgent: Record<string, Dataset[]>, agentId: string | null): Dataset[] {
+  return agentId ? (byAgent[agentId] ?? []) : [];
+}
+
+/**
+ * The eval of this agent that is still going — running, or finished and still being scored — or
+ * null. Its own agent's, never another's: a different agent's eval is not this panel's to show.
+ */
+export function liveEvalOf(byEval: Record<string, EvalProgress>, agentId: string | null): EvalProgress | null {
+  if (!agentId) return null;
+  for (const p of Object.values(byEval)) {
+    if (p.agentId === agentId && (p.status === undefined || p.scoring === true)) return p;
+  }
+  return null;
 }

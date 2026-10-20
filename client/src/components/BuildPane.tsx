@@ -23,7 +23,7 @@ import {
   sendApplyEdit, sendAskRecord, sendBranchRun, sendChat, sendDiscardEdit, sendDiscardPlan, sendDispatchWork,
   sendCreateThread, sendEditTurn, sendSelectVariant, sendStopChat,
   sendEdit, sendExplain, sendGenerate, sendLoadWorkItem, sendPeekWorkItem, sendPlanAgent, sendPromoteTestInput, sendRun, reportHostProviders} from "../lib/socket.ts";
-import { useEvalStore } from "../store/evalStore.ts";
+import { datasetsOf, useEvalStore } from "../store/evalStore.ts";
 import { UpsellCard } from "./UpsellCard.tsx";
 import { composerMoment } from "../lib/composerMoment.ts";
 import { AgentTray } from "./composer/AgentTray.tsx";
@@ -2359,7 +2359,7 @@ export function BuildPane({
   // The server picks/creates the dataset, so this stays a single round trip.
   const promoted = useEvalStore((s) => s.promoted);
   const runCount = useTraceStore((st) => Object.keys(st.runs).length);
-  const datasetCount = useEvalStore((st) => st.datasets.length);
+  const datasetCount = useEvalStore((st) => datasetsOf(st.datasetsByAgent, activeAgentId).length);
 
   /**
    * §4's attachments, held beside the draft.

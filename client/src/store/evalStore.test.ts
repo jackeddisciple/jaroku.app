@@ -1,12 +1,20 @@
 // The eval store: what the eval channel's messages do to the Evals tab's state.
 //
-// A finished eval stays finished. The server once sent a progress count after `evalFinished`, and the
-// store replaced the whole object with it — so the status went, and the panel read `running 15/15`
-// over a Cancel that cancelled nothing, with every model chip locked until a reload.
+// Two rules, both about state that belonged to something and was shown as if it belonged to
+// whatever was on screen:
+//
+//   A FINISHED EVAL STAYS FINISHED. The server once sent a progress count after `evalFinished`, and
+//   the store replaced the whole object with it — so the status went, and the panel read
+//   `running 15/15` over a Cancel that cancelled nothing, with every model chip locked until a reload.
+//
+//   EACH AGENT'S IS ITS OWN. The datasets, the selection, the history and the live progress were
+//   single values, so selecting another agent while an eval ran showed it the first agent's results,
+//   cases and `running 2/12`, with nothing on the panel to say whose they were.
 //
 //   npm run test:eval-store
 
-import { useEvalStore, type EvalProgress } from "./evalStore.ts";
+import { datasetsOf, evalListKey, liveEvalOf, useEvalStore, type EvalProgress } from "./evalStore.ts";
+import type { Dataset, EvalRunSummary } from "../types.ts";
 
 let fail = 0;
 const check = (name: string, ok: boolean, detail = ""): void => {
@@ -17,27 +25,57 @@ const check = (name: string, ok: boolean, detail = ""): void => {
 const count = (over: Partial<EvalProgress> = {}): EvalProgress => ({
   evalId: "e1", total: 15, done: 2, running: 0, queued: 13, failed: 0, succeeded: 2, cancelled: 0, ...over,
 });
+const dataset = (id: string, agent: string): Dataset => ({ id, agent_id: agent, name: id, created_at: "", updated_at: "" });
+const summary = (id: string): EvalRunSummary => ({
+  id, dataset_id: "d", agent_id: "liven", status: "completed", targets: [], budget_usd: null,
+  judge_cost_usd: 0, started_at: "", ended_at: null, error: null,
+});
 
 console.log("\na count after the finish does not bring an eval back to life");
 {
   const s = useEvalStore.getState();
-  s.setProgress(null);
+  s.noteStarted(count({ done: 0, queued: 15, agentId: "liven", datasetId: "d1" }));
   s.applyProgress(count());
-  check("a count lands while the eval runs", useEvalStore.getState().progress?.done === 2);
-  s.patchProgress({ status: "aborted_over_budget", scoring: true });
+  check("a count lands while the eval runs", useEvalStore.getState().progressByEval["e1"]?.done === 2);
+  check("and keeps the agent it started under", useEvalStore.getState().progressByEval["e1"]?.agentId === "liven");
+  s.patchProgress("e1", { status: "aborted_over_budget", scoring: true });
   s.applyProgress(count({ done: 15, queued: 0, cancelled: 13 }));
-  const p = useEvalStore.getState().progress;
+  const p = useEvalStore.getState().progressByEval["e1"];
   check("the status survives a late count", p?.status === "aborted_over_budget", JSON.stringify(p));
   check("and so does scoring", p?.scoring === true);
+  s.patchProgress("e1", { scoring: false });
+  check("once scoring ends it is no longer this agent's live eval", liveEvalOf(useEvalStore.getState().progressByEval, "liven") === null);
 }
 
-console.log("\nanother eval's count is not that eval's");
+console.log("\none agent's eval is not another agent's");
 {
   const s = useEvalStore.getState();
-  s.setProgress(count({ status: "completed" }));
-  s.applyProgress(count({ evalId: "e2", done: 0, queued: 3, total: 3 }));
-  const p = useEvalStore.getState().progress;
-  check("a new eval's count replaces a finished one", p?.evalId === "e2" && p.status === undefined, JSON.stringify(p));
+  s.noteStarted(count({ evalId: "e2", done: 0, queued: 12, total: 12, agentId: "liven", datasetId: "d1" }));
+  const byEval = useEvalStore.getState().progressByEval;
+  check("the agent that runs it sees it running", liveEvalOf(byEval, "liven")?.evalId === "e2");
+  check("another agent sees nothing running", liveEvalOf(byEval, "bruno") === null);
+}
+
+console.log("\neach agent keeps its own datasets, selection and history");
+{
+  const s = useEvalStore.getState();
+  s.setDatasets("liven", [dataset("d1", "liven"), dataset("d2", "liven")]);
+  s.selectDataset("liven", "d2");
+  s.setDatasets("bruno", [dataset("d9", "bruno")]);
+  const st = useEvalStore.getState();
+  check("listing one agent's datasets leaves the other's", datasetsOf(st.datasetsByAgent, "liven").length === 2);
+  check("and each agent keeps its own selection", st.selectedDatasetByAgent["liven"] === "d2" && st.selectedDatasetByAgent["bruno"] === "d9");
+  s.removeDataset("d2");
+  check("a deleted selection falls back to the agent's newest", useEvalStore.getState().selectedDatasetByAgent["liven"] === "d1");
+
+  s.setEvals(evalListKey("liven", "d1"), [summary("x1")], { complete: true, window: 50 });
+  s.setEvals(evalListKey("liven", null), [summary("x1"), summary("x2")], { complete: false, window: 50 });
+  const lists = useEvalStore.getState().evalLists;
+  check("a dataset's history and the agent's all-datasets history are kept apart",
+    lists[evalListKey("liven", "d1")]?.evals.length === 1 && lists[evalListKey("liven", null)]?.evals.length === 2);
+  check("and neither is another agent's", lists[evalListKey("bruno", "d9")] === undefined);
+  s.selectEval("liven", "x2");
+  check("the selected eval is this agent's", useEvalStore.getState().selectedEvalByAgent["bruno"] === undefined);
 }
 
 console.log(fail === 0 ? "\nALL CORRECT" : `\n${fail} FAILURES`);

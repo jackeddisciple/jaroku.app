@@ -7,7 +7,7 @@
 
 import { useEffect, useState } from "react";
 import { useBuildStore } from "../store/buildStore.ts";
-import { useEvalStore } from "../store/evalStore.ts";
+import { datasetsOf, evalListKey, liveEvalOf, useEvalStore } from "../store/evalStore.ts";
 import { useTraceStore } from "../store/traceStore.ts";
 import { sendListEvals, sendLoadEvalResults } from "../lib/socket.ts";
 import { DatasetBuilder } from "./DatasetBuilder.tsx";
@@ -44,16 +44,28 @@ type Mode = "dataset" | "results";
 export function EvalsPanel() {
   const activeAgentId = useBuildStore((s) => s.activeAgentId);
   const connected = useTraceStore((s) => s.connection === "open");
-  const selectedDatasetId = useEvalStore((s) => s.selectedDatasetId);
-  const evals = useEvalStore((s) => s.evals);
-  const selectedEvalId = useEvalStore((s) => s.selectedEvalId);
+  // EVERYTHING BELOW IS THIS AGENT'S. These were single values for the whole tab, so another agent's
+  // running eval — its table, its cases, its `running 2/12` — was what this agent's Results showed.
+  const selectedDatasetId = useEvalStore((s) => (activeAgentId ? (s.selectedDatasetByAgent[activeAgentId] ?? null) : null));
+  const hasDatasets = useEvalStore((s) => datasetsOf(s.datasetsByAgent, activeAgentId).length > 0);
+  const selectedEvalId = useEvalStore((s) => (activeAgentId ? (s.selectedEvalByAgent[activeAgentId] ?? null) : null));
   const selectEval = useEvalStore((s) => s.selectEval);
   const resultsByEval = useEvalStore((s) => s.resultsByEval);
-  const progress = useEvalStore((s) => s.progress);
-  const evalsWindow = useEvalStore((s) => s.evalsWindow);
-  const evalsComplete = useEvalStore((s) => s.evalsComplete);
+  const progress = useEvalStore((s) => liveEvalOf(s.progressByEval, activeAgentId));
 
   const [mode, setMode] = useState<Mode>("dataset");
+  /**
+   * Which history the strip shows: the open dataset's, or every eval of this agent.
+   *
+   * THE SECOND IS HOW A DELETED DATASET'S EVALS ARE REACHED. The strip only ever listed the open
+   * dataset's evals, so deleting a dataset made its evals unreachable from the tab for good — they were
+   * in the database, readable, and there was no dataset left to open them from. With no dataset at all
+   * there is nothing else to show, so that is the scope.
+   */
+  const [allDatasets, setAllDatasets] = useState(false);
+  const scopeDataset = allDatasets || !selectedDatasetId ? null : selectedDatasetId;
+  const list = useEvalStore((s) => (activeAgentId ? s.evalLists[evalListKey(activeAgentId, scopeDataset)] : undefined));
+  const evals = list?.evals ?? [];
   /**
    * How many past evals the strip is showing.
    *
@@ -63,22 +75,23 @@ export function EvalsPanel() {
    * comparing. This is the local half; the window below is the server's.
    */
   const [shown, setShown] = useState(6);
-  const results = selectedEvalId ? resultsByEval[selectedEvalId] : undefined;
+  const shownEvalId = selectedEvalId ?? evals[0]?.id ?? null;
+  const results = shownEvalId ? resultsByEval[shownEvalId] : undefined;
   const running = progress !== null && (progress.status === undefined || progress.scoring === true);
 
-  // Past evals for this dataset, so a finished comparison stays reachable.
+  // Past evals for this scope, so a finished comparison stays reachable.
   useEffect(() => {
-    if (connected && selectedDatasetId) sendListEvals(selectedDatasetId);
-  }, [connected, selectedDatasetId]);
+    if (connected && activeAgentId) sendListEvals(activeAgentId, scopeDataset, list?.window);
+  }, [connected, activeAgentId, scopeDataset]);
 
   // An eval starting is the moment the results view becomes the thing to look at.
   useEffect(() => {
-    if (progress) setMode("results");
+    if (progress && progress.status === undefined) setMode("results");
   }, [progress?.evalId]);
 
   useEffect(() => {
-    if (connected && selectedEvalId && !resultsByEval[selectedEvalId]) sendLoadEvalResults(selectedEvalId);
-  }, [connected, selectedEvalId]);
+    if (connected && shownEvalId && !resultsByEval[shownEvalId]) sendLoadEvalResults(shownEvalId);
+  }, [connected, shownEvalId]);
 
   if (!activeAgentId) {
     return (
@@ -130,18 +143,33 @@ export function EvalsPanel() {
       ) : (
         <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-4">
           {/* Past evals — a comparison keeps its value after the run that produced it. */}
-          {evals.length > 1 && (
+          {(evals.length > 1 || allDatasets || !selectedDatasetId) && (
             <div className="flex flex-wrap items-center gap-1.5 pb-3">
+              {/* WHICH HISTORY. Only offered while there is a dataset to narrow to. */}
+              {hasDatasets && selectedDatasetId && (
+                <button
+                  onClick={() => { setAllDatasets((v) => !v); setShown(6); }}
+                  aria-pressed={allDatasets}
+                  title={allDatasets ? "Show only this dataset's evals" : "Show this agent's evals on every dataset, including deleted ones"}
+                  className="rounded-control px-2 py-1 text-tiny text-muted transition-colors hover:bg-active active:bg-chrome hover:text-ink"
+                >
+                  {allDatasets ? "All datasets" : "This dataset"}
+                </button>
+              )}
               {evals.slice(0, shown).map((e) => (
                 <Chip
                   key={e.id}
-                  onClick={() => selectEval(e.id)}
-                  selected={e.id === selectedEvalId}
+                  onClick={() => activeAgentId && selectEval(activeAgentId, e.id)}
+                  selected={e.id === shownEvalId}
                   tone="faint"
-                  title={`${EVAL_WORD[e.status]} · ${e.targets.map((t) => t.model).join(", ")}`}
+                  title={`${EVAL_WORD[e.status]} · ${e.targets.map((t) => t.model).join(", ")}${e.dataset_name ? ` · ${e.dataset_name}${e.dataset_gone ? " (deleted)" : ""}` : ""}`}
                   icon={<StatusGlyph phase={EVAL_PHASE[e.status]} size={ICON.xs} title={EVAL_WORD[e.status]} />}
                 >
                   {relTime(e.started_at)}
+                  {/* ACROSS DATASETS, each names its own — and says when that dataset is gone. */}
+                  {scopeDataset === null && e.dataset_name && (
+                    <span className="text-muted">{e.dataset_name}{e.dataset_gone ? " · deleted" : ""}</span>
+                  )}
                   {/* THE WORD IS NO LONGER COLOURED. It was `text-err` for one status and
                       `text-muted` for the rest — a status word rendered as coloured text, which is
                       the second of the three things §2.5 removes. The glyph carries the state now
@@ -152,11 +180,11 @@ export function EvalsPanel() {
               {/* OLDER COMPARISONS. It widens the strip first and then asks the server for a bigger
                   window when the loaded ones run out, so one control answers "show me more" whichever
                   of the two ceilings is the one in the way. It disappears when both are exhausted. */}
-              {(shown < evals.length || !evalsComplete) && (
+              {(shown < evals.length || (list !== undefined && !list.complete)) && (
                 <button
                   onClick={() => {
                     if (shown < evals.length) setShown(shown + 12);
-                    else sendListEvals(selectedDatasetId ?? undefined, Math.min(evalsWindow * 2, 500));
+                    else if (activeAgentId) sendListEvals(activeAgentId, scopeDataset, Math.min((list?.window ?? 50) * 2, 500));
                   }}
                   className="rounded-control px-2 py-1 text-tiny text-muted transition-colors hover:bg-active active:bg-chrome hover:text-ink"
                 >

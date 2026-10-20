@@ -17,7 +17,7 @@
 // pull request can spend our balance".
 
 import { useEffect, useState } from "react";
-import { useEvalStore } from "../store/evalStore.ts";
+import { datasetsOf, useEvalStore } from "../store/evalStore.ts";
 import { useGithubStore } from "../store/githubStore.ts";
 import { useTraceStore } from "../store/traceStore.ts";
 import { sendListDatasets, sendListScanFindings, sendSetAgentCiConfig } from "../lib/socket.ts";
@@ -116,7 +116,7 @@ export function ScanHistoryRegion({ view }: { view: GithubView }) {
 }
 
 export function ChecksRegion({ view }: { view: GithubView }) {
-  const datasets = useEvalStore((s) => s.datasets);
+  const datasets = useEvalStore((s) => datasetsOf(s.datasetsByAgent, view.agentId));
   const connected = useTraceStore((s) => s.connection === "open");
   const [open, setOpen] = useState(false);
 

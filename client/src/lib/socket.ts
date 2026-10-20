@@ -11,7 +11,7 @@ import { CANCELLED_BY_USER, useTraceStore } from "../store/traceStore.ts";
 import { useBuildStore } from "../store/buildStore.ts";
 import { useChatStore } from "../store/chatStore.ts";
 import { graphKey, useGraphStore } from "../store/graphStore.ts";
-import { useEvalStore } from "../store/evalStore.ts";
+import { evalListKey, useEvalStore } from "../store/evalStore.ts";
 import { useMcpStore } from "../store/mcpStore.ts";
 import { useProviderStore } from "../store/providerStore.ts";
 import { useConnectionStore } from "../store/connectionStore.ts";
@@ -357,14 +357,24 @@ function dispatch(msg: ServerMessage): void {
       // Eval control plane. Every message is a full snapshot of what it names, so these
       // are replaces, not merges. Nothing here touches trace state — an eval's runs are
       // ordinary runs, loaded on demand through the normal loadRun path.
+      //
+      // EACH LANDS UNDER WHAT IT NAMES — its agent, its dataset, its eval — and never as "the one on
+      // screen": a panel showing another agent reads that agent's, and is left alone.
       const e = useEvalStore.getState();
-      if (msg.type === "datasets") e.setDatasets(msg.datasets);
-      else if (msg.type === "dataset") e.setExamples(msg.datasetId, msg.examples);
+      if (msg.type === "datasets") {
+        // A list with no agent is a workspace-wide read nobody here asked for; it has no panel.
+        if (msg.agentId) e.setDatasets(msg.agentId, msg.datasets);
+      } else if (msg.type === "dataset") e.setExamples(msg.datasetId, msg.examples);
       else if (msg.type === "datasetDeleted") e.removeDataset(msg.datasetId);
       else if (msg.type === "promoted") e.setPromoted(msg.datasetName, msg.duplicate);
       else if (msg.type === "evalStarted") {
-        e.setProgress({ evalId: msg.evalId, total: msg.total, done: 0, running: 0, queued: msg.total, failed: 0 });
-        e.selectEval(msg.evalId);
+        e.noteStarted({
+          evalId: msg.evalId, total: msg.total, done: 0, running: 0, queued: msg.total, failed: 0,
+          agentId: msg.agentId, datasetId: msg.datasetId,
+        });
+        e.selectEval(msg.agentId, msg.evalId);
+        // A running eval belongs in the history strip from its first moment, not after it finishes.
+        refreshEvalLists(msg.agentId);
       } else if (msg.type === "evalProgress") {
         const { channel: _channel, type: _type, ...counts } = msg;
         e.applyProgress(counts);
@@ -380,18 +390,26 @@ function dispatch(msg: ServerMessage): void {
       else if (msg.type === "evalFinished") {
         // Runs are done; scoring may still be in flight, so the panel says so rather than
         // showing a quality column that's about to fill in.
-        e.patchProgress({ status: msg.status, scoring: true });
+        e.patchProgress(msg.evalId, { status: msg.status, scoring: true });
         sendLoadEvalResults(msg.evalId);
-        sendListEvals();
+        // THE LISTS THIS AGENT'S PANEL ASKED FOR, each in its own scope. This sent an unscoped list,
+        // which put every dataset's evals in the strip of whichever dataset was open.
+        const agentId = useEvalStore.getState().progressByEval[msg.evalId]?.agentId;
+        if (agentId) refreshEvalLists(agentId);
       } else if (msg.type === "scored") {
         // Refresh the aggregate so the quality column fills in as verdicts land.
         sendLoadEvalResults(msg.evalId);
       } else if (msg.type === "scoringFinished") {
-        e.patchProgress({ scoring: false });
+        e.patchProgress(msg.evalId, { scoring: false });
         sendLoadEvalResults(msg.evalId);
       } else if (msg.type === "evalResults") e.setResults(msg.evalId, msg.results);
-      else if (msg.type === "evals") e.setEvals(msg.evals, { complete: msg.complete, window: msg.window });
-      else if (msg.type === "rubric") e.setRubric(msg.rubric, msg.isDefault);
+      else if (msg.type === "evals") {
+        // Only a scoped list has a panel to go to. An agent's list with no dataset is its all-datasets view.
+        if (msg.agentId) {
+          e.setEvals(evalListKey(msg.agentId, msg.datasetId ?? null), msg.evals, { complete: msg.complete, window: msg.window });
+        }
+      }
+      else if (msg.type === "rubric") e.setRubric(msg.datasetId, msg.rubric, msg.isDefault);
       else if (msg.type === "estimate") e.setEstimate(msg.estimate);
       else if (msg.type === "error") e.setError(msg.message);
       break;
@@ -2329,8 +2347,23 @@ export function sendLoadEvalResults(evalId: string): void {
  * `ORDER BY started_at DESC LIMIT 50` with no way to ask past it, so the 51st-oldest comparison was
  * unreachable — including from the dashboard whose whole job is to compare.
  */
-export function sendListEvals(datasetId?: string, limit?: number): void {
-  send({ cmd: "listEvals", datasetId, ...(limit === undefined ? {} : { limit }) });
+export function sendListEvals(agentId: string, datasetId: string | null, limit?: number): void {
+  send({ cmd: "listEvals", agentId, ...(datasetId ? { datasetId } : {}), ...(limit === undefined ? {} : { limit }) });
+}
+
+/**
+ * Ask again for every eval list this agent's panel has asked for, each in its own scope and window.
+ *
+ * WHEN AN EVAL STARTS OR FINISHES the strip has to change, and the lists to refresh are the ones on
+ * the agent's panel — a dataset's, and the all-datasets view if it was opened — rather than one
+ * unscoped list that put every dataset's evals in front of whichever was open.
+ */
+function refreshEvalLists(agentId: string): void {
+  for (const [key, list] of Object.entries(useEvalStore.getState().evalLists)) {
+    const [agent, dataset] = key.split("|");
+    if (agent !== agentId) continue;
+    sendListEvals(agentId, dataset === "*" ? null : (dataset ?? null), list.window);
+  }
 }
 /** Ask what a real-provider eval would roughly cost, BEFORE committing to it. */
 export function sendEstimateEval(datasetId: string, agentId: string, targets: EvalTarget[]): void {

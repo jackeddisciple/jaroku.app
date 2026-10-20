@@ -527,6 +527,10 @@ export interface EvalRunSummary {
   started_at: string;
   ended_at: string | null;
   error: string | null;
+  /** What its dataset was called when it ran (server migration 089). Null for an eval from before. */
+  dataset_name?: string | null;
+  /** The dataset has been deleted since: the eval is still readable, the dataset is not there to open. */
+  dataset_gone?: boolean;
 }
 
 /** One (provider, model) leg of the comparison. */
@@ -616,6 +620,8 @@ export interface ExampleRow {
 export interface EvalResults {
   evalId: string;
   datasetId: string;
+  /** What the dataset was called when the eval ran. Null only for an eval from before it was kept. */
+  datasetName?: string | null;
   agentId: string;
   status: string;
   startedAt: string;
@@ -682,7 +688,7 @@ export type EvalMessage =
   | { channel: "eval"; type: "scored"; evalId: string; jobId: string; score: number | null; error?: string | null }
   | { channel: "eval"; type: "scoringFinished"; evalId: string; scored: number; unscored: number }
   | { channel: "eval"; type: "evalResults"; evalId: string; results: EvalResults }
-  | { channel: "eval"; type: "evals"; evals: EvalRunSummary[]; complete?: boolean; window?: number }
+  | { channel: "eval"; type: "evals"; agentId?: string | null; datasetId?: string | null; evals: EvalRunSummary[]; complete?: boolean; window?: number }
   | { channel: "eval"; type: "estimate"; estimate: EvalEstimate }
   | { channel: "eval"; type: "rubric"; datasetId: string; rubric: Rubric; isDefault: boolean }
   | { channel: "eval"; type: "error"; message: string; datasetId?: string };
@@ -2554,7 +2560,7 @@ export type ClientCommand =
   | { cmd: "startEval"; datasetId: string; agentId: string; targets: EvalTarget[]; budgetUsd?: number | null; threadId?: string }
   | { cmd: "cancelEval"; evalId: string }
   | { cmd: "loadEvalResults"; evalId: string }
-  | { cmd: "listEvals"; datasetId?: string; limit?: number }
+  | { cmd: "listEvals"; agentId?: string; datasetId?: string; limit?: number }
   | { cmd: "estimateEval"; datasetId: string; agentId: string; targets: EvalTarget[] }
   | { cmd: "loadRubric"; datasetId: string }
   | { cmd: "saveRubric"; datasetId: string; name?: string; criteria: RubricCriterion[] }
