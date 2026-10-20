@@ -22,36 +22,53 @@ function rows(rows: unknown[][]): string {
   return rows.map((r) => r.map(cell).join(",")).join("\r\n");
 }
 
+/** What an export is about that the results alone name only by id. */
+export interface ExportContext {
+  /** The agent's display name. The results carry only its slug. */
+  agentName?: string;
+}
+
+/** A job that never ran — waiting, or stopped by a ceiling or a Cancel before it started. */
+const DID_NOT_RUN = new Set(["queued", "running", "cancelled"]);
+
 /**
  * Per-cell CSV: one row per (example × provider). The analyzable shape — a provider
  * summary is a pivot away, but the reverse isn't recoverable.
+ *
+ * READABLE ON ITS OWN. It carried ids and no answer: what each model said, which agent, which
+ * dataset were all somewhere else. And a job that never ran exported as `attempt 1`, `cost_complete
+ * yes`, `not scored` — three claims about a run that did not happen.
  */
-export function resultsToCsv(results: EvalResults): string {
+export function resultsToCsv(results: EvalResults, context: ExportContext = {}): string {
   const header = [
-    "example", "input", "expected",
+    "example", "input", "expected", "output",
     "provider", "model", "status", "attempt",
     "score", "score_known", "score_note",
     "cost_usd", "cost_known", "cost_complete",
     "latency_ms", "run_id", "error",
+    "agent", "dataset", "eval_id",
   ];
 
   const body: unknown[][] = [];
   results.rows.forEach((row, i) => {
     for (const c of row.cells) {
+      const ran = !DID_NOT_RUN.has(c.status);
       const scoreKnown = c.score !== null;
       const costKnown = c.costUsd !== null;
       body.push([
         i + 1,
         row.input,
         row.expected ?? "",
+        // What the agent answered. Empty when nothing was kept — the run_id beside it has all of it.
+        c.output ?? "",
         c.provider,
         c.model,
         c.status,
-        c.attempt + 1,
+        ran ? c.attempt + 1 : "",
         // Empty, not 0 — and the flag beside it says which.
         scoreKnown ? c.score : "",
         scoreKnown ? "yes" : "no",
-        scoreKnown ? "" : (c.scoreError ?? "not scored"),
+        scoreKnown ? "" : ran ? (c.scoreError ?? "not scored") : `did not run${c.error ? ` — ${c.error}` : ""}`,
         costKnown ? c.costUsd : "",
         costKnown ? "yes" : "no",
         // A THIRD state, and it is not a refinement of the other two. `cost_known: no` means we
@@ -59,10 +76,13 @@ export function resultsToCsv(results: EvalResults): string {
         // the number beside it is a floor. Without this column that second case exported as a
         // clean measurement — the exact laundering this file exists to prevent, and it was
         // happening on the per-cell export for as long as the per-leg rollup has flagged it.
-        c.costComplete ? "yes" : "no",
+        ran ? (c.costComplete ? "yes" : "no") : "",
         c.latencyMs ?? "",
         c.runId ?? "",
         c.error ?? "",
+        context.agentName ?? results.agentId,
+        results.datasetName ?? results.datasetId,
+        results.evalId,
       ]);
     }
   });
@@ -71,14 +91,15 @@ export function resultsToCsv(results: EvalResults): string {
 }
 
 /** Provider-summary CSV: the comparison table as it appears on screen, caveats intact. */
-export function summaryToCsv(results: EvalResults): string {
+export function summaryToCsv(results: EvalResults, context: ExportContext = {}): string {
   const header = [
     "provider", "model",
     "quality_mean", "scored", "unscored",
     "comparison_cost_usd", "cost_per_run_usd", "cost_known", "cost_complete",
     "spent_usd", "tokens",
     "latency_p50_ms", "latency_p95_ms",
-    "succeeded", "failed", "total", "success_rate",
+    // `success_rate` is of the jobs that RAN; `cancelled` ones never did, and are counted apart.
+    "succeeded", "failed", "total", "success_rate", "cancelled",
   ];
   const body = results.providers.map((p) => [
     p.provider, p.model,
@@ -90,22 +111,32 @@ export function summaryToCsv(results: EvalResults): string {
     p.costIncomplete ? "no" : "yes",
     p.spentUsd, p.tokens,
     p.latencyP50Ms ?? "", p.latencyP95Ms ?? "",
-    p.succeeded, p.failed, p.total, p.successRate.toFixed(4),
+    p.succeeded, p.failed, p.total, p.successRate.toFixed(4), p.cancelled ?? "",
   ]);
 
   // Totals as a trailing block: true spend and judge cost are properties of the eval, not
   // of any provider, and folding them into a provider row would misattribute them.
+  // And what the eval was: whose, on what, how it ended, and the rubric its quality was scored on —
+  // so a file read a month later says what it is about without the app open beside it.
   const totals: unknown[][] = [
     [],
     ["eval_id", results.evalId],
+    ["agent", context.agentName ?? results.agentId],
+    ["agent_version", results.agentVersion ?? ""],
+    ["dataset", results.datasetName ?? results.datasetId],
     ["status", results.status],
+    ["stop_reason", results.stopReason ?? ""],
+    ["started_at", results.startedAt],
     ["agent_spend_usd", results.totals.agentSpendUsd],
     ["judge_cost_usd", results.totals.judgeCostUsd],
     ["true_spend_usd", results.totals.trueSpendUsd],
     ["budget_usd", results.totals.budgetUsd ?? ""],
   ];
+  const rubric: unknown[][] = results.rubric?.length
+    ? [[], ["criterion", "label", "weight", "description"], ...results.rubric.map((c) => [c.id, c.label, c.weight, c.description])]
+    : [];
 
-  return rows([header, ...body, ...totals]);
+  return rows([header, ...body, ...totals, ...rubric]);
 }
 
 /**
@@ -161,9 +192,9 @@ export function usageStem(usage: UsageSnapshot): string {
   return `jaroku-usage-${usage.periodStart.slice(0, 10)}`;
 }
 
-/** Everything, unmodified — the lossless form. */
-export function resultsToJson(results: EvalResults): string {
-  return JSON.stringify(results, null, 2);
+/** Everything, unmodified — the lossless form — with the agent's name when it is known. */
+export function resultsToJson(results: EvalResults, context: ExportContext = {}): string {
+  return JSON.stringify(context.agentName ? { ...results, agentName: context.agentName } : results, null, 2);
 }
 
 /** Trigger a client-side download. No server round trip; the data is already here. */
@@ -180,8 +211,16 @@ export function download(filename: string, contents: string | Blob, mime: string
   setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
-/** Short, sortable filename stem for an eval's exports. */
+/**
+ * Short, sortable filename stem for an eval's exports — in LOCAL time.
+ *
+ * It was the UTC timestamp's digits, so an eval started at 15:57 downloaded as `…10-27-11`, which
+ * matched nothing on the person's clock.
+ */
 export function exportStem(results: EvalResults): string {
-  const when = (results.startedAt ?? "").slice(0, 19).replace(/[:T]/g, "-");
-  return `jaroku-eval-${when || results.evalId.slice(0, 8)}`;
+  const t = new Date(results.startedAt ?? "");
+  if (Number.isNaN(t.getTime())) return `jaroku-eval-${results.evalId.slice(0, 8)}`;
+  const two = (n: number): string => String(n).padStart(2, "0");
+  const when = `${t.getFullYear()}-${two(t.getMonth() + 1)}-${two(t.getDate())}-${two(t.getHours())}-${two(t.getMinutes())}-${two(t.getSeconds())}`;
+  return `jaroku-eval-${when}`;
 }

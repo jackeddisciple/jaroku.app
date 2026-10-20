@@ -11,7 +11,7 @@
 //
 //   npm run test:export
 
-import { resultsToCsv, resultsToJson, summaryToCsv, usageStem, usageToCsv } from "./evalExport.ts";
+import { exportStem, resultsToCsv, resultsToJson, summaryToCsv, usageStem, usageToCsv } from "./evalExport.ts";
 import { parseCsv } from "./csv.ts";
 import type { EvalResults, UsageSnapshot } from "../types.ts";
 
@@ -153,6 +153,47 @@ check("summary: true spend + judge cost are eval-level totals, not provider rows
 const back = JSON.parse(resultsToJson(results));
 check("JSON is lossless", JSON.stringify(back) === JSON.stringify(results));
 check("JSON keeps null cost as null, not 0", back.rows[0].cells[1].costUsd === null);
+
+// --- an export reads on its own, and says what never ran ------------------------------------
+{
+  const stopped: EvalResults = {
+    ...results,
+    datasetName: "Screening cases", agentVersion: 3, status: "aborted_over_budget",
+    stopReason: "stopped after $0.0048 of a $0.0010 budget",
+    rubric: [{ id: "correctness", label: "Correctness", description: "Did it do the job?", weight: 0.5 }],
+    rows: [{
+      exampleId: "e9", input: "Role: QA", expected: "decline",
+      cells: [
+        { jobId: "j8", provider: "anthropic", model: "claude-haiku-4-5", status: "succeeded", runId: "r8",
+          costUsd: 0.002, costComplete: true, latencyMs: 900, attempt: 0, error: null, output: "decline — no QA experience",
+          score: null, scoreError: "not scored — the judge is off", perCriterion: null, rationale: null },
+        { jobId: "j9", provider: "anthropic", model: "claude-haiku-4-5", status: "cancelled", runId: null,
+          costUsd: null, costComplete: true, latencyMs: null, attempt: 0, error: "budget ceiling reached",
+          score: null, scoreError: null, perCriterion: null, rationale: null },
+      ],
+    }],
+  };
+  const rowsOut = parseCsv(resultsToCsv(stopped, { agentName: "Liven" })).rows;
+  const h = rowsOut[0]!, ran = rowsOut[1]!, never = rowsOut[2]!;
+  const c = (row: string[], name: string) => row[h.indexOf(name)];
+  check("the answer is in the export", c(ran, "output") === "decline — no QA experience");
+  check("with the agent and the dataset by name", c(ran, "agent") === "Liven" && c(ran, "dataset") === "Screening cases");
+  check("a cancelled job is not exported as attempt 1", c(never, "attempt") === "", JSON.stringify(c(never, "attempt")));
+  check("nor as a cost it completed", c(never, "cost_complete") === "", JSON.stringify(c(never, "cost_complete")));
+  check("its note says it did not run, and why", c(never, "score_note") === "did not run — budget ceiling reached", c(never, "score_note"));
+  const summary = parseCsv(summaryToCsv(stopped, { agentName: "Liven" })).rows;
+  const field = (k: string) => summary.find((r) => r[0] === k)?.[1];
+  check("the summary names the agent, dataset and version", field("agent") === "Liven" && field("dataset") === "Screening cases" && field("agent_version") === "3");
+  check("and why it stopped", field("stop_reason") === "stopped after $0.0048 of a $0.0010 budget");
+  check("and the rubric it was scored on", summary.some((r) => r[0] === "correctness" && r[1] === "Correctness"));
+  const json = JSON.parse(resultsToJson(stopped, { agentName: "Liven" }));
+  check("the JSON carries the agent's name", json.agentName === "Liven");
+  // LOCAL TIME, not the UTC digits. Pinned to one zone so the assertion does not depend on the machine.
+  const was = (globalThis as { process?: { env: Record<string, string | undefined> } }).process!.env["TZ"];
+  (globalThis as { process?: { env: Record<string, string | undefined> } }).process!.env["TZ"] = "Asia/Kolkata";
+  check("the filename is the local time it started", exportStem(results) === "jaroku-eval-2026-07-28-07-40-04", exportStem(results));
+  (globalThis as { process?: { env: Record<string, string | undefined> } }).process!.env["TZ"] = was;
+}
 
 console.log(fail === 0 ? "\nALL CORRECT" : `\n${fail} FAILURES`);
 // `process` isn't in the client's DOM lib; this file only ever runs under tsx.

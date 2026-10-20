@@ -22,7 +22,10 @@ import {
 } from "../lib/evalExport.ts";
 import { ICON } from "../lib/tokens.ts";
 import { TYPE } from "../lib/tokens.ts";
-import { CheckIcon } from "./panelIcons.tsx";
+import { CheckIcon, ChevronDownIcon } from "./panelIcons.tsx";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "./ui/dropdown-menu.tsx";
+import { useBuildStore } from "../store/buildStore.ts";
+import { useUiStore } from "../store/uiStore.ts";
 import type { EvalResults, ProviderMetrics } from "../types.ts";
 
 /**
@@ -161,6 +164,21 @@ function ProviderCard({ p, lead }: { p: ProviderMetrics; lead: ReturnType<typeof
 /** Narrower than this, the table's seven columns are clipped; the rows become cards. */
 const STACK_BELOW_PX = 560;
 
+/** The three files an eval exports, each with what it holds. */
+const EXPORTS = [
+  { label: "Summary (CSV)", suffix: "-summary.csv", mime: "text/csv", make: summaryToCsv },
+  { label: "Every case (CSV)", suffix: "-examples.csv", mime: "text/csv", make: resultsToCsv },
+  { label: "Everything (JSON)", suffix: ".json", mime: "application/json", make: resultsToJson },
+] as const;
+
+/** Write one export and say where it went. */
+export function saveExport(results: EvalResults, x: (typeof EXPORTS)[number], agentName: string | undefined): string {
+  const filename = `${exportStem(results)}${x.suffix}`;
+  download(filename, x.make(results, { agentName }), x.mime);
+  useUiStore.getState().showToast(`Saved to Downloads as ${filename}`, "ok");
+  return filename;
+}
+
 export function ComparisonTable({
   results,
   onSelectProvider,
@@ -169,6 +187,7 @@ export function ComparisonTable({
   onSelectProvider?: (p: ProviderMetrics) => void;
 }) {
   const lead = leaders(results.providers);
+  const agentName = useBuildStore((s) => s.agents.find((a) => a.agent_id === results.agentId)?.name);
   const { totals } = results;
   const overBudget = totals.budgetUsd !== null && totals.trueSpendUsd >= totals.budgetUsd;
   // HOW WIDE THE PANEL ACTUALLY IS. Below about 600px the columns were clipped with nothing to say so.
@@ -270,28 +289,26 @@ export function ComparisonTable({
           <span className="text-run">≥ some steps could not be priced</span>
         )}
 
-        {/* Export. Every caveat above survives the trip — unknown cost is an empty cell
-            with a cost_known flag beside it, never a 0 a spreadsheet would happily sum. */}
-        <span className="ml-auto flex items-center gap-2">
-          <span className={TYPE.sectionLabel}>Export</span>
-          <button
-            onClick={() => download(`${exportStem(results)}-summary.csv`, summaryToCsv(results), "text/csv")}
-            className="text-faint hover:text-ink transition-colors"
-          >
-            summary.csv
-          </button>
-          <button
-            onClick={() => download(`${exportStem(results)}-examples.csv`, resultsToCsv(results), "text/csv")}
-            className="text-faint hover:text-ink transition-colors"
-          >
-            examples.csv
-          </button>
-          <button
-            onClick={() => download(`${exportStem(results)}.json`, resultsToJson(results), "application/json")}
-            className="text-faint hover:text-ink transition-colors"
-          >
-            json
-          </button>
+        {/* Export. Every caveat above survives the trip — unknown cost is an empty cell with a
+            cost_known flag beside it, never a 0 a spreadsheet would happily sum. ONE MENU rather
+            than three words in a row, and the download SAYS WHERE IT WENT: it used to finish
+            without a word, and the desktop app saves to ~/Downloads, which nothing on screen said. */}
+        <span className="ml-auto">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button className="inline-flex items-center gap-1 text-faint transition-colors hover:text-ink" aria-label="Export these results">
+                Export
+                <ChevronDownIcon size={ICON.xs} />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {EXPORTS.map((x) => (
+                <DropdownMenuItem key={x.label} onSelect={() => saveExport(results, x, agentName)}>
+                  {x.label}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </span>
       </div>
     </div>

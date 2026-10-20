@@ -643,6 +643,8 @@ export interface EvalResults {
   stopReason?: string | null;
   /** The legs it compared, in the order they were chosen. */
   targets?: EvalTarget[];
+  /** The criteria its quality was scored on, as kept when it started. */
+  rubric?: RubricCriterion[];
   startedAt: string;
   endedAt: string | null;
   providers: ProviderMetrics[];
