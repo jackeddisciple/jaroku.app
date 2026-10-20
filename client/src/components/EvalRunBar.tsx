@@ -29,6 +29,13 @@ import { IconButton } from "./IconButton.tsx";
 
 const key = (t: EvalTarget) => `${t.provider}/${t.model}`;
 
+/** What each estimate basis means, for the line that names it. */
+const BASIS: Record<string, string> = {
+  measured: "projected from this agent's past runs on this model",
+  "other-model": "projected from this agent's runs on a different model — tokenizers differ",
+  default: "no past runs to learn from — a built-in default, so the range is wide",
+};
+
 /**
  * Default ceiling offered alongside an estimate: comfortably above the high end, in whole cents.
  *
@@ -76,6 +83,45 @@ export function ceilingWarning(usd: number, estimate: EvalEstimate): string | nu
     return "This is below even the low end of the estimate, so the eval will stop part-way and the comparison will be incomplete.";
   }
   return null;
+}
+
+/** Whether pressing Run would be refused, in the refusal's own words — or null. */
+export function refusalOf(estimate: EvalEstimate | null): string | null {
+  return estimate?.affordability?.wouldRefuse ? (estimate.affordability.refusalMessage ?? "This workspace cannot start an eval right now.") : null;
+}
+
+/** The estimate's detail: each model's share, the server's caveats, and a refusal before it happens. */
+export function EstimateDetail({ estimate }: { estimate: EvalEstimate }) {
+  const providerModels = useProviderStore((s) => s.models);
+  const refusal = refusalOf(estimate);
+  return (
+    <>
+      {/* EACH MODEL'S SHARE, and what it was projected from. The server worked this out per model and
+          the box showed only the total, so which leg made an eval expensive was a guess. */}
+      {estimate.perTarget.length > 1 && (
+        <div className="space-y-0.5 text-tiny">
+          {estimate.perTarget.map((t) => (
+            <div key={`${t.provider}/${t.model}`} className="flex items-baseline gap-2">
+              <span className="min-w-0 truncate text-muted">{modelName(providerModels, t.model)}</span>
+              <span className="ml-auto whitespace-nowrap tabular-nums text-ink">
+                {t.priced && t.lowUsd !== null && t.highUsd !== null ? `${fmtCost(t.lowUsd)}–${fmtCost(t.highUsd)}` : "unknown"}
+              </span>
+              <span className="whitespace-nowrap text-faint" title={BASIS[t.basis]}>
+                {t.basis === "measured" ? `from ${t.sampleSize} run${t.sampleSize === 1 ? "" : "s"}` : t.basis === "other-model" ? "other model" : "default"}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {estimate.notes.map((n, i) => (
+        <div key={i} className="text-tiny text-faint">· {n}</div>
+      ))}
+
+      {/* WOULD IT BE REFUSED. Said here, before Run, in the words the refusal would use. */}
+      {refusal && <div className="text-tiny text-err" role="alert">{refusal}</div>}
+    </>
+  );
 }
 
 export function EvalRunBar() {
@@ -142,6 +188,7 @@ export function EvalRunBar() {
   };
 
   const parsedCeiling = parseCeiling(ceiling);
+  const refusal = refusalOf(estimate);
   const warning = estimate && "usd" in parsedCeiling ? ceilingWarning(parsedCeiling.usd, estimate) : null;
 
   const confirmRun = () => {
@@ -229,9 +276,7 @@ export function EvalRunBar() {
                 )}
               </div>
 
-              {estimate.notes.map((n, i) => (
-                <div key={i} className="text-tiny text-faint">· {n}</div>
-              ))}
+              <EstimateDetail estimate={estimate} />
 
               {/* STOP AT, ON ONE LINE. The explanation that wrapped between the field and the buttons
                   moved under them, with whatever this ceiling means against this estimate. */}
@@ -257,8 +302,8 @@ export function EvalRunBar() {
                 </button>
                 <button
                   onClick={confirmRun}
-                  disabled={"error" in parsedCeiling}
-                  title={"error" in parsedCeiling ? parsedCeiling.error : undefined}
+                  disabled={"error" in parsedCeiling || refusal !== null}
+                  title={refusal ?? ("error" in parsedCeiling ? parsedCeiling.error : undefined)}
                   className={`${primaryBtn} whitespace-nowrap`}
                 >
                   Run for real

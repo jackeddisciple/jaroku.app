@@ -101,5 +101,23 @@ console.log("\nthe model chips, rendered");
   check(/title="Locked while this eval runs/.test(html), "a chip locked by a running eval says so", html.match(/title="[^"]*"/g)?.slice(0, 2).join(" ") ?? "");
 }
 
+console.log("\nthe estimate says each model's share, and a refusal before Run");
+{
+  const { createElement } = await import("react");
+  const { markup } = await import("../lib/testRender.ts");
+  const { EstimateDetail } = await import("./EvalRunBar.tsx");
+  const words = markup(createElement(EstimateDetail, {
+    estimate: estimate({
+      affordability: {
+        ceilingUsd: 5, spentUsd: 5.2, spentIsComplete: true, headroomUsd: 0, availableCreditUsd: 0,
+        wouldRefuse: true, refusalMessage: "This workspace has reached its $5.00 ceiling for the period.", mayNotFinish: true,
+      },
+    }),
+  })).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
+  check(words.includes("claude-opus-5") && words.includes("$0.3000") && words.includes("$0.5000"), "each model has its own range", words);
+  check(words.includes("from 5 runs"), "and says what it was projected from", words);
+  check(words.includes("reached its $5.00 ceiling"), "and a refusal is said before Run is pressed", words);
+}
+
 console.log(failures === 0 ? "\nALL CORRECT" : `\n${failures} FAILURES`);
 (globalThis as { process?: { exit(code: number): void } }).process?.exit(failures === 0 ? 0 : 1);

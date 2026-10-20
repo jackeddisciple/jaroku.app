@@ -682,6 +682,25 @@ export interface EvalEstimate {
   totalHighUsd: number;
   hasUnpricedTarget: boolean;
   notes: string[];
+  /**
+   * Whether this workspace can afford it, from the same budget check the server decides with — so
+   * what the box says before Run and what a refusal says after it agree. Null when there is no
+   * billing to report (a local install). It was computed and sent, and this type dropped it.
+   */
+  affordability?: EvalAffordability | null;
+}
+
+export interface EvalAffordability {
+  ceilingUsd: number | null;
+  spentUsd: number;
+  spentIsComplete: boolean;
+  headroomUsd: number | null;
+  availableCreditUsd: number;
+  /** Pressing Run right now would be refused, and this is the sentence that would say so. */
+  wouldRefuse: boolean;
+  refusalMessage: string | null;
+  /** The high end is more than is left. Null when part of the cost is unknown. */
+  mayNotFinish: boolean | null;
 }
 
 export type EvalMessage =
