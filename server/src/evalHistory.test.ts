@@ -18,6 +18,7 @@ import type { Db } from "./db/db.ts";
 import { openTestSqlite, testContext, withScratchPostgres } from "./db/testDb.ts";
 import { EvalStore, checkDatasetName, uniqueDatasetName } from "./evalStore.ts";
 import { ActivityStore } from "./activity/activityStore.ts";
+import { aggregateEval } from "./evalAggregate.ts";
 import { resolveWindow } from "./activity/range.ts";
 
 let fail = 0;
@@ -111,6 +112,27 @@ async function suite(label: string, db: Db): Promise<void> {
   const feed = await new ActivityStore(db).feed(ctx, resolveWindow("30d", new Date(Date.now() + 1000), null), { kinds: ["eval"] });
   const row = feed.rows.find((r) => r.id === `eval:${named.id}`);
   check(`[${label}] an eval reads in the Activity feed by its dataset's name`, row?.object === "Imported", JSON.stringify(row));
+
+  // RETRY RUNS ONLY WHAT HAS A CASE. A job from before the copy was kept (no input) whose case was then
+  // deleted was requeued and at once failed "example no longer exists" — cancelled cells made failures.
+  const soon = await evals.createDataset(ctx, "quiet", "Gone soon");
+  const keptCase = await evals.addExample(ctx, soon.id, "kept");
+  const lostCase = await evals.addExample(ctx, soon.id, "lost");
+  const old089 = await run("quiet", soon.id);
+  await evals.createJobs(ctx, old089, [
+    { example_id: keptCase.id, provider: "fake", model: "fake", input: "kept" },
+    { example_id: lostCase.id, provider: "fake", model: "fake" },
+  ]);
+  await db.forWorkspace(ctx.workspaceId).run(`UPDATE eval_jobs SET status = 'cancelled' WHERE eval_id = ?`, [old089]);
+  await evals.deleteExample(ctx, lostCase.id);
+  const agg = (await aggregateEval(ctx, evals, old089))!;
+  check(`[${label}] a case with no copy and no dataset row is said to be gone`,
+    agg.rows.filter((r) => r.caseGone).length === 1 && agg.rows.find((r) => r.caseGone)?.exampleId === lostCase.id);
+  check(`[${label}] an eval with no name kept reads its dataset's name now`, agg.datasetName === "Gone soon", String(agg.datasetName));
+  check(`[${label}] Retry puts back only the cell that has a case`, (await evals.requeueUnfinished(ctx, old089)) === 1);
+  await evals.deleteDataset(ctx, soon.id);
+  check(`[${label}] and once the dataset is gone, its name is null rather than a guess`,
+    (await aggregateEval(ctx, evals, old089))?.datasetName === null);
 }
 
 console.log("\na new dataset's name is one this agent does not have");

@@ -248,6 +248,19 @@ console.log("\na finished eval can retry its unfinished cells, or run again");
   check(!text(markup(createElement(EvalActions, { results: done }))).includes("Retry"), "a complete eval has nothing to retry");
   const running = results({ status: "running" });
   check(text(markup(createElement(EvalActions, { results: running }))) === "", "and a running one offers neither");
+  // A case deleted before evals kept a copy cannot run again — retried, it only failed at once.
+  const orphaned = results({
+    datasetName: null,
+    rows: [
+      { exampleId: "x1", input: "(gone)", expected: null, caseGone: true, cells: [cell("cancelled"), cell("cancelled")] },
+      { exampleId: "x2", input: "kept", expected: null, cells: [cell("cancelled")] },
+    ],
+  });
+  check(text(markup(createElement(EvalActions, { results: orphaned }))).includes("Retry 1 cell"), "Retry counts only the cells that still have a case");
+  const allGone = results({ rows: [{ exampleId: "x1", input: "(gone)", expected: null, caseGone: true, cells: [cell("cancelled")] }] });
+  check(!text(markup(createElement(EvalActions, { results: allGone }))).includes("Retry"), "and is not offered when none do");
+  check(text(markup(createElement(ResultsHeader, { results: orphaned, live: null }))).includes("a deleted dataset"),
+    "a dataset with no name left reads as deleted, not as the word \"dataset\"");
 }
 
 console.log("\nan eval's run is tagged in Runs");

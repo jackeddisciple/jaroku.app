@@ -511,7 +511,12 @@ export class EvalRunner {
       const retried = await this.deps.evalStore.requeueUnfinished(ctx, evalId);
       if (!retried) {
         await this.shared.releaseSemaphore(evalClaimKey(ctx.workspaceId), holder);
-        return { error: "nothing to retry — every case succeeded" };
+        const unfinished = jobs.some((j) => j.status === "failed" || j.status === "timed_out" || j.status === "cancelled");
+        return {
+          error: unfinished
+            ? "nothing to retry — the cases left were deleted before evals kept a copy of them"
+            : "nothing to retry — every case succeeded",
+        };
       }
       await this.deps.evalStore.reopenEval(ctx, evalId, req.budgetUsd === undefined ? row.budget_usd : req.budgetUsd);
       this.live.set(evalId, {

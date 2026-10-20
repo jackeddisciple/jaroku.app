@@ -890,12 +890,17 @@ export class EvalStore {
    * keeps its number. What every attempt spent stays in `spent_usd`. Returns how many went back.
    */
   async requeueUnfinished(ctx: TenantContext, evalId: string): Promise<number> {
+    // ONLY A JOB WITH A CASE TO RUN. One from before the copy was kept (089) whose case has since
+    // been deleted would be queued and at once written off as "example no longer exists" — a Retry
+    // that turned honest "cancelled" cells into failures.
     const res = await this.q(ctx).run(
       `UPDATE eval_jobs
           SET attempt = CASE WHEN status = 'cancelled' THEN attempt ELSE attempt + 1 END,
               status = 'queued', run_id = NULL, started_at = NULL, ended_at = NULL,
               retry_not_before = NULL, error = NULL
-        WHERE eval_id = ? AND workspace_id = ? AND status IN ('failed', 'timed_out', 'cancelled')`,
+        WHERE eval_id = ? AND workspace_id = ? AND status IN ('failed', 'timed_out', 'cancelled')
+          AND (input IS NOT NULL OR EXISTS (
+                SELECT 1 FROM dataset_examples x WHERE x.id = eval_jobs.example_id AND x.workspace_id = eval_jobs.workspace_id))`,
       [evalId, ctx.workspaceId],
     );
     return res.changes;

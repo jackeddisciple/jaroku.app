@@ -70,7 +70,7 @@ export function ResultsHeader({ results, live }: { results: EvalResults; live: E
         {results.agentVersion != null && <span className="text-tiny text-faint">v{results.agentVersion}</span>}
         <span className="text-faint">·</span>
         <span className="min-w-0 truncate text-muted" title={results.datasetName ?? undefined}>
-          {results.datasetName ?? "dataset"}
+          {results.datasetName ?? "a deleted dataset"}
         </span>
       </div>
       <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-tiny text-muted">
@@ -112,7 +112,9 @@ export function EvalActions({ results }: { results: EvalResults }) {
   const finished = !["running", "queued"].includes(results.status) && !(live && (live.status === undefined || live.scoring));
   if (!finished) return null;
   const cells = results.rows.flatMap((r) => r.cells);
-  const again = cells.filter((c) => ["failed", "timed_out", "cancelled"].includes(c.status)).length;
+  // A case that is gone cannot run again, so it is not offered: retried, it only failed at once.
+  const again = results.rows.filter((r) => !r.caseGone).flatMap((r) => r.cells)
+    .filter((c) => ["failed", "timed_out", "cancelled"].includes(c.status)).length;
   const ran = cells.filter((c) => ["succeeded", "failed", "timed_out"].includes(c.status)).length;
   const { totals } = results;
   // WHAT THE RETRY WILL NEED: the spend so far, plus the cells left at what a cell has cost.

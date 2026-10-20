@@ -232,13 +232,18 @@ export interface ExampleRow {
   exampleId: string;
   input: string;
   expected: string | null;
+  /** Neither a kept copy nor the case itself is left — an eval from before 089, its case deleted. */
+  caseGone: boolean;
   cells: ExampleCell[];
 }
 
 export interface EvalAggregate {
   evalId: string;
   datasetId: string;
-  /** What the dataset was called when the eval ran. Null only for an eval from before it was kept. */
+  /**
+   * What the dataset was called when the eval ran, or — for an eval from before that was kept — what
+   * it is called now. Null only when neither is left: the dataset was deleted.
+   */
   datasetName: string | null;
   agentId: string;
   /** The agent's version when the eval ran. Null for an eval from before it was kept. */
@@ -387,6 +392,7 @@ export async function aggregateEval(
         exampleId: j.example_id,
         input: kept?.input ?? "(this case was deleted before evals kept a copy of it)",
         expected: kept?.expected ?? null,
+        caseGone: !kept,
         cells: [],
       };
       rowByExample.set(j.example_id, row);
@@ -424,7 +430,7 @@ export async function aggregateEval(
   return {
     evalId,
     datasetId: evalRun.dataset_id,
-    datasetName: evalRun.dataset_name ?? null,
+    datasetName: evalRun.dataset_name ?? (await evalStore.getDataset(ctx, evalRun.dataset_id))?.name ?? null,
     agentId: evalRun.agent_id,
     agentVersion: evalRun.agent_version ?? null,
     stopReason: evalRun.error ?? null,

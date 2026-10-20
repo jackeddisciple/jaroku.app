@@ -636,13 +636,15 @@ export interface ExampleRow {
   exampleId: string;
   input: string;
   expected: string | null;
+  /** The case is gone — no copy was kept and the dataset no longer has it — so it cannot run again. */
+  caseGone?: boolean;
   cells: ExampleCell[];
 }
 
 export interface EvalResults {
   evalId: string;
   datasetId: string;
-  /** What the dataset was called when the eval ran. Null only for an eval from before it was kept. */
+  /** What the dataset was called when the eval ran, or is called now. Null only when it was deleted. */
   datasetName?: string | null;
   agentId: string;
   /** The agent's version when the eval ran (server migration 090). Null for an eval from before. */
