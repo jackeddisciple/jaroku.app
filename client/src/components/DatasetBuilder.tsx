@@ -429,8 +429,9 @@ export function DatasetBuilder() {
     (e) => !(pendingDelete?.kind === "case" && pendingDelete.id === e.id),
   );
   const selected = datasets.find((d) => d.id === selectedDatasetId);
-  // A half-typed rename belongs to the dataset it was started on, not to the next one picked.
-  useEffect(() => { setRenaming(null); setRenameError(null); }, [selectedDatasetId]);
+  // A half-typed rename belongs to the dataset it was started on, not to the next one picked — and so
+  // does the note about an import, which stayed across every switch until somebody dismissed it.
+  useEffect(() => { setRenaming(null); setRenameError(null); setImportNote(null); }, [selectedDatasetId]);
   // A dataset this tab just created opens with its name ready to edit.
   useEffect(() => {
     if (renameRequest && selected?.id === renameRequest) {
@@ -648,19 +649,29 @@ export function DatasetBuilder() {
 
       {/* add */}
       {selected && (
-        <div className="px-4 py-3 shrink-0 flex items-center gap-2">
-          <input
+        <div className="px-4 py-3 shrink-0 flex items-end gap-2">
+          {/* A BOX, NOT A LINE, and nothing in it is "corrected". A one-line input with the system's
+              autocorrect turned `---` into an em dash and straight quotes into curly ones — and for an
+              agent that splits a job description from a résumé on `---`, a hand-typed case silently
+              became one blob, and an exact-match expectation stopped matching. Enter adds the case;
+              Shift+Enter is a new line, as in the case editor above. */}
+          <textarea
             value={newInput}
             onChange={(e) => setNewInput(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addExample(); } }}
+            onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); addExample(); } }}
             disabled={!connected}
-            placeholder="an input the agent should handle"
-            className="flex-1 bg-elevated text-ink placeholder:text-faint rounded-input border border-edge px-2.5 py-1.5 text-caption outline-none focus:shadow-focusring disabled:opacity-50"
+            rows={Math.min(6, Math.max(1, newInput.split("\n").length))}
+            spellCheck={false}
+            autoCorrect="off"
+            autoCapitalize="off"
+            aria-label="New case input"
+            placeholder="an input the agent should handle — Shift+Enter for a new line"
+            className="flex-1 resize-none bg-elevated text-ink placeholder:text-faint rounded-input border border-edge px-2.5 py-1.5 text-caption outline-none focus:shadow-focusring disabled:opacity-50"
           />
           <button
             onClick={addExample}
             disabled={!connected || !newInput.trim()}
-            title="Add this example"
+            title={!connected ? "Not connected" : !newInput.trim() ? "Type an input first" : "Add this case"}
             aria-label="Add this example"
             className="rounded-control bg-active p-1.5 text-ink transition-opacity disabled:opacity-30"
           >

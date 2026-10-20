@@ -52,5 +52,28 @@ console.log("\na draft is checked before it can be saved");
   check(/above zero/.test(rubricProblem([c({ weight: "0" })]) ?? ""), "and a rubric whose weights are all zero");
 }
 
+console.log("\nthe builder, rendered");
+{
+  const { createElement } = await import("react");
+  const { markup, seed } = await import("../lib/testRender.ts");
+  const { useBuildStore } = await import("../store/buildStore.ts");
+  const { useEvalStore } = await import("../store/evalStore.ts");
+  const { DatasetBuilder } = await import("./DatasetBuilder.tsx");
+  seed(useBuildStore, { activeAgentId: "liven" } as never);
+  seed(useEvalStore, {
+    datasetsByAgent: { liven: [{ id: "d1", agent_id: "liven", name: "Screening cases", created_at: "", updated_at: "" }] },
+    selectedDatasetByAgent: { liven: "d1" },
+    examplesByDataset: { d1: [{ id: "x1", dataset_id: "d1", input: "Role: QA --- résumé", expected: null, notes: null, position: 0, created_at: "" }] },
+  } as never);
+  const html = markup(createElement(DatasetBuilder));
+  const add = /<textarea[^>]*aria-label="New case input"[^>]*>/.exec(html)?.[0] ?? "";
+  check(add !== "", "a new case is typed into a box, not a one-line field", html.slice(0, 200));
+  check(/spellcheck="false"/i.test(add) && /autocorrect="off"/i.test(add) && /autocapitalize="off"/i.test(add),
+    "with nothing in it corrected — `---` and straight quotes stay as typed", add);
+  const remove = /<button[^>]*aria-label="Remove case 1"[^>]*>/.exec(html)?.[0] ?? "";
+  check(/focus-visible:opacity-100/.test(remove), "a case's delete shows on keyboard focus, not only on hover", remove);
+  check(/self-start/.test(remove), "and is only its own size, not a strip down the case's edge", remove);
+}
+
 console.log(failures === 0 ? "\nALL CORRECT" : `\n${failures} FAILURES`);
 (globalThis as { process?: { exit(code: number): void } }).process?.exit(failures === 0 ? 0 : 1);
