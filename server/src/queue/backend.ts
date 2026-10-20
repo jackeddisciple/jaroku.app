@@ -84,6 +84,20 @@ export interface QueueBackend {
   releaseSemaphore(key: string, leaseId: string): Promise<void>;
   /** How many slots of `key` are currently held. */
   semaphoreCount(key: string): Promise<number>;
+  /**
+   * Push a slot this lease STILL HOLDS out to `ttlMs` from now. False, and nothing changed, when the
+   * lease is not held or has already expired — a heartbeat must never resurrect a slot somebody
+   * else may since have taken.
+   *
+   * Acquiring again cannot do this: with `max` 1 the holder's own second acquire is refused, and a
+   * release followed by an acquire leaves a gap another process can claim the slot in.
+   */
+  renewSemaphore(key: string, leaseId: string, ttlMs: number): Promise<boolean>;
+  /**
+   * The lease ids currently holding `key`, unexpired. For a slot whose lease id NAMES its holder —
+   * an eval's claim on its workspace — this answers "who has it", which the count cannot.
+   */
+  semaphoreHolders(key: string): Promise<string[]>;
 
   /**
    * Pull specific not-yet-admitted jobs back out of one workspace's queue, identified by

@@ -209,13 +209,27 @@ export class MockRedisStore {
 
       // --- sorted sets ---------------------------------------------------------------------
       case "ZADD": {
+        // XX (only update members that exist) and NX (only add new ones) come before the pairs, as
+        // in Redis. A renewal must never add a member, so XX is not a detail the fixture may drop.
+        let i = 1;
+        let xx = false;
+        let nx = false;
+        for (; i < args.length; i++) {
+          const opt = args[i]!.toUpperCase();
+          if (opt === "XX") xx = true;
+          else if (opt === "NX") nx = true;
+          else break;
+        }
         const z = this.zset(args[0]!, true)!;
         let added = 0;
-        for (let i = 1; i + 1 < args.length; i += 2) {
+        for (; i + 1 < args.length; i += 2) {
           const member = args[i + 1]!;
-          if (!z.has(member)) added++;
+          const exists = z.has(member);
+          if ((xx && !exists) || (nx && exists)) continue;
+          if (!exists) added++;
           z.set(member, Number(args[i]));
         }
+        this.prune(args[0]!);
         return added;
       }
       case "ZREM": {

@@ -306,5 +306,28 @@ export async function runSemaphoreConformance(label: string, backend: QueueBacke
     check((await backend.semaphoreCount(key)) === 0, "releasing a slot nobody holds is a harmless no-op");
   }
 
+  {
+    // A HEARTBEAT. The holder pushes its own slot out; nobody else's renew touches it; and a lease
+    // that has lapsed stays lapsed rather than reclaiming a slot somebody else may have taken.
+    const key = `test:sem:renew:${randomUUID()}`;
+    const holder = randomUUID();
+    check(await backend.acquireSemaphore(key, 1, holder, 60_000), "a one-slot claim is granted");
+    check(await backend.renewSemaphore(key, holder, 120_000), "its holder can renew it");
+    check(!(await backend.renewSemaphore(key, randomUUID(), 120_000)), "a lease that does not hold it cannot");
+    check((await backend.semaphoreCount(key)) === 1, "and a refused renew added nobody");
+    check(
+      JSON.stringify(await backend.semaphoreHolders(key)) === JSON.stringify([holder]),
+      "the holders are exactly the one lease that holds it",
+    );
+    await backend.releaseSemaphore(key, holder);
+    check(!(await backend.renewSemaphore(key, holder, 60_000)), "a released lease cannot be renewed back into existence");
+    check((await backend.semaphoreHolders(key)).length === 0, "and nobody holds it");
+
+    const lapsed = randomUUID();
+    await backend.acquireSemaphore(key, 1, lapsed, -1);
+    check(!(await backend.renewSemaphore(key, lapsed, 60_000)), "an expired lease is not renewed");
+    check((await backend.semaphoreHolders(key)).length === 0, "and an expired lease is not a holder");
+  }
+
   return { failures };
 }

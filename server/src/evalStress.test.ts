@@ -106,6 +106,12 @@ class CountingBackend implements QueueBackend {
   semaphoreCount(key: string): Promise<number> {
     return this.inner.semaphoreCount(key);
   }
+  renewSemaphore(key: string, leaseId: string, ttlMs: number): Promise<boolean> {
+    return this.inner.renewSemaphore(key, leaseId, ttlMs);
+  }
+  semaphoreHolders(key: string): Promise<string[]> {
+    return this.inner.semaphoreHolders(key);
+  }
   purgePending(jobClass: JobClass, workspaceId: string, keys: Set<string>): Promise<number> {
     return this.inner.purgePending(jobClass, workspaceId, keys);
   }

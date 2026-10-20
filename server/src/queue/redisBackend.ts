@@ -135,6 +135,17 @@ redis.call('ZREM', KEYS[1], ARGV[1])
 return 1
 `;
 
+// Only a member that is there AND unexpired, and XX so it can never add one: a heartbeat arriving
+// after its lease lapsed must not reclaim a slot another holder may already have taken.
+const SEMAPHORE_RENEW_SCRIPT = `
+local score = redis.call('ZSCORE', KEYS[1], ARGV[1])
+if not score then return false end
+local now = tonumber(ARGV[2])
+if tonumber(score) <= now then return false end
+redis.call('ZADD', KEYS[1], 'XX', now + tonumber(ARGV[3]), ARGV[1])
+return 1
+`;
+
 // Removes each ARGV item (the exact serialized job, matched by value — LREM's own contract)
 // from the list, then drops the workspace from the ring if that emptied it. ARGV[1] is the
 // workspace id, ARGV[2..] the items; the caller already knows exactly which serialized jobs
@@ -183,6 +194,7 @@ interface QueueRedis extends Redis {
   jarokuClaimExpired(index: string, reservedKey: string, leaseId: string, now: string): Promise<string | null>;
   jarokuSemAcquire(semKey: string, now: string, ttl: string, leaseId: string, max: string): Promise<1 | null>;
   jarokuSemRelease(semKey: string, leaseId: string): Promise<number>;
+  jarokuSemRenew(semKey: string, leaseId: string, now: string, ttl: string): Promise<1 | null>;
   jarokuPurgePending(list: string, ring: string, workspaceId: string, ...items: string[]): Promise<number>;
   jarokuPurgeWorkspace(list: string, ring: string, workspaceId: string): Promise<number>;
 }
@@ -217,6 +229,7 @@ export class RedisQueueBackend implements QueueBackend {
       this.client.defineCommand("jarokuClaimExpired", { numberOfKeys: 2, lua: CLAIM_EXPIRED_SCRIPT });
       this.client.defineCommand("jarokuSemAcquire", { numberOfKeys: 1, lua: SEMAPHORE_ACQUIRE_SCRIPT });
       this.client.defineCommand("jarokuSemRelease", { numberOfKeys: 1, lua: SEMAPHORE_RELEASE_SCRIPT });
+      this.client.defineCommand("jarokuSemRenew", { numberOfKeys: 1, lua: SEMAPHORE_RENEW_SCRIPT });
       this.client.defineCommand("jarokuPurgePending", { numberOfKeys: 2, lua: PURGE_PENDING_SCRIPT });
       this.client.defineCommand("jarokuPurgeWorkspace", { numberOfKeys: 2, lua: PURGE_WORKSPACE_SCRIPT });
     }
@@ -293,6 +306,15 @@ export class RedisQueueBackend implements QueueBackend {
 
   async semaphoreCount(key: string): Promise<number> {
     return this.client.zcount(semaphoreRedisKey(key), `(${Date.now()}`, "+inf");
+  }
+
+  async renewSemaphore(key: string, leaseId: string, ttlMs: number): Promise<boolean> {
+    const reply = await this.client.jarokuSemRenew(semaphoreRedisKey(key), leaseId, String(Date.now()), String(ttlMs));
+    return reply === 1;
+  }
+
+  async semaphoreHolders(key: string): Promise<string[]> {
+    return this.client.zrangebyscore(semaphoreRedisKey(key), `(${Date.now()}`, "+inf");
   }
 
   async purgePending(jobClass: JobClass, workspaceId: string, idempotencyKeys: Set<string>): Promise<number> {

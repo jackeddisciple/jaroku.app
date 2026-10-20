@@ -158,6 +158,22 @@ export class InMemoryQueueBackend implements QueueBackend {
     return live;
   }
 
+  async renewSemaphore(key: string, leaseId: string, ttlMs: number): Promise<boolean> {
+    const holders = this.semaphores.get(key);
+    const expiresAtMs = holders?.get(leaseId);
+    const now = Date.now();
+    if (!holders || expiresAtMs === undefined || expiresAtMs <= now) return false;
+    holders.set(leaseId, now + ttlMs);
+    return true;
+  }
+
+  async semaphoreHolders(key: string): Promise<string[]> {
+    const holders = this.semaphores.get(key);
+    if (!holders) return [];
+    const now = Date.now();
+    return [...holders].filter(([, expiresAtMs]) => expiresAtMs > now).map(([leaseId]) => leaseId);
+  }
+
   /** What this backend is still holding onto, counted. Exposed for the same reason ringOrder is
    *  (see backend.ts): a property worth asserting that is otherwise invisible from outside.
    *  `semaphoreHolders` is the number with no ceiling — keys are per workspace and per provider,
