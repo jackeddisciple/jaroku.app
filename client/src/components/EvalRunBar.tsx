@@ -23,18 +23,59 @@ import { sendCancelEval, sendEstimateEval, sendStartEval } from "../lib/socket.t
 import { fmtCost } from "../lib/format.ts";
 import { Chip } from "./Chip.tsx";
 import { primaryBtn } from "./buttons.ts";
-import type { EvalTarget } from "../types.ts";
+import type { EvalEstimate, EvalTarget } from "../types.ts";
 import { Icon } from "../lib/icons/registry.ts";
 import { IconButton } from "./IconButton.tsx";
 
 const key = (t: EvalTarget) => `${t.provider}/${t.model}`;
 
-/** Default ceiling offered alongside an estimate: comfortably above the high end. */
-function suggestedCeiling(high: number): number {
-  // Round up to something legible — a ceiling of $0.1837 invites nobody to think about it.
-  const padded = Math.max(high * 1.5, 0.05);
-  const magnitude = 10 ** Math.floor(Math.log10(padded));
-  return Math.ceil(padded / magnitude) * magnitude;
+/**
+ * Default ceiling offered alongside an estimate: comfortably above the high end, in whole cents.
+ *
+ * IN CENTS, AS INTEGERS. `Math.ceil(padded / magnitude) * magnitude` in dollars put float error into
+ * the field as typed text — "0.30000000000000004". Rounded up to something legible, because a
+ * ceiling of $0.1837 invites nobody to think about it.
+ */
+export function suggestedCeiling(high: number): string {
+  // Trimmed before rounding up: 0.2 × 150 is 30.000000000000004, which would round up to 31¢.
+  const cents = Math.max(Math.ceil(Number((high * 150).toFixed(6))), 5);
+  const step = 10 ** Math.max(0, Math.floor(Math.log10(cents)));
+  return (Math.ceil(cents / step) * step / 100).toFixed(2);
+}
+
+/** The smallest ceiling worth setting: below a cent, no run starts at all. */
+export const MIN_CEILING_USD = 0.01;
+
+/**
+ * What was typed into Stop at, as a ceiling — or the sentence saying why it is not one.
+ *
+ * Invalid values used to just disable Run for real, with nothing to say why, and `1e-9` was accepted.
+ */
+export function parseCeiling(text: string): { usd: number } | { error: string } {
+  const t = text.trim().replace(/^\$/, "");
+  if (!t) return { error: "Set a ceiling to run — it is what stops the spending." };
+  if (!/^\d*\.?\d+$/.test(t)) return { error: "Type the ceiling as dollars, like 0.50." };
+  const usd = Number(t);
+  if (usd < MIN_CEILING_USD) return { error: `The smallest ceiling is $${MIN_CEILING_USD.toFixed(2)}.` };
+  return { usd };
+}
+
+/**
+ * What a ceiling means against this estimate, when it means trouble.
+ *
+ * BELOW THE LOW END, the eval will stop part-way — and nothing said so, so "Run for real" started an
+ * eval guaranteed not to finish. BELOW ONE RUN, the ceiling is checked before each dispatch, so every
+ * slot a provider has starts before any cost lands: a $0.001 ceiling spent $0.0048.
+ */
+export function ceilingWarning(usd: number, estimate: EvalEstimate): string | null {
+  const perRun = Math.max(0, ...estimate.perTarget.map((t) => (t.highUsd !== null && t.runs > 0 ? t.highUsd / t.runs : 0)));
+  if (perRun > 0 && usd < perRun) {
+    return "This is less than one run is likely to cost. The first runs start before any cost lands, so the eval can spend several times this before it stops.";
+  }
+  if (usd < estimate.totalLowUsd) {
+    return "This is below even the low end of the estimate, so the eval will stop part-way and the comparison will be incomplete.";
+  }
+  return null;
 }
 
 export function EvalRunBar() {
@@ -61,19 +102,24 @@ export function EvalRunBar() {
   });
   const [confirming, setConfirming] = useState(false);
   const [ceiling, setCeiling] = useState<string>("");
+  /** Whether somebody typed the ceiling. Until they do, each estimate suggests its own. */
+  const [ceilingTyped, setCeilingTyped] = useState(false);
 
   const examples = examplesOf(examplesByDataset, selectedDatasetId);
   const running = progress !== null && progress.status === undefined;
 
   // Changing the selection invalidates any estimate on screen — a stale number next to a
-  // different set of providers is worse than none.
+  // different set of providers is worse than none. So does a case added or removed: the box said
+  // "14 examples" while Run for real started fifteen.
   useEffect(() => {
     setEstimate(null);
     setConfirming(false);
-  }, [targets.map(key).join(","), selectedDatasetId]);
+  }, [targets.map(key).join(","), selectedDatasetId, examples.length]);
 
+  // EVERY ESTIMATE SUGGESTS ITS OWN, unless somebody typed one. It was set once and kept, so adding
+  // two frontier models left a $0.30 ceiling beside a $0.71–$1.18 estimate.
   useEffect(() => {
-    if (estimate && !ceiling) setCeiling(String(suggestedCeiling(estimate.totalHighUsd)));
+    if (estimate && !ceilingTyped) setCeiling(suggestedCeiling(estimate.totalHighUsd));
   }, [estimate]);
 
   if (!selectedDatasetId) return null;
@@ -89,11 +135,12 @@ export function EvalRunBar() {
     setConfirming(true);
   };
 
+  const parsedCeiling = parseCeiling(ceiling);
+  const warning = estimate && "usd" in parsedCeiling ? ceilingWarning(parsedCeiling.usd, estimate) : null;
+
   const confirmRun = () => {
-    if (!activeAgentId) return;
-    const budget = Number(ceiling);
-    if (!Number.isFinite(budget) || budget <= 0) return;
-    sendStartEval(selectedDatasetId, activeAgentId, targets, budget);
+    if (!activeAgentId || !("usd" in parsedCeiling)) return;
+    sendStartEval(selectedDatasetId, activeAgentId, targets, parsedCeiling.usd);
     setConfirming(false);
     setEstimate(null);
   };
@@ -156,24 +203,22 @@ export function EvalRunBar() {
                 <div key={i} className="text-tiny text-faint">· {n}</div>
               ))}
 
+              {/* STOP AT, ON ONE LINE. The explanation that wrapped between the field and the buttons
+                  moved under them, with whatever this ceiling means against this estimate. */}
               <div className="flex items-center gap-2 pt-1">
-                <label className="text-tiny text-muted">Stop at</label>
+                <label className="whitespace-nowrap text-tiny text-muted" htmlFor="eval-ceiling">Stop at</label>
                 <span className="text-muted text-tiny">$</span>
                 <input
+                  id="eval-ceiling"
                   value={ceiling}
-                  onChange={(e) => setCeiling(e.target.value)}
+                  onChange={(e) => { setCeiling(e.target.value); setCeilingTyped(true); }}
+                  aria-label="Stop at, in dollars"
+                  aria-invalid={"error" in parsedCeiling}
                   inputMode="decimal"
-                  className="w-20 bg-elevated text-ink rounded-input border border-edge px-2 py-1 text-tiny tabular-nums outline-none focus:shadow-focusring"
+                  className={`w-20 bg-elevated text-ink rounded-input border px-2 py-1 text-tiny tabular-nums outline-none focus:shadow-focusring ${
+                    "error" in parsedCeiling ? "border-err" : "border-edge"
+                  }`}
                 />
-                {/* Says what the ceiling actually does. It is checked against real spend
-                    before anything is DISPATCHED, so runs already in flight finish and pay
-                    out — with providers running two at a time, a small eval can dispatch
-                    every cell before the first cost lands and overshoot several times over.
-                    "hard ceiling" alone read as a cap on the bill, which it is not. */}
-                <span className="text-tiny text-faint">
-                  checked against real spend before each dispatch — runs already started
-                  still finish, so the total can overshoot
-                </span>
                 <button
                   onClick={() => { setConfirming(false); setEstimate(null); }}
                   className="ml-auto text-tiny text-faint hover:text-ink transition-colors"
@@ -182,11 +227,23 @@ export function EvalRunBar() {
                 </button>
                 <button
                   onClick={confirmRun}
-                  disabled={!(Number(ceiling) > 0)}
+                  disabled={"error" in parsedCeiling}
+                  title={"error" in parsedCeiling ? parsedCeiling.error : undefined}
                   className={`${primaryBtn} whitespace-nowrap`}
                 >
                   Run for real
                 </button>
+              </div>
+              {"error" in parsedCeiling && <div className="text-tiny text-err" role="alert">{parsedCeiling.error}</div>}
+              {warning && <div className="text-tiny text-run" role="status">{warning}</div>}
+              {/* Says what the ceiling actually does. It is checked against real spend
+                  before anything is DISPATCHED, so runs already in flight finish and pay
+                  out — with providers running two at a time, a small eval can dispatch
+                  every cell before the first cost lands and overshoot several times over.
+                  "hard ceiling" alone read as a cap on the bill, which it is not. */}
+              <div className="text-tiny text-faint">
+                Checked against real spend before each dispatch — runs already started still finish,
+                so the total can overshoot.
               </div>
             </>
           )}
