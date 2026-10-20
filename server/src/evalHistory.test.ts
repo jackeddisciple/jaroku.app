@@ -62,6 +62,14 @@ async function suite(label: string, db: Db): Promise<void> {
   check(`[${label}] and say their dataset is gone`, afterDelete.every((e) => e.dataset_gone), JSON.stringify(afterDelete.map((e) => e.dataset_gone)));
   check(`[${label}] the rubric an eval scored with is kept, as history`, (await evals.getRubric(ctx, scored.id)) !== undefined);
   check(`[${label}] and the one nothing used is not left orphaned`, (await evals.getRubric(ctx, unused.id)) === undefined);
+
+  // WHICH VERSION IT RAN AGAINST (migration 090) — a number on both drivers, and null when unknown.
+  const versioned = await evals.createEvalRun(ctx, {
+    dataset_id: theirs.id, agent_id: "noisy", rubric_id: rubric, targets: [], budget_usd: null, agent_version: 7,
+  });
+  check(`[${label}] an eval keeps the agent version it ran against`, (await evals.getEvalRun(ctx, versioned.id))?.agent_version === 7);
+  check(`[${label}] and an eval from before reads null, not version 0`,
+    (await evals.getEvalRun(ctx, old))?.agent_version === null, String((await evals.getEvalRun(ctx, old))?.agent_version));
 }
 
 await suite("sqlite", await openTestSqlite());

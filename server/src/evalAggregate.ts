@@ -31,7 +31,7 @@
 
 import type { TraceStore } from "./store.ts";
 import type { TenantContext } from "./db/tenant.ts";
-import type { EvalStore, EvalJob } from "./evalStore.ts";
+import type { EvalStore, EvalJob, EvalTarget } from "./evalStore.ts";
 import { asInt } from "./db/db.ts";
 import { isPriced, round8 } from "./pricing.ts";
 
@@ -224,7 +224,17 @@ export interface EvalAggregate {
   /** What the dataset was called when the eval ran. Null only for an eval from before it was kept. */
   datasetName: string | null;
   agentId: string;
+  /** The agent's version when the eval ran. Null for an eval from before it was kept. */
+  agentVersion: number | null;
   status: string;
+  /**
+   * Why it stopped, in the words the server recorded: "stopped after $0.0048 of a $0.0010 budget",
+   * the workspace ceiling's sentence, "interrupted by a server restart". Null when it simply ran.
+   * It was on the row and nowhere else, so a stop the budget figure did not explain was not explained.
+   */
+  stopReason: string | null;
+  /** The ceiling it was given, and the (provider, model) legs it compared, in the order they were chosen. */
+  targets: EvalTarget[];
   startedAt: string;
   endedAt: string | null;
   providers: ProviderMetrics[];
@@ -378,6 +388,9 @@ export async function aggregateEval(
     datasetId: evalRun.dataset_id,
     datasetName: evalRun.dataset_name ?? null,
     agentId: evalRun.agent_id,
+    agentVersion: evalRun.agent_version ?? null,
+    stopReason: evalRun.error ?? null,
+    targets: evalRun.targets,
     status: evalRun.status,
     startedAt: evalRun.started_at,
     endedAt: evalRun.ended_at,

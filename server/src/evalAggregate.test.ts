@@ -207,6 +207,12 @@ console.log("\nan eval shows the cases it ran, whatever happens to the dataset a
   res = (await aggregateEval(ctx, evalStore, run.id))!;
   check("a deleted dataset's eval keeps every row", res.rows.length === 2, `${res.rows.length}`);
   check("and the dataset's name", res.datasetName === "Screening cases", `${res.datasetName}`);
+
+  // WHY IT STOPPED, which was on the row and nowhere a reader could see it.
+  await evalStore.setEvalStatus(ctx, run.id, "aborted_over_budget", "stopped after $0.0048 of a $0.0010 budget");
+  res = (await aggregateEval(ctx, evalStore, run.id))!;
+  check("the results say why the eval stopped", res.stopReason === "stopped after $0.0048 of a $0.0010 budget", `${res.stopReason}`);
+  check("and which models it compared, in the order chosen", res.targets.length === 1 && res.targets[0]?.model === "claude-haiku-4-5");
 }
 
 await store.close();

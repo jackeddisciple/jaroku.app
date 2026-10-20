@@ -103,6 +103,8 @@ export interface EvalRun {
   error: string | null;
   /** The dataset's name when the eval started (migration 089), so a deleted dataset's evals still say what they ran on. */
   dataset_name: string | null;
+  /** The agent's version when the eval started (migration 090). Null for an eval from before it was kept. */
+  agent_version: number | null;
 }
 
 export type EvalJobStatus =
@@ -183,7 +185,7 @@ const nowIso = (): string => new Date().toISOString();
 // workspace_id into the object that goes onto the wire.
 const RUBRIC_COLUMNS = `id, dataset_id, name, criteria, created_at, updated_at`;
 const EVAL_RUN_COLUMNS = `id, dataset_id, agent_id, rubric_id, status, targets, budget_usd,
-                          judge_cost_usd, started_at, ended_at, error, dataset_name`;
+                          judge_cost_usd, started_at, ended_at, error, dataset_name, agent_version`;
 const EVAL_JOB_COLUMNS = `id, eval_id, example_id, provider, model, status, attempt, run_id,
                           cost_usd, tokens, latency_ms, cost_complete, error, started_at,
                           ended_at, retry_not_before, spent_usd, input, expected`;
@@ -520,7 +522,13 @@ export class EvalStore {
   // --- eval runs -------------------------------------------------------------
 
   private hydrateEvalRun(row: Record<string, unknown>): EvalRun {
-    return { ...row, targets: this.parseJson<EvalTarget[]>(row["targets"], []) } as EvalRun;
+    // A Postgres integer can arrive as a string; null stays null rather than becoming a version 0.
+    const version = row["agent_version"];
+    return {
+      ...row,
+      targets: this.parseJson<EvalTarget[]>(row["targets"], []),
+      agent_version: version === null || version === undefined ? null : asInt(version),
+    } as EvalRun;
   }
 
   async createEvalRun(ctx: TenantContext, r: {
@@ -531,6 +539,7 @@ export class EvalStore {
     targets: EvalTarget[];
     budget_usd: number | null;
     dataset_name?: string | null;
+    agent_version?: number | null;
   }): Promise<EvalRun> {
     const row: EvalRun = {
       id: r.id ?? randomUUID(),
@@ -545,14 +554,15 @@ export class EvalStore {
       ended_at: null,
       error: null,
       dataset_name: r.dataset_name ?? null,
+      agent_version: r.agent_version ?? null,
     };
     await this.q(ctx).run(
       `INSERT INTO eval_runs (id, workspace_id, dataset_id, agent_id, rubric_id, status,
-         targets, budget_usd, judge_cost_usd, started_at, ended_at, error, dataset_name)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, NULL, NULL, ?)`,
+         targets, budget_usd, judge_cost_usd, started_at, ended_at, error, dataset_name, agent_version)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, NULL, NULL, ?, ?)`,
       [
         row.id, ctx.workspaceId, row.dataset_id, row.agent_id, row.rubric_id, row.status,
-        JSON.stringify(row.targets), row.budget_usd, row.started_at, row.dataset_name,
+        JSON.stringify(row.targets), row.budget_usd, row.started_at, row.dataset_name, row.agent_version,
       ],
     );
     return row;

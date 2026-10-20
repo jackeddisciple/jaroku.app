@@ -68,6 +68,7 @@ function machine(shared: QueueBackend, replicaId: string, capacity = 4) {
     shared,
     replicaId,
     forwardCancel: (_ws, evalId) => forwarded.push(evalId),
+    agentVersion: async () => 4,
     evalStore,
     runtimeDir: ".",
     context: () => ctx,
@@ -101,6 +102,9 @@ console.log("\none eval per workspace, across both machines");
   const ds = await dataset("claim", 2);
   const first = await a.runner.start({ ctx, datasetId: ds, agentId: "agent_claim", rubricId: rubric.id, targets: [{ provider: "fake", model: "fake" }], budgetUsd: null });
   check("the first machine starts it", !("error" in first), JSON.stringify(first));
+  if (!("error" in first)) {
+    check("recording the agent version it runs against", (await evalStore.getEvalRun(ctx, first.evalId))?.agent_version === 4);
+  }
   check("the second machine sees the workspace busy", await b.runner.busyIn(ctx.workspaceId));
   const second = await b.runner.start({ ctx, datasetId: ds, agentId: "agent_claim", rubricId: rubric.id, targets: [{ provider: "fake", model: "fake" }], budgetUsd: null });
   check("and refuses a second eval in it", "error" in second && second.error === "an eval is already running", JSON.stringify(second));

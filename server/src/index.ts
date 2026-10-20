@@ -5721,6 +5721,8 @@ evalRunner = new EvalRunner({
   dispatcher: evalLane,
   shared: dispatcher.backend,
   replicaId: REPLICA_ID,
+  // Which version of the agent the eval ran against, kept with it (migration 090).
+  agentVersion: async (ctx, slug) => (await agentRepo.bySlug(ctx, slug))?.current_version ?? null,
   // The socket asking may be on the other gateway; the owner hears it over the event bridge.
   forwardCancel: (workspaceId, evalId) => eventBridge?.publish(workspaceId, { channel: EVAL_CONTROL, type: "cancel", evalId }),
   evalStore,

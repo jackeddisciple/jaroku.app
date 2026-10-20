@@ -249,6 +249,8 @@ export interface EvalRunnerDeps {
   replicaId?: string;
   /** Tell the machine that owns this eval to cancel it — the socket asking may be on another one. */
   forwardCancel?: (workspaceId: string, evalId: string) => void;
+  /** The version this agent is on now, recorded with the eval so comparisons across an edit can be told apart. */
+  agentVersion?: (ctx: TenantContext, agentId: string) => Promise<number | null>;
 }
 
 /** How long a claim lives without a heartbeat. A machine that stops beating loses it in this long. */
@@ -486,6 +488,7 @@ export class EvalRunner {
       })),
     );
     const dataset = await this.deps.evalStore.getDataset(req.ctx, req.datasetId);
+    const agentVersion = (await this.deps.agentVersion?.(req.ctx, req.agentId).catch(() => null)) ?? null;
 
     const evalRun = await this.deps.evalStore.createEvalRun(req.ctx, {
       id: evalId,
@@ -495,6 +498,7 @@ export class EvalRunner {
       targets: req.targets,
       budget_usd: req.budgetUsd,
       dataset_name: dataset?.name ?? null,
+      agent_version: agentVersion,
     });
     // Rows first, dispatch second. If the process dies right here, the eval is recoverable
     // rather than a set of runs nothing points at.
