@@ -281,6 +281,56 @@ console.log("\ncancelling an eval purges its still-queued jobs from the dispatch
   }
 }
 
+console.log("\ncancelling an eval with nothing in flight ends it, and frees the workspace");
+{
+  // NO SLOT AT ALL, which is what an eval looks like when its jobs sit queued and nothing will run
+  // them — the stall the second gateway caused. No run exits, so no exit can be what finishes it.
+  const pool = new FakePool(0);
+  const dispatcher = new Dispatcher(new InMemoryQueueBackend());
+  const finished: { evalId: string; status: string }[] = [];
+  const progress: EvalProgress[] = [];
+
+  const runner = new EvalRunner({
+    pool: pool as unknown as RunPool,
+    store,
+    dispatcher,
+    evalStore,
+    runtimeDir: ".",
+    context: () => ctx,
+    markEvalRun: () => {},
+    onStarted: () => {},
+    onProgress: (p) => progress.push(p),
+    onFinished: (e) => finished.push(e),
+  });
+
+  const ds = await evalStore.createDataset(ctx, "agent_stalled", "stalled path");
+  for (let i = 0; i < 3; i++) await evalStore.addExample(ctx, ds.id, `hello-${i}`, null, null);
+  const rubric = await evalStore.putRubric(ctx, { dataset_id: null, name: "r", criteria: [] });
+
+  const started = await runner.start({
+    ctx, datasetId: ds.id, agentId: "agent_stalled", rubricId: rubric.id,
+    targets: [{ provider: "fake", model: "fake" }], budgetUsd: null,
+  });
+  if ("error" in started) { check(false, `start failed: ${started.error}`); }
+  else {
+    await sleep(100);
+    check(pool.started.length === 0, "nothing could start");
+    // A row left `running` with no run behind it — the shape a setup that threw used to leave.
+    const [first] = await evalStore.jobsForEval(ctx, started.evalId);
+    await evalStore.markJobRunning(ctx, first!.id, "no-such-run", 0);
+
+    await runner.cancel(started.evalId);
+    check(finished.length === 1 && finished[0]!.status === "cancelled", `the eval reports finished, cancelled (${JSON.stringify(finished)})`);
+    const row = await evalStore.getEvalRun(ctx, started.evalId);
+    check(row?.status === "cancelled", `its row is settled as cancelled (was ${row?.status})`);
+    const jobs = await evalStore.jobsForEval(ctx, started.evalId);
+    check(jobs.every((j) => j.status === "cancelled"), `every job is cancelled, the orphaned running one too (${jobs.map((j) => j.status).join(", ")})`);
+    check(!runner.activeIn(ctx.workspaceId), "and the workspace may start another eval");
+    const last = progress.at(-1);
+    check(last?.done === 3 && last.queued === 0, `the last progress counts all three as done (${JSON.stringify(last)})`);
+  }
+}
+
 console.log("\ntwo runs exiting together: nothing reports progress after the eval finished");
 {
   const pool = new FakePool(2);

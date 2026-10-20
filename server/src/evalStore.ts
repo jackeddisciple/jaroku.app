@@ -709,11 +709,14 @@ export class EvalStore {
 
   /** Put a job back on the queue without consuming an attempt. For the case where the
    *  pool refuses a dispatch the caps said should fit — the work is still owed, and
-   *  leaving the row in 'running' would strand it. */
+   *  leaving the row in 'running' would strand it.
+   *
+   *  ONLY A RUNNING ROW. A cancel that ended this job in the meantime has decided it, and
+   *  putting it back in the queue would leave an eval with a job nothing will ever run. */
   async requeueJob(ctx: TenantContext, jobId: string): Promise<void> {
     await this.q(ctx).run(
       `UPDATE eval_jobs SET status = 'queued', run_id = NULL, started_at = NULL
-        WHERE id = ? AND workspace_id = ?`,
+        WHERE id = ? AND workspace_id = ? AND status = 'running'`,
       [jobId, ctx.workspaceId],
     );
   }

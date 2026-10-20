@@ -415,6 +415,11 @@ export class EvalRunner {
    * idempotencyKey, best-effort (see backend.ts's own note on why this isn't the actual
    * safety mechanism). `executeAdmitted`'s `live.cancelled` check is what still catches
    * anything that slips past the purge because it was admitted in the same instant.
+   *
+   * AND THEN IT SETTLES, which it used to leave to a run's exit. With nothing in flight no exit is
+   * coming — an eval whose jobs sat queued was cancelled on the server, stayed `running` in the row
+   * and in `live`, never told anybody it had finished, and refused every later eval in its workspace.
+   * The pump after the cancel reports the cancelled cells and finishes the eval when nothing is left.
    */
   async cancel(evalId: string): Promise<void> {
     const live = this.live.get(evalId);
@@ -428,7 +433,16 @@ export class EvalRunner {
       if (purged) console.log(`[eval] ${evalId} purged ${purged} still-queued job(s) from the dispatcher`);
     }
     for (const runId of live.runToJob.keys()) this.deps.pool.stop(runId);
+    // A row that says `running` with no run here to stop has no exit coming either, and would hold
+    // the eval open forever. Those end now, as cancelled.
+    const tracked = new Set(live.runToJob.values());
+    for (const job of await this.deps.evalStore.jobsForEval(this.ctx(evalId), evalId)) {
+      if (job.status === "running" && !tracked.has(job.id)) {
+        await this.deps.evalStore.finishJob(this.ctx(evalId), job.id, "cancelled", { error: "cancelled" });
+      }
+    }
     console.log(`[eval] ${evalId} cancelled`);
+    await this.pump(evalId);
   }
 
   // --- draining --------------------------------------------------------------
@@ -719,6 +733,9 @@ export class EvalRunner {
       this.deps.releaseRun?.(runId);
       await provSem.release(provLeaseId);
       await this.deps.dispatcher.ack("run.eval", leaseId);
+      // The row too, as the `!started` path below does: left `running` with nothing running it, a
+      // cancel arriving before the retry would have nothing to stop and the eval would never end.
+      await this.deps.evalStore.requeueJob(this.ctx(payload.evalId), payload.jobId).catch(() => {});
       await this.requeueVerbatim(job);
       throw err; // guard() logs it; the reservations are already back
     }
