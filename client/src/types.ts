@@ -623,7 +623,13 @@ export interface EvalResults {
   /** What the dataset was called when the eval ran. Null only for an eval from before it was kept. */
   datasetName?: string | null;
   agentId: string;
+  /** The agent's version when the eval ran (server migration 090). Null for an eval from before. */
+  agentVersion?: number | null;
   status: string;
+  /** Why it stopped, as the server recorded it — a ceiling, a cancel, a restart. Null when it simply ran. */
+  stopReason?: string | null;
+  /** The legs it compared, in the order they were chosen. */
+  targets?: EvalTarget[];
   startedAt: string;
   endedAt: string | null;
   providers: ProviderMetrics[];

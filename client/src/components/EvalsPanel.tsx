@@ -21,7 +21,9 @@ import { ActivityIcon, DatabaseIcon } from "./panelIcons.tsx";
 import { ICON } from "../lib/tokens.ts";
 import { EVAL_PHASE } from "../lib/domainPhase.ts";
 import { StatusGlyph } from "./StatusGlyph.tsx";
-import type { EvalRunStatus } from "../types.ts";
+import type { EvalResults, EvalRunStatus } from "../types.ts";
+import type { EvalProgress } from "../store/evalStore.ts";
+import { fmtCost } from "../lib/format.ts";
 
 /**
  * This panel's word for each eval status, beside the phase's shape.
@@ -38,6 +40,49 @@ const EVAL_WORD: Record<EvalRunStatus, string> = {
   cancelled: "cancelled",
   error: "error",
 };
+
+/**
+ * One line that says whose eval this is and how it went, over the comparison.
+ *
+ * NOTHING ON THE PANEL NAMED THE AGENT OR THE DATASET, and the status lived only in a strip of glyphs
+ * that was drawn for two or more evals — so a single eval that had completed, been cancelled, stopped
+ * over budget or stalled looked the same, and another agent's results could sit here unannounced. The
+ * stop reason the server records ("stopped after $0.0048 of a $0.0010 budget", a workspace ceiling,
+ * a restart) was on the row and nowhere else.
+ */
+export function ResultsHeader({ results, live }: { results: EvalResults; live: EvalProgress | null }) {
+  const agentName = useBuildStore((s) => s.agents.find((a) => a.agent_id === results.agentId)?.name ?? results.agentId);
+  const status = (live && live.evalId === results.evalId && live.status === undefined ? "running" : results.status) as EvalRunStatus;
+  const word = EVAL_WORD[status] ?? status;
+  const models = (results.targets ?? results.providers).map((t) => t.model);
+  const { totals } = results;
+  return (
+    <div className="space-y-1 pb-3">
+      <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5 text-caption">
+        <span className="text-ink">{agentName}</span>
+        {results.agentVersion != null && <span className="text-tiny text-faint">v{results.agentVersion}</span>}
+        <span className="text-faint">·</span>
+        <span className="min-w-0 truncate text-muted" title={results.datasetName ?? undefined}>
+          {results.datasetName ?? "dataset"}
+        </span>
+      </div>
+      <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-tiny text-muted">
+        <span className="inline-flex items-center gap-1 text-ink">
+          <StatusGlyph phase={EVAL_PHASE[status] ?? "pending"} size={ICON.xs} title={word} />
+          {word}
+        </span>
+        <span title={results.startedAt}>{relTime(results.startedAt)}</span>
+        <span className="tabular-nums">
+          {fmtCost(totals.trueSpendUsd)} spent{totals.budgetUsd !== null ? ` of ${fmtCost(totals.budgetUsd)}` : ""}
+        </span>
+        <span className="min-w-0 truncate" title={models.join(", ")}>{models.join(" · ")}</span>
+      </div>
+      {results.stopReason && status !== "completed" && status !== "running" && (
+        <div className="text-tiny text-muted">{results.stopReason}</div>
+      )}
+    </div>
+  );
+}
 
 type Mode = "dataset" | "results";
 
@@ -195,7 +240,7 @@ export function EvalsPanel() {
             </div>
           )}
 
-          {progress && !progress.status && (
+          {progress && !progress.status && progress.evalId === shownEvalId && (
             <div className="text-tiny text-muted pb-3">
               {progress.done}/{progress.total} runs done · {progress.running} in flight
               {progress.queued > 0 && ` · ${progress.queued} queued`}
@@ -205,6 +250,7 @@ export function EvalsPanel() {
 
           {results ? (
             <>
+              <ResultsHeader results={results} live={progress} />
               <ComparisonTable results={results} />
               <ExampleDrillDown results={results} />
             </>
