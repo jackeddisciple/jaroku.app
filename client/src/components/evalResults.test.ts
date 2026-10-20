@@ -289,6 +289,28 @@ console.log("\nan eval in the Activity feed says when it stopped, and opens on i
   check(useUiStore.getState().rightTab === "evals" && closed, "in the Evals panel, with the overlay closed");
 }
 
+console.log("\na dataset with one eval still offers the agent's evals on every dataset");
+{
+  // The scope switch is the way to a deleted dataset's evals; it waited for this dataset to have two.
+  const { EvalsPanel } = await import("./EvalsPanel.tsx");
+  const { useEvalStore } = await import("../store/evalStore.ts");
+  const { TooltipProvider } = await import("./ui/tooltip.tsx");
+  const { evalListKey } = await import("../store/evalStore.ts");
+  seed(useBuildStore, { activeAgentId: "liven", agents: [{ agent_id: "liven", name: "Liven" }] } as never);
+  seed(useEvalStore, {
+    datasetsByAgent: { liven: [{ id: "d1", agent_id: "liven", name: "Screening cases", created_at: "", updated_at: "" }] },
+    selectedDatasetByAgent: { liven: "d1" },
+    modeByAgent: { liven: "results" },
+    evalLists: { [evalListKey("liven", "d1")]: { evals: [{
+      id: "e1", dataset_id: "d1", agent_id: "liven", rubric_id: "r", status: "cancelled", targets: [], budget_usd: 0.2,
+      judge_cost_usd: 0, started_at: new Date().toISOString(), ended_at: null, error: null, dataset_name: "Screening cases", dataset_gone: false,
+    }], complete: true, window: 50 } },
+  } as never);
+  const html = markup(createElement(TooltipProvider, null, createElement(EvalsPanel)));
+  check(/aria-pressed="false"[^>]*>This dataset</.test(html) || text(html).includes("This dataset"),
+    "the switch to every dataset is there with only one eval", text(html).slice(0, 200));
+}
+
 console.log("\nthe rail says that pressing the tab already showing hides the panel");
 {
   const { railTip } = await import("../lib/railTip.ts");

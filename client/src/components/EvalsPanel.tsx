@@ -335,8 +335,10 @@ export function EvalsPanel() {
         </div>
       ) : (
         <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-4">
-          {/* Past evals — a comparison keeps its value after the run that produced it. */}
-          {(evals.length > 1 || allDatasets || !selectedDatasetId) && (
+          {/* Past evals — a comparison keeps its value after the run that produced it. Shown with a
+              single eval too: the scope switch is the only way to a deleted dataset's evals, and
+              hiding it until this dataset had two left them out of reach. */}
+          {(evals.length > 0 || allDatasets || (hasDatasets && selectedDatasetId)) && (
             <div className="flex flex-wrap items-center gap-1.5 pb-3">
               {/* WHICH HISTORY. Only offered while there is a dataset to narrow to. */}
               {hasDatasets && selectedDatasetId && (
