@@ -539,6 +539,8 @@ export type EstimateEvalCommand = {
   targets: { provider: string; model: string }[];
   origin?: string;
 };
+/** How a dataset's answers are checked against `expected`: exact, contains, word, regex — or null, off. */
+export type SetDatasetCheckCommand = { cmd: "setDatasetCheck"; datasetId: string; mode: string | null; origin?: string };
 /** Whether this workspace's evals will be judged, and on whose key. */
 export type LoadJudgeCommand = { cmd: "loadJudge"; origin?: string };
 /** The Evals tab's switch: the judge, and only the judge, on the workspace's own Anthropic key. */
@@ -1959,6 +1961,7 @@ export type EvalCommand =
   | ResetRubricCommand
   | LoadJudgeCommand
   | SetJudgeOwnKeyCommand
+  | SetDatasetCheckCommand
   | LoadEvalResultsCommand
   | ListEvalsCommand
   | EstimateEvalCommand;
@@ -1966,7 +1969,7 @@ export type EvalCommand =
 const EVAL_COMMANDS = new Set([
   "createDataset", "renameDataset", "deleteDataset", "listDatasets",
   "loadDataset", "addExample", "addExamples", "updateExample", "deleteExample", "promoteTestInput",
-  "startEval", "cancelEval", "loadRubric", "saveRubric", "resetRubric", "loadJudge", "setJudgeOwnKey",
+  "startEval", "cancelEval", "loadRubric", "saveRubric", "resetRubric", "loadJudge", "setJudgeOwnKey", "setDatasetCheck",
   "loadEvalResults", "listEvals", "estimateEval",
 ]);
 
@@ -4037,7 +4040,7 @@ export const COMMAND_CHANNEL: Record<string, string> = {
   createDataset: "eval", renameDataset: "eval", deleteDataset: "eval", listDatasets: "eval",
   loadDataset: "eval", addExample: "eval", addExamples: "eval", updateExample: "eval", deleteExample: "eval",
   promoteTestInput: "eval", startEval: "eval", cancelEval: "eval", loadRubric: "eval",
-  saveRubric: "eval", resetRubric: "eval", loadJudge: "eval", setJudgeOwnKey: "eval", loadEvalResults: "eval", listEvals: "eval", estimateEval: "eval",
+  saveRubric: "eval", resetRubric: "eval", loadJudge: "eval", setJudgeOwnKey: "eval", setDatasetCheck: "eval", loadEvalResults: "eval", listEvals: "eval", estimateEval: "eval",
   listMcpServers: "mcp", addMcpServer: "mcp", removeMcpServer: "mcp", rediscoverMcpServer: "mcp",
   setMcpServerAuth: "mcp", setMcpToolImpact: "mcp", resolveMcpConfirm: "mcp",
   listProviders: "providers", setOwnKeyForPlatform: "providers",

@@ -203,7 +203,11 @@ export function CellDetail({
           </div>
           {expected && (
             <div>
-              <div className="text-faint">Expected</div>
+              <div className="text-faint">
+                Expected
+                {cell.matches === true && <span className="ml-2 text-ok">matches</span>}
+                {cell.matches === false && <span className="ml-2 text-err">does not match</span>}
+              </div>
               <ClampedText text={expected} lines={3} className="text-muted" />
             </div>
           )}

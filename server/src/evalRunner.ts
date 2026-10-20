@@ -515,6 +515,9 @@ export class EvalRunner {
       dataset_name: dataset?.name ?? null,
       agent_version: agentVersion,
       rubric: rubric?.criteria ?? null,
+      // How answers are checked against `expected`, as the dataset says now — kept with the eval so a
+      // later change of mode does not re-grade it.
+      check_mode: dataset?.check_mode ?? null,
     });
     // Rows first, dispatch second. If the process dies right here, the eval is recoverable
     // rather than a set of runs nothing points at.

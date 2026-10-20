@@ -34,6 +34,7 @@ import type { TenantContext } from "./db/tenant.ts";
 import type { EvalStore, EvalJob, EvalTarget, RubricCriterion } from "./evalStore.ts";
 import { asInt } from "./db/db.ts";
 import { isPriced, round8 } from "./pricing.ts";
+import { isCheckMode, matchesExpected } from "./expectedMatch.ts";
 
 export interface JobMetrics {
   cost_usd: number | null;
@@ -153,6 +154,9 @@ export interface ProviderMetrics {
   qualityScore: number | null;
   scored: number;
   unscored: number;
+  /** Of the succeeded runs whose case had an expectation, how many were checked and how many matched. */
+  checked: number;
+  matched: number;
 }
 
 /**
@@ -215,6 +219,8 @@ export interface ExampleCell {
   error: string | null;
   /** What the agent answered, as kept when its run ended. Null when nothing was kept. */
   output: string | null;
+  /** Whether the answer met the case's `expected` under the eval's check — null when not checked. */
+  matches: boolean | null;
   /** null = unscored (judge failed or skipped), with `scoreError` saying which. */
   score: number | null;
   scoreError: string | null;
@@ -248,6 +254,8 @@ export interface EvalAggregate {
   targets: EvalTarget[];
   /** The criteria it was scored on, so a score can be shown with its label rather than its id. */
   rubric: RubricCriterion[];
+  /** How answers were checked against `expected`, or null when they were not. */
+  checkMode: string | null;
   startedAt: string;
   endedAt: string | null;
   providers: ProviderMetrics[];
@@ -272,6 +280,7 @@ export async function aggregateEval(
   for (const s of scores) scoreByJob.set(s.job_id, s.score);
 
   // Group by the (provider, model) leg — the unit the dashboard compares.
+  const checkMode = isCheckMode(evalRun.check_mode) ? evalRun.check_mode : null;
   const groups = new Map<string, EvalJob[]>();
   for (const j of jobs) {
     const key = `${j.provider} ${j.model}`;
@@ -317,6 +326,7 @@ export async function aggregateEval(
       .map((j) => scoreByJob.get(j.id))
       .filter((v): v is number => typeof v === "number");
     const unscored = succeeded.length - graded.length;
+    const outcomes = succeeded.map((j) => matchesExpected(checkMode, j.expected, j.output)).filter((m): m is boolean => m !== null);
 
     providers.push({
       provider,
@@ -341,6 +351,8 @@ export async function aggregateEval(
         : null,
       scored: graded.length,
       unscored,
+      checked: outcomes.length,
+      matched: outcomes.filter(Boolean).length,
     });
   }
 
@@ -400,6 +412,7 @@ export async function aggregateEval(
         attempt: j.attempt,
         error: j.error,
         output: j.output ?? null,
+        matches: j.status === "succeeded" ? matchesExpected(checkMode, j.expected, j.output) : null,
         score: s?.score ?? null,
         scoreError: s?.error ?? null,
         perCriterion: s?.per_criterion ?? null,
@@ -417,6 +430,7 @@ export async function aggregateEval(
     stopReason: evalRun.error ?? null,
     targets: evalRun.targets,
     rubric: evalRun.rubric ?? (await evalStore.getRubric(ctx, evalRun.rubric_id))?.criteria ?? [],
+    checkMode,
     status: evalRun.status,
     startedAt: evalRun.started_at,
     endedAt: evalRun.ended_at,

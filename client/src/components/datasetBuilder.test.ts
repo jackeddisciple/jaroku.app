@@ -73,6 +73,9 @@ console.log("\nthe builder, rendered");
   const remove = /<button[^>]*aria-label="Remove case 1"[^>]*>/.exec(html)?.[0] ?? "";
   check(/focus-visible:opacity-100/.test(remove), "a case's delete shows on keyboard focus, not only on hover", remove);
   check(/self-start/.test(remove), "and is only its own size, not a strip down the case's edge", remove);
+  const words = html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
+  check(words.includes("Check answers against expected") && words.includes("Word") && words.includes("Pattern"),
+    "a dataset says how its answers are checked against expected", words.slice(0, 300));
 }
 
 console.log(failures === 0 ? "\nALL CORRECT" : `\n${failures} FAILURES`);

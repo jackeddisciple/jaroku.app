@@ -238,6 +238,7 @@ export const COMMAND_CAPABILITY: Record<string, string> = {
   saveRubric: "eval:write",
   resetRubric: "eval:write",
   loadJudge: "eval:read",
+  setDatasetCheck: "eval:write",
   setJudgeOwnKey: "provider:manage",
   startEval: "eval:run",
   cancelEval: "eval:run",

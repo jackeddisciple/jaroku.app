@@ -254,6 +254,40 @@ console.log("\nan estimate says when quality won't be scored");
   check("and with it on, counts its cost instead", on.judgeEnabled === true && on.judgeHighUsd > 0 && !on.notes.some((n) => /won't be scored/.test(n)));
 }
 
+console.log("\nan answer is checked against what the case expected, without a judge");
+{
+  const { matchesExpected, checkPattern } = await import("./expectedMatch.ts");
+  check("exact ignores case and spacing", matchesExpected("exact", "Decline", "  decline ") === true);
+  check("exact is not contains", matchesExpected("exact", "decline", "decline — no QA") === false);
+  check("contains finds it inside", matchesExpected("contains", "no QA", "decline — no QA experience") === true);
+  check("word wants the whole word", matchesExpected("word", "decline", "Decline: no QA") === true && matchesExpected("word", "decline", "declined") === false);
+  check("a pattern can be the check", matchesExpected("regex", "^(advance|decline)\\b", "decline — no QA") === true);
+  check("no expectation is not checked, not failed", matchesExpected("exact", null, "x") === null && matchesExpected("exact", "  ", "x") === null);
+  check("and no mode is not checked", matchesExpected(null, "x", "x") === null);
+  check("a pattern that can backtrack for ever is refused", "error" in checkPattern("(a+)+$"));
+
+  const ds = await evalStore.createDataset(ctx, "a", "Checked");
+  await evalStore.setCheckMode(ctx, ds.id, "word");
+  const ex = await evalStore.addExample(ctx, ds.id, "Role: QA", "decline");
+  const run = await evalStore.createEvalRun(ctx, {
+    dataset_id: ds.id, agent_id: "a", rubric_id: "r", budget_usd: null, check_mode: (await evalStore.getDataset(ctx, ds.id))?.check_mode,
+    targets: [{ provider: "anthropic", model: "claude-haiku-4-5" }],
+  });
+  const jobs = await evalStore.createJobs(ctx, run.id, [
+    { example_id: ex.id, provider: "anthropic", model: "claude-haiku-4-5", input: ex.input, expected: ex.expected },
+    { example_id: ex.id, provider: "anthropic", model: "claude-haiku-4-5", input: ex.input, expected: ex.expected },
+  ]);
+  await evalStore.finishJob(ctx, jobs[0]!.id, "succeeded", { cost_usd: 0.001, output: "Decline — no QA experience" });
+  await evalStore.finishJob(ctx, jobs[1]!.id, "succeeded", { cost_usd: 0.001, output: "Advance to interview" });
+  await evalStore.setCheckMode(ctx, ds.id, "exact");
+  const res = (await aggregateEval(ctx, evalStore, run.id))!;
+  const cells = res.rows[0]!.cells;
+  check("each cell says whether it matched", cells[0]?.matches === true && cells[1]?.matches === false, JSON.stringify(cells.map((c) => c.matches)));
+  const p = res.providers[0]!;
+  check("and the model counts what matched of what was checked", p.checked === 2 && p.matched === 1, `${p.matched}/${p.checked}`);
+  check("by the mode the eval started with, not the dataset's mode now", res.checkMode === "word");
+}
+
 await store.close();
 rmSync(DB, { force: true });
 rmSync(`${DB}-wal`, { force: true });

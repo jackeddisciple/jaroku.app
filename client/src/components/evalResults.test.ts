@@ -194,5 +194,30 @@ console.log("\nan eval's trace leads back to the eval, and the cell is still ope
   check(st.openCellByEval["e1"] === "job-7", "with the cell that was open still open");
 }
 
+console.log("\nanswers checked against expected are counted, and each cell says how it did");
+{
+  const { ComparisonTable } = await import("./EvalDashboard.tsx");
+  const { CellDetail } = await import("./EvalDrillDown.tsx");
+  const { resultsToCsv } = await import("../lib/evalExport.ts");
+  const { parseCsv } = await import("../lib/csv.ts");
+  const p = {
+    provider: "anthropic", model: "claude-haiku-4-5", total: 2, succeeded: 2, failed: 0, cancelled: 0, pending: 0, successRate: 1,
+    comparisonCostUsd: 0.002, costPerRunUsd: 0.001, spentUsd: 0.002, tokens: 10, latencyP50Ms: 900, latencyP95Ms: 900,
+    costUnknown: false, costIncomplete: false, qualityScore: null, scored: 0, unscored: 2, checked: 2, matched: 1,
+  };
+  const words = text(markup(createElement(ComparisonTable, { results: results({ providers: [p], checkMode: "word" }) })));
+  check(words.includes("Matches") && words.includes("1/2") && words.includes("50%"), "the table has a Matches column when answers were checked", words);
+  const plain = text(markup(createElement(ComparisonTable, { results: results({ providers: [{ ...p, checked: 0, matched: 0 }] }) })));
+  check(!plain.includes("Matches"), "and none when they were not", plain);
+  const cell = {
+    jobId: "j1", provider: "anthropic", model: "claude-haiku-4-5", status: "succeeded", runId: "r1", costUsd: 0.001,
+    costComplete: true, latencyMs: 900, attempt: 0, error: null, output: "Advance", matches: false,
+    score: null, scoreError: null, perCriterion: null, rationale: null,
+  };
+  check(text(markup(createElement(CellDetail, { cell, expected: "decline", criteria: [], onStep: () => {} }))).includes("does not match"), "a cell says it did not match");
+  const csv = parseCsv(resultsToCsv(results({ rows: [{ exampleId: "x1", input: "a", expected: "decline", cells: [cell] }] }))).rows;
+  check(csv[1]![csv[0]!.indexOf("matches_expected")] === "no", "and the export says so too");
+}
+
 console.log(failures === 0 ? "\nALL CORRECT" : `\n${failures} FAILURES`);
 (globalThis as { process?: { exit(code: number): void } }).process?.exit(failures === 0 ? 0 : 1);

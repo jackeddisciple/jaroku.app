@@ -47,6 +47,8 @@ export function resultsToCsv(results: EvalResults, context: ExportContext = {}):
     "cost_usd", "cost_known", "cost_complete",
     "latency_ms", "run_id", "error",
     "agent", "dataset", "eval_id",
+    // Whether the answer met `expected` under the eval's check: yes / no, empty when not checked.
+    "matches_expected",
   ];
 
   const body: unknown[][] = [];
@@ -83,6 +85,7 @@ export function resultsToCsv(results: EvalResults, context: ExportContext = {}):
         context.agentName ?? results.agentId,
         results.datasetName ?? results.datasetId,
         results.evalId,
+        c.matches === true ? "yes" : c.matches === false ? "no" : "",
       ]);
     }
   });
@@ -100,6 +103,7 @@ export function summaryToCsv(results: EvalResults, context: ExportContext = {}):
     "latency_p50_ms", "latency_p95_ms",
     // `success_rate` is of the jobs that RAN; `cancelled` ones never did, and are counted apart.
     "succeeded", "failed", "total", "success_rate", "cancelled",
+    "matched_expected", "checked_against_expected",
   ];
   const body = results.providers.map((p) => [
     p.provider, p.model,
@@ -112,6 +116,7 @@ export function summaryToCsv(results: EvalResults, context: ExportContext = {}):
     p.spentUsd, p.tokens,
     p.latencyP50Ms ?? "", p.latencyP95Ms ?? "",
     p.succeeded, p.failed, p.total, p.successRate.toFixed(4), p.cancelled ?? "",
+    p.checked ? (p.matched ?? 0) : "", p.checked ?? "",
   ]);
 
   // Totals as a trailing block: true spend and judge cost are properties of the eval, not
@@ -126,6 +131,7 @@ export function summaryToCsv(results: EvalResults, context: ExportContext = {}):
     ["dataset", results.datasetName ?? results.datasetId],
     ["status", results.status],
     ["stop_reason", results.stopReason ?? ""],
+    ["check", results.checkMode ?? ""],
     ["started_at", results.startedAt],
     ["agent_spend_usd", results.totals.agentSpendUsd],
     ["judge_cost_usd", results.totals.judgeCostUsd],

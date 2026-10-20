@@ -480,6 +480,8 @@ export interface Dataset {
   created_at: string;
   updated_at: string;
   example_count?: number;
+  /** How answers are checked against `expected`: exact, contains, word, regex — null when not checked. */
+  check_mode?: string | null;
 }
 
 export interface DatasetExample {
@@ -563,6 +565,9 @@ export interface ProviderMetrics {
   qualityScore: number | null;
   scored: number;
   unscored: number;
+  /** Of the succeeded runs with an expectation, how many were checked against it and how many matched. */
+  checked?: number;
+  matched?: number;
 }
 
 export interface EvalTotals {
@@ -616,6 +621,8 @@ export interface ExampleCell {
   error: string | null;
   /** What the agent answered, as kept when its run ended (server migration 092). Null when nothing was kept. */
   output?: string | null;
+  /** Whether the answer met the case's `expected` under the eval's check — null when not checked. */
+  matches?: boolean | null;
   /** null = unscored, with scoreError saying why. Never treat as zero. */
   score: number | null;
   scoreError: string | null;
@@ -645,6 +652,8 @@ export interface EvalResults {
   targets?: EvalTarget[];
   /** The criteria its quality was scored on, as kept when it started. */
   rubric?: RubricCriterion[];
+  /** How answers were checked against `expected`, or null when they were not. */
+  checkMode?: string | null;
   startedAt: string;
   endedAt: string | null;
   providers: ProviderMetrics[];
@@ -2624,6 +2633,7 @@ export type ClientCommand =
   | { cmd: "saveRubric"; datasetId: string; name?: string; criteria: RubricCriterion[]; origin?: string }
   | { cmd: "resetRubric"; datasetId: string; origin?: string }
   | { cmd: "loadJudge"; origin?: string }
+  | { cmd: "setDatasetCheck"; datasetId: string; mode: string | null; origin?: string }
   | { cmd: "setJudgeOwnKey"; on: boolean; origin?: string }
   // MCP: server registry. Same discipline as the eval commands — every mutation comes back
   // as a full snapshot on the "mcp" channel.

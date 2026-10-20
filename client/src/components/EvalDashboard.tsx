@@ -136,6 +136,19 @@ function RanOk({ p }: { p: ProviderMetrics }) {
   );
 }
 
+/** How many answers met their case's expected output, of those checked. */
+function MatchCell({ p }: { p: ProviderMetrics }) {
+  const checked = p.checked ?? 0;
+  const matched = p.matched ?? 0;
+  if (!checked) return <span className="text-faint">—</span>;
+  return (
+    <span>
+      <span className={matched === checked ? "text-ok" : matched === 0 ? "text-err" : "text-ink"}>{matched}/{checked}</span>
+      <span className="text-faint text-tiny ml-1">{fmtPercent(matched / checked, "share")}</span>
+    </span>
+  );
+}
+
 /** The table's row as a card, for a panel too narrow for seven columns. */
 function ProviderCard({ p, lead }: { p: ProviderMetrics; lead: ReturnType<typeof leaders> }) {
   const fact = (label: string, value: React.ReactNode) => (
@@ -155,6 +168,7 @@ function ProviderCard({ p, lead }: { p: ProviderMetrics; lead: ReturnType<typeof
         {fact("Cost", <CostCell p={p} />)}
         {fact("Per run", <span className="text-muted tabular-nums">{p.costUnknown || p.succeeded === 0 ? "—" : fmtCost(p.costPerRunUsd ?? 0)}{lead.cheapest === p.model && <LeadMark title="cheapest per run" />}</span>)}
         {fact("p50 · p95", <span className="text-muted tabular-nums">{fmtLatency(p.latencyP50Ms)} · {fmtLatency(p.latencyP95Ms)}{lead.fastest === p.model && <LeadMark title="fastest" />}</span>)}
+        {(p.checked ?? 0) > 0 && fact("Matches", <MatchCell p={p} />)}
         {fact("Ran OK", <RanOk p={p} />)}
       </div>
     </div>
@@ -187,6 +201,8 @@ export function ComparisonTable({
   onSelectProvider?: (p: ProviderMetrics) => void;
 }) {
   const lead = leaders(results.providers);
+  // A MATCHES COLUMN, only when the eval checked answers against `expected` — see expectedMatch.ts.
+  const checking = results.providers.some((p) => (p.checked ?? 0) > 0);
   const agentName = useBuildStore((s) => s.agents.find((a) => a.agent_id === results.agentId)?.name);
   const { totals } = results;
   const overBudget = totals.budgetUsd !== null && totals.trueSpendUsd >= totals.budgetUsd;
@@ -218,6 +234,9 @@ export function ComparisonTable({
               <th className="text-right font-normal pb-1.5 px-2">Per run</th>
               <th className="text-right font-normal pb-1.5 px-2">p50</th>
               <th className="text-right font-normal pb-1.5 px-2">p95</th>
+              {checking && (
+                <th className="text-right font-normal pb-1.5 px-2" title={`Answers that met the case's expected output (${results.checkMode ?? "checked"})`}>Matches</th>
+              )}
               <th className="text-right font-normal pb-1.5 pl-2" title="Of the jobs that ran, how many finished without failing. Not a judgement of the answer.">Ran OK</th>
             </tr>
           </thead>
@@ -260,6 +279,11 @@ export function ComparisonTable({
                   )}
                 </td>
                 <td className="py-1.5 px-2 text-right text-muted tabular-nums">{fmtLatency(p.latencyP95Ms)}</td>
+                {checking && (
+                  <td className="py-1.5 px-2 text-right whitespace-nowrap tabular-nums">
+                    <MatchCell p={p} />
+                  </td>
+                )}
                 <td className="py-1.5 pl-2 text-right">
                   <RanOk p={p} />
                 </td>

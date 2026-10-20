@@ -23,6 +23,7 @@ import {
   sendRenameDataset,
   sendResetRubric,
   sendSaveRubric,
+  sendSetDatasetCheck,
   sendUpdateExample,
 } from "../lib/socket.ts";
 import { csvToExamples } from "../lib/csv.ts";
@@ -33,7 +34,7 @@ import { Truncate } from "./Truncate.tsx";
 import { EmptyState } from "./EmptyState.tsx";
 import { SectionHeader } from "./SectionHeader.tsx";
 import { ChevronDownIcon, ChevronRightIcon, DatabaseIcon, XIcon } from "./panelIcons.tsx";
-import type { DatasetExample, RubricCriterion } from "../types.ts";
+import type { Dataset, DatasetExample, RubricCriterion } from "../types.ts";
 import { Icon } from "../lib/icons/registry.ts";
 
 /** An input/expected pair, editable in place. Commits on blur; Escape reverts. */
@@ -395,6 +396,43 @@ function RubricEditor({ datasetId }: { datasetId: string }) {
   );
 }
 
+/** The ways an answer can be checked against a case's expected output, as the server names them. */
+export const CHECKS: { mode: string | null; label: string; hint: string }[] = [
+  { mode: null, label: "Off", hint: "Expected outputs are only shown to the judge" },
+  { mode: "exact", label: "Exact", hint: "The answer is the expected output — case and spacing aside" },
+  { mode: "contains", label: "Contains", hint: "The answer contains the expected output" },
+  { mode: "word", label: "Word", hint: "The answer says the expected word — decline, advance — as a whole word" },
+  { mode: "regex", label: "Pattern", hint: "The expected output is a pattern the answer must match" },
+];
+
+/**
+ * How this dataset's answers are checked against what each case expected — with no judge needed.
+ *
+ * `expected` was only ever shown to the judge, so without one it did nothing. Kept with each eval
+ * when it starts, so changing it here grades the next eval and leaves past ones as they were.
+ */
+function CheckRow({ dataset }: { dataset: Dataset }) {
+  const connected = useTraceStore((s) => s.connection === "open");
+  const current = dataset.check_mode ?? null;
+  return (
+    <div className="flex shrink-0 flex-wrap items-center gap-1 px-4 pb-2 text-tiny" role="group" aria-label="Check answers against expected">
+      <span className="mr-1 text-faint">Check answers against expected</span>
+      {CHECKS.map((c) => (
+        <Chip
+          key={c.label}
+          size="sm"
+          selected={current === c.mode}
+          disabled={!connected}
+          title={c.hint}
+          onClick={() => current !== c.mode && sendSetDatasetCheck(dataset.id, c.mode)}
+        >
+          {c.label}
+        </Chip>
+      ))}
+    </div>
+  );
+}
+
 export function DatasetBuilder() {
   const activeAgentId = useBuildStore((s) => s.activeAgentId);
   const connected = useTraceStore((s) => s.connection === "open");
@@ -605,6 +643,7 @@ export function DatasetBuilder() {
 
       {/* The judge's rubric for THIS dataset. Under the dataset actions and above the examples,
           because it is the standard those examples will be scored against. */}
+      {selected && <CheckRow dataset={selected} />}
       {selected && <RubricEditor key={selected.id} datasetId={selected.id} />}
 
       {(error || importNote) && (

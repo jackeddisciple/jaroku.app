@@ -35,6 +35,7 @@ import { newRequestId, systemContext, systemContextFor, type TenantContext } fro
 import { EvalStore, checkDatasetName, cleanTargets, uniqueDatasetName, type Rubric, type RubricCriterion } from "./evalStore.ts";
 import { EvalRunner, evalRunsOwnedElsewhere } from "./evalRunner.ts";
 import { DEFAULT_CRITERIA, validateRubric } from "./judge/rubric.ts";
+import { isCheckMode } from "./expectedMatch.ts";
 import { JudgeScorer } from "./judge/score.ts";
 import { aggregateEval, bestByQuality } from "./evalAggregate.ts";
 import { estimateEval, estimateRun } from "./evalEstimate.ts";
@@ -11636,6 +11637,17 @@ async function handleEvalCommand(ctx: TenantContext, cmd: ForwardedCommand): Pro
         console.log(`[eval] judge on the workspace's own key: ${on ? "on" : "off"} (${ctx.workspaceId})`);
         // State, not a reply: everyone's Evals tab should say whether quality will be scored.
         relay.broadcastEval(ctx, { type: "judge", ...(await judgeState(ctx)) });
+        return;
+      }
+      case "setDatasetCheck": {
+        // How this dataset's answers are checked against `expected`. Off is null.
+        const mode = cmd.mode === null || cmd.mode === undefined ? null : isCheckMode(cmd.mode) ? cmd.mode : undefined;
+        if (mode === undefined) {
+          reply({ type: "error", datasetId: cmd.datasetId, message: "that is not a way to check an answer" });
+          return;
+        }
+        await evalStore.setCheckMode(ctx, cmd.datasetId, mode);
+        await broadcastDatasets(ctx, (await evalStore.getDataset(ctx, cmd.datasetId))?.agent_id ?? null);
         return;
       }
       case "resetRubric": {

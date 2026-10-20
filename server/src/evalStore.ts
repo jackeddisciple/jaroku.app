@@ -36,6 +36,8 @@ export interface Dataset {
   name: string;
   created_at: string;
   updated_at: string;
+  /** How an answer is checked against a case's `expected` (migration 094). Null is not checked. */
+  check_mode?: string | null;
 }
 
 export type DatasetSummary = Dataset & { example_count: number };
@@ -136,6 +138,8 @@ export interface EvalRun {
    * results label scores with — an edit or a reset afterwards changes the next eval, not this one.
    */
   rubric: RubricCriterion[] | null;
+  /** How answers were checked against `expected` when it started (migration 094). Null: not checked. */
+  check_mode: string | null;
 }
 
 export type EvalJobStatus =
@@ -250,7 +254,7 @@ const nowIso = (): string => new Date().toISOString();
 // workspace_id into the object that goes onto the wire.
 const RUBRIC_COLUMNS = `id, dataset_id, name, criteria, created_at, updated_at`;
 const EVAL_RUN_COLUMNS = `id, dataset_id, agent_id, rubric_id, status, targets, budget_usd,
-                          judge_cost_usd, started_at, ended_at, error, dataset_name, agent_version, rubric`;
+                          judge_cost_usd, started_at, ended_at, error, dataset_name, agent_version, rubric, check_mode`;
 const EVAL_JOB_COLUMNS = `id, eval_id, example_id, provider, model, status, attempt, run_id,
                           cost_usd, tokens, latency_ms, cost_complete, error, started_at,
                           ended_at, retry_not_before, spent_usd, input, expected, output`;
@@ -345,6 +349,16 @@ export class EvalStore {
     return row;
   }
 
+  /** How this dataset's answers are checked against `expected` — see expectedMatch.ts. Null turns it off. */
+  async setCheckMode(ctx: TenantContext, datasetId: string, mode: string | null): Promise<void> {
+    await this.q(ctx).run(`UPDATE datasets SET check_mode = ?, updated_at = ? WHERE id = ? AND workspace_id = ?`, [
+      mode,
+      nowIso(),
+      datasetId,
+      ctx.workspaceId,
+    ]);
+  }
+
   async renameDataset(ctx: TenantContext, datasetId: string, name: string): Promise<void> {
     await this.q(ctx).run(`UPDATE datasets SET name = ?, updated_at = ? WHERE id = ? AND workspace_id = ?`, [
       name,
@@ -359,7 +373,7 @@ export class EvalStore {
     const where = agentId ? `AND d.agent_id = ?` : ``;
     const args: unknown[] = agentId ? [ctx.workspaceId, agentId] : [ctx.workspaceId];
     const rows = await this.q(ctx).all<Record<string, unknown>>(
-      `SELECT d.id, d.agent_id, d.name, d.created_at, d.updated_at,
+      `SELECT d.id, d.agent_id, d.name, d.created_at, d.updated_at, d.check_mode,
               (SELECT COUNT(*) FROM dataset_examples e
                 WHERE e.dataset_id = d.id AND e.workspace_id = d.workspace_id) AS example_count
        FROM datasets d WHERE d.workspace_id = ? ${where} ORDER BY d.created_at DESC`,
@@ -370,7 +384,7 @@ export class EvalStore {
 
   async getDataset(ctx: TenantContext, datasetId: string): Promise<Dataset | undefined> {
     return (await this.q(ctx).get(
-      `SELECT id, agent_id, name, created_at, updated_at
+      `SELECT id, agent_id, name, created_at, updated_at, check_mode
          FROM datasets WHERE id = ? AND workspace_id = ?`,
       [datasetId, ctx.workspaceId],
     )) as Dataset | undefined;
@@ -661,6 +675,7 @@ export class EvalStore {
     dataset_name?: string | null;
     agent_version?: number | null;
     rubric?: RubricCriterion[] | null;
+    check_mode?: string | null;
   }): Promise<EvalRun> {
     const row: EvalRun = {
       id: r.id ?? randomUUID(),
@@ -677,15 +692,16 @@ export class EvalStore {
       dataset_name: r.dataset_name ?? null,
       agent_version: r.agent_version ?? null,
       rubric: r.rubric ?? null,
+      check_mode: r.check_mode ?? null,
     };
     await this.q(ctx).run(
       `INSERT INTO eval_runs (id, workspace_id, dataset_id, agent_id, rubric_id, status,
-         targets, budget_usd, judge_cost_usd, started_at, ended_at, error, dataset_name, agent_version, rubric)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, NULL, NULL, ?, ?, ?)`,
+         targets, budget_usd, judge_cost_usd, started_at, ended_at, error, dataset_name, agent_version, rubric, check_mode)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, NULL, NULL, ?, ?, ?, ?)`,
       [
         row.id, ctx.workspaceId, row.dataset_id, row.agent_id, row.rubric_id, row.status,
         JSON.stringify(row.targets), row.budget_usd, row.started_at, row.dataset_name, row.agent_version,
-        row.rubric ? JSON.stringify(row.rubric) : null,
+        row.rubric ? JSON.stringify(row.rubric) : null, row.check_mode,
       ],
     );
     return row;
