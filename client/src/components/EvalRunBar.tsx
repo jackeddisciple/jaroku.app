@@ -179,6 +179,19 @@ export function EvalRunBar() {
     if (estimate && !ceilingTyped) setCeiling(suggestedCeiling(estimate.totalHighUsd));
   }, [estimate]);
 
+  // RUN AGAIN'S HAND-OFF: the same models are already chosen; open their estimate, as a click would.
+  // ABOVE THE EARLY RETURN, like every hook: below it, the panel's first render (no dataset chosen
+  // yet) ran fewer hooks than the next, and React threw #310 and blanked the app.
+  const estimateRequest = useEvalStore((s) => s.estimateRequest);
+  useEffect(() => {
+    if (!estimateRequest || estimateRequest !== activeAgentId || !selectedDatasetId) return;
+    useEvalStore.getState().requestEstimate(null);
+    if (!running && !unbuilt && examples.length && targets.length) {
+      sendEstimateEval(selectedDatasetId, activeAgentId, targets);
+      setConfirming(true);
+    }
+  }, [estimateRequest, selectedDatasetId, examples.length]);
+
   if (!selectedDatasetId) return null;
 
   const toggle = (t: EvalTarget) =>
@@ -191,17 +204,6 @@ export function EvalRunBar() {
     sendEstimateEval(selectedDatasetId, activeAgentId, targets);
     setConfirming(true);
   };
-
-  // RUN AGAIN'S HAND-OFF: the same models are already chosen; open their estimate, as a click would.
-  const estimateRequest = useEvalStore((s) => s.estimateRequest);
-  useEffect(() => {
-    if (!estimateRequest || estimateRequest !== activeAgentId || !selectedDatasetId) return;
-    useEvalStore.getState().requestEstimate(null);
-    if (!running && !unbuilt && examples.length && targets.length) {
-      sendEstimateEval(selectedDatasetId, activeAgentId, targets);
-      setConfirming(true);
-    }
-  }, [estimateRequest, selectedDatasetId, examples.length]);
 
   const parsedCeiling = parseCeiling(ceiling);
   const refusal = refusalOf(estimate);

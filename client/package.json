@@ -128,6 +128,7 @@
     "test:dataset-builder": "tsx src/components/datasetBuilder.test.ts",
     "test:eval-run-bar": "tsx src/components/evalRunBar.test.ts",
     "test:eval-compare": "tsx src/lib/evalCompare.test.ts",
+    "test:hook-order": "tsx src/components/hookOrder.test.ts",
     "test:thread-cost": "tsx src/lib/threadCost.test.ts",
     "test:thread-resume": "tsx src/lib/threadResume.test.ts",
     "test:thread-archive": "tsx src/lib/threadArchive.test.ts",
