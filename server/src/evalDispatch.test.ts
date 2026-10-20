@@ -441,6 +441,43 @@ console.log("\na ceiling stop is recorded once, and the log does not count cance
   console.log = log;
 }
 
+console.log("\na job keeps what the agent answered");
+{
+  const pool = new FakePool(1);
+  const dispatcher = new Dispatcher(new InMemoryQueueBackend());
+  const finished: string[] = [];
+  const runner = new EvalRunner({
+    pool: pool as unknown as RunPool, store, dispatcher, evalStore, runtimeDir: ".", context: () => ctx,
+    markEvalRun: () => {}, onStarted: () => {}, onProgress: () => {}, onFinished: (e) => finished.push(e.evalId),
+  });
+  const ds = await evalStore.createDataset(ctx, "agent_answer", "answers");
+  await evalStore.addExample(ctx, ds.id, "Role: QA --- résumé", "decline", null);
+  const rubric = await evalStore.putRubric(ctx, { dataset_id: null, name: "r", criteria: [] });
+  const started = await runner.start({
+    ctx, datasetId: ds.id, agentId: "agent_answer", rubricId: rubric.id,
+    targets: [{ provider: "fake", model: "fake" }], budgetUsd: null,
+  });
+  if ("error" in started) { check(false, `start failed: ${started.error}`); }
+  else {
+    for (let i = 0; i < 40 && pool.started.length < 1; i++) await sleep(15);
+    const runId = pool.started[0]!.runId;
+    const now = new Date().toISOString();
+    await store.upsertRun(ctx, {
+      id: runId, agent_id: "agent_answer", provider: "fake", model: "fake", status: "completed",
+      started_at: now, ended_at: now, cost: 0, tokens: 0, error: null,
+    });
+    await store.insertStep(ctx, {
+      id: crypto.randomUUID(), run_id: runId, seq: 0, type: "llm_call", name: "call_model",
+      input: null, output: [{ content: "decline — the candidate has no QA experience" }], state_before: null, state_after: null,
+      tokens: 10, cost: 0, latency_ms: 1, error: null, parent_step_id: null, started_at: now,
+    } as never);
+    pool.finish(runId);
+    for (let i = 0; i < 40 && finished.length < 1; i++) await sleep(15);
+    const job = (await evalStore.jobsForEval(ctx, started.evalId))[0];
+    check(job?.output === "decline — the candidate has no QA experience", `the job keeps the agent's final answer (${job?.output})`);
+  }
+}
+
 console.log("\na retry that came due between two reads of the clock still gets its wake");
 {
   // The pump read the clock, found the retry a millisecond short of due, and skipped it; the wake,

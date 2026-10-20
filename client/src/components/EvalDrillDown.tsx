@@ -57,13 +57,45 @@ function ScoreChip({ cell, active, onClick }: { cell: ExampleCell; active: boole
   );
 }
 
+/**
+ * Text that keeps its line breaks and folds to a few lines, with a way to read the rest.
+ *
+ * A Liven case is a whole job description and a résumé: unfolded, one case filled the panel, and with
+ * its newlines collapsed the `---` between the two ran straight into the text.
+ */
+export function ClampedText({ text, lines = 3, className = "" }: { text: string; lines?: number; className?: string }) {
+  const [open, setOpen] = useState(false);
+  const long = text.split("\n").length > lines || text.length > lines * 90;
+  return (
+    <div className={className}>
+      <div
+        className="whitespace-pre-wrap break-words"
+        style={open || !long ? undefined : { display: "-webkit-box", WebkitLineClamp: lines, WebkitBoxOrient: "vertical", overflow: "hidden" }}
+      >
+        {text}
+      </div>
+      {long && (
+        <button
+          onClick={() => setOpen((v) => !v)}
+          className="mt-0.5 text-tiny text-faint transition-colors hover:text-ink"
+        >
+          {open ? "show less" : "show more"}
+        </button>
+      )}
+    </div>
+  );
+}
+
 /** Everything known about one (example, provider) pair. */
-function CellDetail({
+export function CellDetail({
   cell,
+  expected,
   criteria,
   onStep,
 }: {
   cell: ExampleCell;
+  /** What the case expected, to read beside what was answered. */
+  expected: string | null;
   criteria: string[];
   /**
    * Move to the neighbouring response for this example, or null at either end.
@@ -135,6 +167,25 @@ function CellDetail({
 
       {cell.error && <div className="text-tiny text-err whitespace-pre-wrap break-words">{cell.error}</div>}
 
+      {/* WHAT IT ANSWERED, beside what was expected. This panel's header promises "what each one actually
+          answered", and it showed a status, a cost and a latency — the answer was only in the trace. */}
+      {cell.status === "succeeded" && (
+        <div className="space-y-1.5 text-tiny">
+          <div>
+            <div className="text-faint">Answer</div>
+            {cell.output
+              ? <ClampedText text={cell.output} lines={6} className="text-ink" />
+              : <div className="text-faint italic">no answer was kept for this run — Open trace has the whole of it</div>}
+          </div>
+          {expected && (
+            <div>
+              <div className="text-faint">Expected</div>
+              <ClampedText text={expected} lines={3} className="text-muted" />
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Per-criterion breakdown: what the overall score is actually made of. */}
       {cell.perCriterion && (
         <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-tiny">
@@ -204,6 +255,7 @@ export function ExampleDrillDown({ results }: { results: EvalResults }) {
                   {open && (
                     <CellDetail
                       cell={open}
+                      expected={row.expected}
                       criteria={criteria}
                       onStep={(delta) => {
                         // WRAPS, because a row is a ring of two to four answers to one question

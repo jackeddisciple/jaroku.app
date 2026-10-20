@@ -30,6 +30,7 @@ import type { TraceStore } from "./store.ts";
 import type { TenantContext } from "./db/tenant.ts";
 import type { EvalStore, EvalJob, EvalTarget } from "./evalStore.ts";
 import { aggregateJob } from "./evalAggregate.ts";
+import { extractAgentOutput } from "./judge/output.ts";
 import { Dispatcher } from "./queue/dispatcher.ts";
 import type { QueueBackend } from "./queue/backend.ts";
 import { jobClassConfig, type QueueJob } from "./queue/jobs.ts";
@@ -251,6 +252,15 @@ export interface EvalRunnerDeps {
   forwardCancel?: (workspaceId: string, evalId: string) => void;
   /** The version this agent is on now, recorded with the eval so comparisons across an edit can be told apart. */
   agentVersion?: (ctx: TenantContext, agentId: string) => Promise<number | null>;
+}
+
+/** The most of an answer a job keeps: enough to read and to check, not a second copy of the trace. */
+export const MAX_OUTPUT_CHARS = 20_000;
+
+/** An answer, cut to what a job keeps — null for nothing, and a cut said at the end rather than hidden. */
+export function truncateOutput(text: string): string | null {
+  if (!text) return null;
+  return text.length > MAX_OUTPUT_CHARS ? `${text.slice(0, MAX_OUTPUT_CHARS)}\n… (cut at ${MAX_OUTPUT_CHARS} characters — the trace has all of it)` : text;
 }
 
 /** How long a claim lives without a heartbeat. A machine that stops beating loses it in this long. */
@@ -1035,12 +1045,20 @@ export class EvalRunner {
       job?.model ?? run?.model ?? "",
     );
 
+    // WHAT IT ANSWERED, kept with the job: the drill-down shows it beside what was expected, an export
+    // carries it, and a check against `expected` reads it — none of which should need the trace open.
+    // The same text the judge is shown. A run that left no trace has nothing to keep.
+    const output = run
+      ? truncateOutput(extractAgentOutput(await this.deps.store.stepsForRun(this.ctx(live.evalId), runId)).text)
+      : null;
+
     await this.deps.evalStore.finishJob(this.ctx(live.evalId), jobId, status as "succeeded" | "failed" | "timed_out", {
       error,
       cost_usd: metrics.cost_usd,
       tokens: metrics.tokens,
       latency_ms: metrics.latency_ms,
       cost_complete: metrics.cost_complete,
+      output,
     });
 
     // Retry only what's worth paying to retry, and only while attempts remain. `finishJob`

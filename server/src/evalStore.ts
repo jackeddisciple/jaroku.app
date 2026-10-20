@@ -151,6 +151,8 @@ export interface EvalJob {
    */
   input?: string | null;
   expected?: string | null;
+  /** The agent's final answer, kept when the run ended (migration 092). Null when nothing was kept. */
+  output?: string | null;
 }
 
 export interface EvalScore {
@@ -216,7 +218,7 @@ const EVAL_RUN_COLUMNS = `id, dataset_id, agent_id, rubric_id, status, targets, 
                           judge_cost_usd, started_at, ended_at, error, dataset_name, agent_version, rubric`;
 const EVAL_JOB_COLUMNS = `id, eval_id, example_id, provider, model, status, attempt, run_id,
                           cost_usd, tokens, latency_ms, cost_complete, error, started_at,
-                          ended_at, retry_not_before, spent_usd, input, expected`;
+                          ended_at, retry_not_before, spent_usd, input, expected, output`;
 const EVAL_SCORE_COLUMNS = `id, job_id, score, per_criterion, rationale, judge_model,
                             judge_cost_usd, error, created_at`;
 
@@ -823,11 +825,13 @@ export class EvalStore {
       latency_ms?: number | null;
       cost_complete?: boolean;
       error?: string | null;
+      /** This attempt's answer. Replaced like `cost_usd`: the job shows what its last attempt said. */
+      output?: string | null;
     } = {},
   ): Promise<void> {
     await this.q(ctx).run(
       `UPDATE eval_jobs SET status = ?, cost_usd = ?, spent_usd = COALESCE(spent_usd, 0) + ?,
-         tokens = ?, latency_ms = ?, cost_complete = ?, error = ?, ended_at = ?
+         tokens = ?, latency_ms = ?, cost_complete = ?, error = ?, ended_at = ?, output = ?
         WHERE id = ? AND workspace_id = ?`,
       [
         status,
@@ -838,6 +842,7 @@ export class EvalStore {
         result.cost_complete === false ? 0 : 1,
         result.error ?? null,
         nowIso(),
+        result.output ?? null,
         jobId,
         ctx.workspaceId,
       ],

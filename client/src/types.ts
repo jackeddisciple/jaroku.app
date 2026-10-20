@@ -603,6 +603,8 @@ export interface ExampleCell {
   latencyMs: number | null;
   attempt: number;
   error: string | null;
+  /** What the agent answered, as kept when its run ended (server migration 092). Null when nothing was kept. */
+  output?: string | null;
   /** null = unscored, with scoreError saying why. Never treat as zero. */
   score: number | null;
   scoreError: string | null;

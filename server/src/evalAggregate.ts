@@ -204,6 +204,8 @@ export interface ExampleCell {
   latencyMs: number | null;
   attempt: number;
   error: string | null;
+  /** What the agent answered, as kept when its run ended. Null when nothing was kept. */
+  output: string | null;
   /** null = unscored (judge failed or skipped), with `scoreError` saying which. */
   score: number | null;
   scoreError: string | null;
@@ -377,6 +379,7 @@ export async function aggregateEval(
         latencyMs: j.latency_ms,
         attempt: j.attempt,
         error: j.error,
+        output: j.output ?? null,
         score: s?.score ?? null,
         scoreError: s?.error ?? null,
         perCriterion: s?.per_criterion ?? null,

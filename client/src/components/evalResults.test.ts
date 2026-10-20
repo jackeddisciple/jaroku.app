@@ -72,5 +72,18 @@ console.log("\na running eval says it is running, and gives no stop reason");
   check(!words.includes("stopped after"), "and has no reason to stop", words);
 }
 
+console.log("\na cell says what the agent answered, beside what was expected");
+{
+  const { CellDetail } = await import("./EvalDrillDown.tsx");
+  const cell = {
+    jobId: "j1", provider: "anthropic", model: "claude-haiku-4-5", status: "succeeded", runId: "r1", costUsd: 0.001,
+    costComplete: true, latencyMs: 900, attempt: 0, error: null, output: "decline — no QA experience",
+    score: null, scoreError: null, perCriterion: null, rationale: null,
+  };
+  const words = text(markup(createElement(CellDetail, { cell, expected: "decline", criteria: [], onStep: () => {} })));
+  check(words.includes("Answer") && words.includes("decline — no QA experience"), "it shows the answer", words);
+  check(words.includes("Expected") && words.includes("decline"), "and the expected output beside it", words);
+}
+
 console.log(failures === 0 ? "\nALL CORRECT" : `\n${failures} FAILURES`);
 (globalThis as { process?: { exit(code: number): void } }).process?.exit(failures === 0 ? 0 : 1);
