@@ -151,7 +151,10 @@ export function EvalsPanel() {
   const resultsByEval = useEvalStore((s) => s.resultsByEval);
   const progress = useEvalStore((s) => liveEvalOf(s.progressByEval, activeAgentId));
 
-  const [mode, setMode] = useState<Mode>("dataset");
+  // THIS AGENT'S HALF OF THE TAB, kept in the store: a trip to a cell's trace and back used to land
+  // on Dataset, because the choice lived in a component that the trip unmounted.
+  const mode: Mode = useEvalStore((s) => (activeAgentId ? (s.modeByAgent[activeAgentId] ?? "dataset") : "dataset"));
+  const setMode = (m: Mode): void => { if (activeAgentId) useEvalStore.getState().setMode(activeAgentId, m); };
   /**
    * Which history the strip shows: the open dataset's, or every eval of this agent.
    *

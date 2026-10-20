@@ -201,6 +201,15 @@ export interface EvalScore {
  */
 export interface RunEvalScore {
   eval_id: string;
+  /**
+   * Whether the judge has given a verdict on this run. False for a run of an eval that is unjudged —
+   * still running, or with no judge — which the trace still has to know came from an eval, so it can
+   * say so and lead back to it. It used to know nothing unless a verdict existed.
+   */
+  judged: boolean;
+  /** Whose eval, and on which dataset — what the trace's way back names. */
+  agent_id: string;
+  dataset_name: string | null;
   /** 0..1 weighted overall, or null when the judge failed. */
   score: number | null;
   /** Each criterion's score, 0..`scale_max`, in the rubric's order. */
@@ -1002,8 +1011,10 @@ export class EvalStore {
         WHERE job_id = ? AND workspace_id = ? ORDER BY created_at DESC LIMIT 1`,
       [job.id, ctx.workspaceId],
     );
-    if (!row) return undefined;
     const evalRun = await this.getEvalRun(ctx, job.eval_id);
+    const about = { eval_id: job.eval_id, agent_id: evalRun?.agent_id ?? "", dataset_name: evalRun?.dataset_name ?? null };
+    // AN EVAL'S RUN WITH NO VERDICT YET is still an eval's run — the trace says so either way.
+    if (!row) return { ...about, judged: false, score: null, criteria: [], scale_max: SCALE_MAX, rationale: null, error: null };
     // The criteria the eval was scored on, as it kept them; the rubric row only for an eval from before.
     const criteriaOf = evalRun?.rubric ?? (evalRun ? (await this.getRubric(ctx, evalRun.rubric_id))?.criteria : undefined) ?? [];
     const scores = this.parseJson<Record<string, number> | null>(row["per_criterion"], null) ?? {};
@@ -1016,7 +1027,8 @@ export class EvalStore {
     ];
     const score = row["score"];
     return {
-      eval_id: job.eval_id,
+      ...about,
+      judged: true,
       score: typeof score === "number" ? score : score == null ? null : Number(score),
       criteria,
       scale_max: SCALE_MAX,

@@ -171,5 +171,28 @@ console.log("\nwith the judge off, the panel says so and offers the switch");
   check(text(markup(createElement(JudgeLine))) === "", "and with the platform's judge it says nothing");
 }
 
+console.log("\nan eval's trace leads back to the eval, and the cell is still open there");
+{
+  const { TraceHeader } = await import("./TraceHeader.tsx");
+  const { useTraceStore } = await import("../store/traceStore.ts");
+  const { useEvalStore } = await import("../store/evalStore.ts");
+  const { useUiStore } = await import("../store/uiStore.ts");
+  const { openEvalResults } = await import("../lib/evalNav.ts");
+  const run = { id: "run-1", agent_id: "liven", status: "completed", started_at: new Date().toISOString() } as never;
+  seed(useTraceStore, {
+    evalByRun: { "run-1": { eval_id: "e1", judged: false, agent_id: "liven", dataset_name: "Screening cases", score: null, criteria: [], scale_max: 4, rationale: null, error: null } },
+  } as never);
+  const { TooltipProvider } = await import("./ui/tooltip.tsx");
+  const words = text(markup(createElement(TooltipProvider, null, createElement(TraceHeader, { run }))));
+  check(words.includes("eval · Screening cases"), "the trace says its run is an eval's, and on which dataset", words);
+  useEvalStore.getState().setOpenCell("e1", "job-7");
+  useEvalStore.getState().setMode("liven", "dataset");
+  openEvalResults("liven", "e1");
+  const st = useEvalStore.getState();
+  check(useUiStore.getState().rightTab === "evals", "the way back opens the Evals tab");
+  check(st.modeByAgent["liven"] === "results" && st.selectedEvalByAgent["liven"] === "e1", "on that eval's Results");
+  check(st.openCellByEval["e1"] === "job-7", "with the cell that was open still open");
+}
+
 console.log(failures === 0 ? "\nALL CORRECT" : `\n${failures} FAILURES`);
 (globalThis as { process?: { exit(code: number): void } }).process?.exit(failures === 0 ? 0 : 1);

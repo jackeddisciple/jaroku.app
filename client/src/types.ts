@@ -586,6 +586,11 @@ export type StepMarkKind = "viewed" | "pinned";
  */
 export interface RunEvalScore {
   eval_id: string;
+  /** Whether the judge has given a verdict. False for an eval's run nobody has judged yet. */
+  judged?: boolean;
+  /** Whose eval, and on which dataset — what the trace's way back to it names. */
+  agent_id?: string;
+  dataset_name?: string | null;
   /** 0..1 weighted overall, or null when the judge failed. */
   score: number | null;
   /** Each criterion's score, 0..`scale_max`, in the rubric's order. */

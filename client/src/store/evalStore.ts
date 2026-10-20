@@ -106,6 +106,14 @@ interface EvalState {
   /** Whether this workspace's evals are judged, once asked. Null until the server has said. */
   judge: EvalJudgeState | null;
   setJudge: (judge: EvalJudgeState) => void;
+  /**
+   * agent -> which half of the Evals tab it was on, and eval -> which cell was open. Both were the
+   * panel's own state, so opening a cell's trace and coming back landed on Dataset with the cell shut.
+   */
+  modeByAgent: Record<string, "dataset" | "results">;
+  setMode: (agentId: string, mode: "dataset" | "results") => void;
+  openCellByEval: Record<string, string | null>;
+  setOpenCell: (evalId: string, jobId: string | null) => void;
 
   // --- eval runs ---
   /** evalListKey(agent, dataset) -> that scope's history, newest first. */
@@ -200,6 +208,11 @@ export const useEvalStore = create<EvalState>((set) => ({
 
   judge: null,
   setJudge: (judge) => set({ judge }),
+
+  modeByAgent: {},
+  setMode: (agentId, mode) => set((s) => ({ modeByAgent: { ...s.modeByAgent, [agentId]: mode } })),
+  openCellByEval: {},
+  setOpenCell: (evalId, jobId) => set((s) => ({ openCellByEval: { ...s.openCellByEval, [evalId]: jobId } })),
 
   evalLists: {},
   selectedEvalByAgent: {},

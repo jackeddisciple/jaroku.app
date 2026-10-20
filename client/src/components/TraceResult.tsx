@@ -252,7 +252,8 @@ export function RunOutputSection({ run, steps }: { run: RunSummary; steps: reado
   if (run.status === "running") return <Note>What the run makes shows here when it finishes.</Note>;
   if (run.status === "paused") return <Note>Paused. What the run makes shows here once it is resumed and finishes.</Note>;
   if (!output) return null;
-  const judge = evalScore ? <JudgeChip score={evalScore} /> : null;
+  // Only once judged: an eval's run with no verdict yet is not "could not score".
+  const judge = evalScore && evalScore.judged !== false ? <JudgeChip score={evalScore} /> : null;
   if (output.kind === "answer") {
     return (
       <OutputSection label="Response" trailing={<>{judge}<CopyTurn source={output.text} /></>}>

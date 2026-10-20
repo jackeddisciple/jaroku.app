@@ -13,6 +13,7 @@ import { useState } from "react";
 import { sendLoadRun } from "../lib/socket.ts";
 import { useTraceStore } from "../store/traceStore.ts";
 import { useUiStore } from "../store/uiStore.ts";
+import { useEvalStore } from "../store/evalStore.ts";
 import { fmtCost, fmtLatency } from "../lib/format.ts";
 import { ICON } from "../lib/tokens.ts";
 import { Truncate } from "./Truncate.tsx";
@@ -236,7 +237,9 @@ export function CellDetail({
 }
 
 export function ExampleDrillDown({ results }: { results: EvalResults }) {
-  const [openCell, setOpenCell] = useState<string | null>(null);
+  // KEPT PER EVAL in the store, so the cell whose trace was opened is still open on the way back.
+  const openCell = useEvalStore((s) => s.openCellByEval[results.evalId] ?? null);
+  const setOpenCell = (jobId: string | null): void => useEvalStore.getState().setOpenCell(results.evalId, jobId);
 
   // Criterion ids, taken from whichever cell has a breakdown — the rubric is the same for
   // the whole eval, so any scored cell names them all.

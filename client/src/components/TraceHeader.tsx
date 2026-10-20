@@ -19,6 +19,8 @@ import { openRun, runAgain, runAgainBlocked } from "../lib/runActions.ts";
 import { runOutcome, type RunOutcome } from "../lib/runOutcome.ts";
 import { ICON, TYPE } from "../lib/tokens.ts";
 import { useBuildStore } from "../store/buildStore.ts";
+import { useTraceStore } from "../store/traceStore.ts";
+import { openEvalResults } from "../lib/evalNav.ts";
 import { useUiStore } from "../store/uiStore.ts";
 import type { RunSummary } from "../types.ts";
 import { PauseResumeControls } from "./PauseResumeControls.tsx";
@@ -133,6 +135,9 @@ export function TraceHeader({ run }: { run: RunSummary | undefined }) {
     return a && run && a.record_run_id === run.id ? a.name : null;
   });
 
+  // The eval this run is one cell of, when it is one — the way back to its results.
+  const fromEval = useTraceStore((s) => (run ? s.evalByRun[run.id] : undefined));
+
   // The body says why there is nothing here, once; the header only names the panel.
   if (!run) {
     return (
@@ -184,6 +189,20 @@ export function TraceHeader({ run }: { run: RunSummary | undefined }) {
                 {shortId(run.parent_run_id)}
                 {run.branch_from_seq != null && ` · #${run.branch_from_seq}`}
               </span>
+            </button>
+          </Tip>
+        )}
+        {/* AN EVAL'S RUN SAYS SO, AND LEADS BACK. Open trace was one way: nothing here said the run
+            was one cell of an eval, and the way back was the rail and a cell found again by hand. */}
+        {fromEval && (
+          <Tip label={`One run of an eval${fromEval.dataset_name ? ` on ${fromEval.dataset_name}` : ""} — press to go back to its results`}>
+            <button
+              type="button"
+              onClick={() => openEvalResults(fromEval.agent_id || run.agent_id, fromEval.eval_id)}
+              className={`${CHIP} flex min-w-[1.75rem] shrink-[1000] items-center gap-1 truncate`}
+            >
+              <span aria-hidden className="shrink-0">←</span>
+              <span className="truncate">eval{fromEval.dataset_name ? ` · ${fromEval.dataset_name}` : ""}</span>
             </button>
           </Tip>
         )}
