@@ -74,7 +74,22 @@ export function CompareCards({ models }: { models: ModelDelta[] }) {
 /** Narrower than this, the six columns are clipped; the models become cards — as in EvalDashboard. */
 const STACK_BELOW_PX = 560;
 
-export function EvalCompare({ before, after, onClose }: { before: EvalResults; after: EvalResults; onClose: () => void }) {
+export function EvalCompare({
+  before,
+  after,
+  against = before,
+  onClose,
+}: {
+  before: EvalResults;
+  after: EvalResults;
+  /**
+   * The eval picked to compare with — what the header names. NOT ALWAYS `before`: the pair is laid
+   * out older first whichever was picked, and a later eval picked from an earlier one's Results was
+   * announced as the eval already on screen.
+   */
+  against?: EvalResults;
+  onClose: () => void;
+}) {
   const diff = useMemo(() => compareEvals(before, after), [before, after]);
   const box = useRef<HTMLElement>(null);
   const [narrow, setNarrow] = useState(false);
@@ -91,7 +106,7 @@ export function EvalCompare({ before, after, onClose }: { before: EvalResults; a
         <span className={TYPE.sectionLabel}>Compared with</span>
         {/* WHICH EVAL, not only when: two from the same afternoon both read "4d ago". */}
         <span className="text-tiny text-muted">
-          the eval {relTime(before.startedAt)} on {before.datasetName ?? "a deleted dataset"}
+          the eval {relTime(against.startedAt)} on {against.datasetName ?? "a deleted dataset"}
         </span>
         <button onClick={onClose} className="ml-auto text-tiny text-faint transition-colors hover:text-ink">Stop comparing</button>
       </div>

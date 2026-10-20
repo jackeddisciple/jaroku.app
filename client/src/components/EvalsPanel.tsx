@@ -488,8 +488,8 @@ export function EvalsPanel() {
               {comparing && activeAgentId && (
                 // Older first, whichever was picked: "before → after" reads in time order.
                 Date.parse(comparing.startedAt) <= Date.parse(results.startedAt)
-                  ? <EvalCompare before={comparing} after={results} onClose={() => useEvalStore.getState().setCompareWith(activeAgentId, null)} />
-                  : <EvalCompare before={results} after={comparing} onClose={() => useEvalStore.getState().setCompareWith(activeAgentId, null)} />
+                  ? <EvalCompare before={comparing} after={results} against={comparing} onClose={() => useEvalStore.getState().setCompareWith(activeAgentId, null)} />
+                  : <EvalCompare before={results} after={comparing} against={comparing} onClose={() => useEvalStore.getState().setCompareWith(activeAgentId, null)} />
               )}
               <ComparisonTable results={results} />
               <ExampleDrillDown results={results} />

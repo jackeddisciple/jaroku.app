@@ -84,6 +84,12 @@ console.log("\nthe comparison, rendered");
   check(gone.includes("on a deleted dataset") && gone.includes("a deleted dataset and Screening cases"),
     "and calls a deleted one that, in the header and the caveat", gone.slice(0, 260));
 
+  // THE PICKED EVAL, even when it is the later one: it was announced as the eval already on screen.
+  const later = { ...after, datasetId: "d-gone", datasetName: null };
+  const picked = markup(createElement(EvalCompare, { before, after: later, against: later, onClose: () => {} })).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
+  check(picked.includes("on a deleted dataset") && !/the eval [^·]*on Screening cases/.test(picked),
+    "the header names the eval that was picked, not whichever is older", picked.slice(0, 160));
+
   // NARROW: the six columns were clipped — Per run cut in half, p50 off the edge.
   const { CompareCards } = await import("../components/EvalCompare.tsx");
   const cards = markup(createElement(CompareCards, { models: compareEvals(before, after).models })).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
