@@ -60,24 +60,35 @@ export function EventFeedCard() {
   const [kinds, setKinds] = useState<Set<FeedKind>>(new Set());
   const [showFilters, setShowFilters] = useState(false);
 
-  const scroller = useRef<HTMLDivElement>(null);
+  const scroller = useRef<HTMLDivElement | null>(null);
+  const [scrollEl, setScrollEl] = useState<HTMLDivElement | null>(null);
+  const attachScroller = useCallback((el: HTMLDivElement | null) => {
+    scroller.current = el;
+    setScrollEl(el);
+  }, []);
   const [scrollTop, setScrollTop] = useState(0);
   const [viewport, setViewport] = useState(0);
 
   // §3.8: the feed keeps its virtualisation and gets a taller viewport on a narrow screen. Measured
   // rather than assumed, because the panel it lives in is resizable and a media query would not see
   // the drag.
+  //
+  // MEASURED WHEN THE SCROLLER APPEARS, not once on mount. On a first visit the page has not arrived
+  // at mount — the skeleton is showing and there is no scroller — so a mount-only effect measured
+  // nothing, the viewport stayed 0, and the window held no rows: a feed card with its caption and an
+  // empty list, every eval and run in it invisible.
   useEffect(() => {
-    const el = scroller.current;
-    if (!el || typeof ResizeObserver === "undefined") {
-      if (el) setViewport(el.clientHeight);
+    const el = scrollEl;
+    if (!el) return;
+    if (typeof ResizeObserver === "undefined") {
+      setViewport(el.clientHeight);
       return;
     }
     const ro = new ResizeObserver(() => setViewport(el.clientHeight));
     ro.observe(el);
     setViewport(el.clientHeight);
     return () => ro.disconnect();
-  }, []);
+  }, [scrollEl]);
 
   // FILTERING IS LOCAL FOR THE KINDS ALREADY IN HAND AND A RE-ASK FOR THE REST. Narrowing what is
   // rendered is instant; the SERVER filter is what makes a narrow kind reach further back than the
@@ -88,7 +99,8 @@ export function EventFeedCard() {
     [rows, kinds],
   );
 
-  const win = feedWindow(visible.length, scrollTop, viewport);
+  // Until it is measured, the card's own height: a window of nothing is an empty feed.
+  const win = feedWindow(visible.length, scrollTop, viewport || FEED_HEIGHT);
 
   const onScroll = useCallback(() => {
     const el = scroller.current;
@@ -174,7 +186,7 @@ export function EventFeedCard() {
         </div>
       ) : (
         <div
-          ref={scroller}
+          ref={attachScroller}
           onScroll={onScroll}
           className="mt-2 overflow-y-auto"
           style={{ height: FEED_HEIGHT, maxHeight: FEED_HEIGHT_NARROW }}

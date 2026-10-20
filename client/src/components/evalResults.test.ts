@@ -335,6 +335,24 @@ console.log("\na refused Retry says why on Results, where it was pressed");
   check(markup(createElement(EvalRefusal)) === "", "and nothing when there is none");
 }
 
+console.log("\nthe Activity feed shows its rows before its viewport is measured");
+{
+  // Measured only on mount, before the first page had arrived: the viewport stayed 0 and the feed
+  // card showed its caption over an empty list — every eval and run in it invisible.
+  const { EventFeedCard } = await import("./ActivityFeed.tsx");
+  const { useActivityStore } = await import("../store/activityStore.ts");
+  const now = new Date().toISOString();
+  seed(useActivityStore, {
+    feed: [
+      { id: "eval:e1", at: now, kind: "eval", agent_id: "liven", actor_user_id: null, object: "Screening cases", outcome: "stopped", num: null, target_type: "eval", target_id: "e1" },
+      { id: "run:r1", at: now, kind: "run", agent_id: "liven", actor_user_id: null, object: "claude-haiku-4-5", outcome: "ok", num: 120, target_type: "run", target_id: "r1" },
+    ],
+    feedLoaded: true, feedNext: null,
+  } as never);
+  const words = text(markup(createElement(EventFeedCard)));
+  check(words.includes("Evaluated") && words.includes("Screening cases") && words.includes("Ran"), "both rows are drawn", words.slice(0, 240));
+}
+
 console.log("\nthe rail says that pressing the tab already showing hides the panel");
 {
   const { railTip } = await import("../lib/railTip.ts");
