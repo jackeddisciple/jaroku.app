@@ -54,6 +54,20 @@ export function evalListKey(agentId: string, datasetId: string | null): string {
   return `${agentId}|${datasetId ?? "*"}`;
 }
 
+/** A dataset or case deleted from the list and not yet from the server — see lib/evalUndo.ts. */
+export interface PendingDelete {
+  kind: "dataset" | "case";
+  /** The dataset's id, or the case's. */
+  id: string;
+  datasetId: string;
+  agentId: string;
+  /** What the toast calls it: a dataset's name, or the first words of a case. */
+  label: string;
+  /** For a dataset, how many cases go with it. */
+  cases?: number;
+  at: number;
+}
+
 interface EvalState {
   /** agent -> its datasets, newest first. */
   datasetsByAgent: Record<string, Dataset[]>;
@@ -80,6 +94,9 @@ interface EvalState {
    */
   renameRequest: string | null;
   requestRename: (datasetId: string | null) => void;
+  /** A delete waiting out its undo window: hidden from the lists, not yet sent. */
+  pendingDelete: PendingDelete | null;
+  setPendingDelete: (d: PendingDelete | null) => void;
 
   // --- eval runs ---
   /** evalListKey(agent, dataset) -> that scope's history, newest first. */
@@ -165,6 +182,9 @@ export const useEvalStore = create<EvalState>((set) => ({
 
   renameRequest: null,
   requestRename: (renameRequest) => set({ renameRequest }),
+
+  pendingDelete: null,
+  setPendingDelete: (pendingDelete) => set({ pendingDelete }),
 
   evalLists: {},
   selectedEvalByAgent: {},

@@ -239,6 +239,8 @@ console.log("\n§07: where each level is allowed to appear");
     // THE INBOX'S UNDO TOAST, which floats by its PARENT too: it renders through a portal into the
     // fixed corner `ToastStack` owns, the way a dialog's surface is a plain box inside its scrim.
     "components/InboxUndoToast.tsx",
+    // AND THE EVALS TAB'S, the same portal into the same corner, for a deleted dataset or case.
+    "components/EvalUndoToast.tsx",
     // THE TOOLTIP, for the same reason: Radix renders it in a portal and its popper wrapper is what
     // carries the position, so the content box itself is a plain box with the shadow.
     "components/ui/tooltip.tsx",

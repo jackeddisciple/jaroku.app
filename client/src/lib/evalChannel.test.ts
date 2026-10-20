@@ -139,6 +139,31 @@ console.log("\na dataset this tab created is selected, with its name open for ed
   check(useEvalStore.getState().renameRequest === "d-new", "and its name is offered for editing");
 }
 
+console.log("\na delete waits out its undo window before it is sent");
+{
+  const { deleteWithUndo, undoPendingDelete, flushPendingDelete } = await import("./evalUndo.ts");
+  const sentCmds = (): string[] => socket.sent.map((f) => (JSON.parse(f) as { cmd?: string }).cmd ?? "");
+  useEvalStore.getState().setDatasets("liven", [
+    { id: "d-new", agent_id: "liven", name: "Test set 2", created_at: "", updated_at: "" },
+    { id: "d1", agent_id: "liven", name: "Screening", created_at: "", updated_at: "" },
+  ]);
+  useEvalStore.getState().selectDataset("liven", "d-new");
+  const before = sentCmds().length;
+  deleteWithUndo({ kind: "dataset", id: "d-new", datasetId: "d-new", agentId: "liven", label: "Test set 2", cases: 15 });
+  check(useEvalStore.getState().pendingDelete?.id === "d-new", "the dataset is pending, not deleted");
+  check(!sentCmds().slice(before).includes("deleteDataset"), "nothing has been sent yet");
+  check(useEvalStore.getState().selectedDatasetByAgent["liven"] === "d1", "and the selection moved to the next dataset");
+  undoPendingDelete();
+  check(useEvalStore.getState().pendingDelete === null && !sentCmds().slice(before).includes("deleteDataset"), "Undo puts it back, and nothing was ever sent");
+  check(useEvalStore.getState().selectedDatasetByAgent["liven"] === "d-new", "with it selected again");
+
+  deleteWithUndo({ kind: "case", id: "c1", datasetId: "d1", agentId: "liven", label: "Role: QA" });
+  deleteWithUndo({ kind: "case", id: "c2", datasetId: "d1", agentId: "liven", label: "Role: SRE" });
+  check(sentCmds().slice(before).filter((c) => c === "deleteExample").length === 1, "a second delete sends the first");
+  flushPendingDelete();
+  check(sentCmds().slice(before).filter((c) => c === "deleteExample").length === 2, "and the window closing sends the second");
+}
+
 stopSocket();
 console.log(failures === 0 ? "\nALL CORRECT" : `\n${failures} FAILURES`);
 (globalThis as { process?: { exit(code: number): void } }).process?.exit(failures === 0 ? 0 : 1);

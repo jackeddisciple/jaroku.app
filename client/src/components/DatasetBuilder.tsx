@@ -17,8 +17,6 @@ import {
   sendAddExample,
   sendAddExamples,
   sendCreateDataset,
-  sendDeleteDataset,
-  sendDeleteExample,
   sendListDatasets,
   sendLoadDataset,
   sendLoadRubric,
@@ -28,6 +26,7 @@ import {
   sendUpdateExample,
 } from "../lib/socket.ts";
 import { csvToExamples } from "../lib/csv.ts";
+import { deleteWithUndo } from "../lib/evalUndo.ts";
 import { ICON } from "../lib/tokens.ts";
 import { Chip } from "./Chip.tsx";
 import { Truncate } from "./Truncate.tsx";
@@ -42,10 +41,12 @@ function ExampleRow({
   example,
   index,
   datasetId,
+  agentId,
 }: {
   example: DatasetExample;
   index: number;
   datasetId: string;
+  agentId: string;
 }) {
   const [editing, setEditing] = useState<null | "input" | "expected">(null);
   const [draft, setDraft] = useState("");
@@ -128,11 +129,18 @@ function ExampleRow({
         {refusal && <div className="px-2 text-tiny text-err" role="alert">{refusal}</div>}
         {field("expected", example.expected ?? "", "+ expected output (optional)")}
       </div>
+      {/* SEEN BY A KEYBOARD, AND ONLY ITS OWN SIZE. It was invisible to Tab and stretched down the
+          case's whole right edge — 242px on a long case — so a stray click there deleted the case. It
+          shows on focus as on hover, sits at the top of the row, and a delete can be undone. */}
       <button
         type="button"
-        onClick={() => sendDeleteExample(datasetId, example.id)}
-        title="Remove this example"
-        className="text-faint hover:text-err opacity-0 group-hover:opacity-100 transition-opacity pt-1 shrink-0"
+        onClick={() => deleteWithUndo({
+          kind: "case", id: example.id, datasetId, agentId,
+          label: example.input.split("\n")[0]!.slice(0, 40),
+        })}
+        title="Remove this case"
+        aria-label={`Remove case ${index + 1}`}
+        className="self-start mt-1 shrink-0 rounded-control text-faint opacity-0 transition-opacity hover:text-err group-hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:shadow-focusring"
       >
         <XIcon size={ICON.xs} />
       </button>
@@ -392,7 +400,11 @@ export function DatasetBuilder() {
   const connected = useTraceStore((s) => s.connection === "open");
 
   // This agent's datasets and selection — another agent's are kept under its own name.
-  const datasets = useEvalStore((s) => datasetsOf(s.datasetsByAgent, activeAgentId));
+  const pendingDelete = useEvalStore((s) => s.pendingDelete);
+  // A delete waiting out its undo window is gone from the lists already; only the server has it yet.
+  const datasets = useEvalStore((s) => datasetsOf(s.datasetsByAgent, activeAgentId)).filter(
+    (d) => !(pendingDelete?.kind === "dataset" && pendingDelete.id === d.id),
+  );
   const examplesByDataset = useEvalStore((s) => s.examplesByDataset);
   const selectedDatasetId = useEvalStore((s) => (activeAgentId ? (s.selectedDatasetByAgent[activeAgentId] ?? null) : null));
   const selectDataset = useEvalStore((s) => s.selectDataset);
@@ -413,7 +425,9 @@ export function DatasetBuilder() {
   const renameRequest = useEvalStore((s) => s.renameRequest);
   const requestRename = useEvalStore((s) => s.requestRename);
   const fileRef = useRef<HTMLInputElement>(null);
-  const examples = examplesOf(examplesByDataset, selectedDatasetId);
+  const examples = examplesOf(examplesByDataset, selectedDatasetId).filter(
+    (e) => !(pendingDelete?.kind === "case" && pendingDelete.id === e.id),
+  );
   const selected = datasets.find((d) => d.id === selectedDatasetId);
   // A half-typed rename belongs to the dataset it was started on, not to the next one picked.
   useEffect(() => { setRenaming(null); setRenameError(null); }, [selectedDatasetId]);
@@ -574,7 +588,11 @@ export function DatasetBuilder() {
             }}
           />
           <button
-            onClick={() => sendDeleteDataset(selected.id, activeAgentId)}
+            // UNDOABLE FOR FIVE SECONDS rather than gone in one click — see lib/evalUndo.ts.
+            onClick={() => deleteWithUndo({
+              kind: "dataset", id: selected.id, datasetId: selected.id, agentId: activeAgentId,
+              label: selected.name, cases: examples.length,
+            })}
             title="Delete this dataset"
             aria-label="Delete this dataset"
             className="ml-auto rounded-control p-1 text-faint transition-colors hover:bg-active active:bg-chrome hover:text-err"
@@ -622,7 +640,7 @@ export function DatasetBuilder() {
                 what the payload carried, and there is no cursor — so the length is a total. */}
             <SectionHeader name="Cases" count={examples.length} className="pb-1" />
             {examples.map((e, i) => (
-              <ExampleRow key={e.id} example={e} index={i} datasetId={selected.id} />
+              <ExampleRow key={e.id} example={e} index={i} datasetId={selected.id} agentId={activeAgentId} />
             ))}
           </>
         )}

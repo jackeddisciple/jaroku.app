@@ -14,6 +14,7 @@ import { DatasetBuilder } from "./DatasetBuilder.tsx";
 import { ComparisonTable } from "./EvalDashboard.tsx";
 import { ExampleDrillDown } from "./EvalDrillDown.tsx";
 import { EvalRunBar } from "./EvalRunBar.tsx";
+import { EvalUndoToast } from "./EvalUndoToast.tsx";
 import { relTime } from "../lib/format.ts";
 import { Chip } from "./Chip.tsx";
 import { EmptyState } from "./EmptyState.tsx";
@@ -171,6 +172,7 @@ export function EvalsPanel() {
 
   return (
     <div className="flex h-full flex-col">
+      <EvalUndoToast />
       <div className="flex shrink-0 items-center gap-1 border-b border-hair px-4 pb-2 pt-1">
         {tab("dataset", "Dataset", DatabaseIcon)}
         {tab("results", "Results", ActivityIcon)}
