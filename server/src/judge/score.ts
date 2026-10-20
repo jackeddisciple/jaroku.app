@@ -197,7 +197,12 @@ export class JudgeScorer {
       return;
     }
 
-    const example = await this.deps.evalStore.getExample(this.deps.context(evalId), job.example_id);
+    // The case this job RAN — copied onto it when the eval started — not the dataset's case now, which
+    // somebody may have edited since. Only a job from before that copy reads the dataset.
+    const example =
+      typeof job.input === "string"
+        ? { input: job.input, expected: job.expected ?? null }
+        : await this.deps.evalStore.getExample(this.deps.context(evalId), job.example_id);
     if (!example) { await this.markUnscored(evalId, job, "the example no longer exists"); return; }
     if (!job.run_id) { await this.markUnscored(evalId, job, "the job has no run to score"); return; }
 

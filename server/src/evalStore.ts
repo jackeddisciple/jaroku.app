@@ -101,6 +101,8 @@ export interface EvalRun {
   started_at: string;
   ended_at: string | null;
   error: string | null;
+  /** The dataset's name when the eval started (migration 089), so a deleted dataset's evals still say what they ran on. */
+  dataset_name: string | null;
 }
 
 export type EvalJobStatus =
@@ -135,6 +137,13 @@ export interface EvalJob {
   ended_at: string | null;
   /** ISO time before which a backing-off retry must not be dispatched. */
   retry_not_before?: string | null;
+  /**
+   * The case this job ran, copied when the eval started (migration 089). An edit to the dataset
+   * afterwards changes the next eval, never this one. Null only on a job from before the copy whose
+   * case was already gone.
+   */
+  input?: string | null;
+  expected?: string | null;
 }
 
 export interface EvalScore {
@@ -174,10 +183,10 @@ const nowIso = (): string => new Date().toISOString();
 // workspace_id into the object that goes onto the wire.
 const RUBRIC_COLUMNS = `id, dataset_id, name, criteria, created_at, updated_at`;
 const EVAL_RUN_COLUMNS = `id, dataset_id, agent_id, rubric_id, status, targets, budget_usd,
-                          judge_cost_usd, started_at, ended_at, error`;
+                          judge_cost_usd, started_at, ended_at, error, dataset_name`;
 const EVAL_JOB_COLUMNS = `id, eval_id, example_id, provider, model, status, attempt, run_id,
                           cost_usd, tokens, latency_ms, cost_complete, error, started_at,
-                          ended_at, retry_not_before, spent_usd`;
+                          ended_at, retry_not_before, spent_usd, input, expected`;
 const EVAL_SCORE_COLUMNS = `id, job_id, score, per_criterion, rationale, judge_model,
                             judge_cost_usd, error, created_at`;
 
@@ -512,6 +521,7 @@ export class EvalStore {
     rubric_id: string;
     targets: EvalTarget[];
     budget_usd: number | null;
+    dataset_name?: string | null;
   }): Promise<EvalRun> {
     const row: EvalRun = {
       id: r.id ?? randomUUID(),
@@ -525,14 +535,15 @@ export class EvalStore {
       started_at: nowIso(),
       ended_at: null,
       error: null,
+      dataset_name: r.dataset_name ?? null,
     };
     await this.q(ctx).run(
       `INSERT INTO eval_runs (id, workspace_id, dataset_id, agent_id, rubric_id, status,
-         targets, budget_usd, judge_cost_usd, started_at, ended_at, error)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, NULL, NULL)`,
+         targets, budget_usd, judge_cost_usd, started_at, ended_at, error, dataset_name)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, NULL, NULL, ?)`,
       [
         row.id, ctx.workspaceId, row.dataset_id, row.agent_id, row.rubric_id, row.status,
-        JSON.stringify(row.targets), row.budget_usd, row.started_at,
+        JSON.stringify(row.targets), row.budget_usd, row.started_at, row.dataset_name,
       ],
     );
     return row;
@@ -632,7 +643,7 @@ export class EvalStore {
   async createJobs(
     ctx: TenantContext,
     evalId: string,
-    jobs: { example_id: string; provider: string; model: string }[],
+    jobs: { example_id: string; provider: string; model: string; input?: string | null; expected?: string | null }[],
   ): Promise<EvalJob[]> {
     const out: EvalJob[] = [];
     await this.db.scoped(ctx.workspaceId, async (tx: Queryable) => {
@@ -641,14 +652,15 @@ export class EvalStore {
         const id = randomUUID();
         await tx.run(
           `INSERT INTO eval_jobs (id, workspace_id, eval_id, example_id, provider, model,
-             status, attempt, cost_complete, position)
-           VALUES (?, ?, ?, ?, ?, ?, 'queued', 0, 1, ?)`,
-          [id, ctx.workspaceId, evalId, j.example_id, j.provider, j.model, position++],
+             status, attempt, cost_complete, position, input, expected)
+           VALUES (?, ?, ?, ?, ?, ?, 'queued', 0, 1, ?, ?, ?)`,
+          [id, ctx.workspaceId, evalId, j.example_id, j.provider, j.model, position++, j.input ?? null, j.expected ?? null],
         );
         out.push({
           id, eval_id: evalId, example_id: j.example_id, provider: j.provider, model: j.model,
           status: "queued", attempt: 0, run_id: null, cost_usd: null, spent_usd: 0, tokens: null,
           latency_ms: null, cost_complete: 1, error: null, started_at: null, ended_at: null,
+          input: j.input ?? null, expected: j.expected ?? null,
         });
       }
     });

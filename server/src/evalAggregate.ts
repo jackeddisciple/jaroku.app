@@ -221,6 +221,8 @@ export interface ExampleRow {
 export interface EvalAggregate {
   evalId: string;
   datasetId: string;
+  /** What the dataset was called when the eval ran. Null only for an eval from before it was kept. */
+  datasetName: string | null;
   agentId: string;
   status: string;
   startedAt: string;
@@ -317,19 +319,37 @@ export async function aggregateEval(
   // Stable order so the dashboard doesn't reshuffle between refreshes.
   providers.sort((a, b) => (a.provider + a.model).localeCompare(b.provider + b.model));
 
-  // Per-example rows, in dataset order, each carrying one cell per (provider, model) leg.
-  // Built here rather than in the UI so the dashboard grid and the drill-down are always
+  // Per-example rows, in the order the eval ran them, each carrying one cell per (provider, model)
+  // leg. Built here rather than in the UI so the dashboard grid and the drill-down are always
   // describing the same data.
+  //
+  // FROM THE JOBS, NOT THE DATASET. Rows used to be the dataset's current cases, so an edit after the
+  // eval rewrote what the eval had been asked, a deleted case's row vanished while its job still
+  // counted in what was spent, and a deleted dataset left an eval with no rows at all. Each job keeps
+  // the case it ran (migration 089); only a job from before that copy falls back to the dataset.
   const scoreRowByJob = new Map(scores.map((s) => [s.job_id, s]));
-  const jobsByExample = new Map<string, EvalJob[]>();
-  for (const j of jobs) {
-    const list = jobsByExample.get(j.example_id);
-    if (list) list.push(j);
-    else jobsByExample.set(j.example_id, [j]);
-  }
+  const current = jobs.some((j) => typeof j.input !== "string")
+    ? new Map((await evalStore.listExamples(ctx, evalRun.dataset_id)).map((e) => [e.id, e]))
+    : new Map<string, { input: string; expected: string | null }>();
   const rows: ExampleRow[] = [];
-  for (const example of await evalStore.listExamples(ctx, evalRun.dataset_id)) {
-    const cells = (jobsByExample.get(example.id) ?? []).map((j): ExampleCell => {
+  const rowByExample = new Map<string, ExampleRow>();
+  for (const j of jobs) {
+    let row = rowByExample.get(j.example_id);
+    if (!row) {
+      const kept = typeof j.input === "string" ? { input: j.input, expected: j.expected ?? null } : current.get(j.example_id);
+      row = {
+        exampleId: j.example_id,
+        input: kept?.input ?? "(this case was deleted before evals kept a copy of it)",
+        expected: kept?.expected ?? null,
+        cells: [],
+      };
+      rowByExample.set(j.example_id, row);
+      rows.push(row);
+    }
+    row.cells.push(cellOf(j));
+  }
+
+  function cellOf(j: EvalJob): ExampleCell {
       const s = scoreRowByJob.get(j.id);
       return {
         jobId: j.id,
@@ -350,17 +370,13 @@ export async function aggregateEval(
         perCriterion: s?.per_criterion ?? null,
         rationale: s?.rationale ?? null,
       };
-    });
-    // An example deleted mid-eval leaves jobs with no row; skip rather than invent one.
-    if (cells.length) {
-      rows.push({ exampleId: example.id, input: example.input, expected: example.expected, cells });
-    }
   }
 
   const judge = evalRun.judge_cost_usd ?? 0;
   return {
     evalId,
     datasetId: evalRun.dataset_id,
+    datasetName: evalRun.dataset_name ?? null,
     agentId: evalRun.agent_id,
     status: evalRun.status,
     startedAt: evalRun.started_at,

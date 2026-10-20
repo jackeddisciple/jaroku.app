@@ -177,6 +177,38 @@ async function makeRun(opts: {
     p.latencyP50Ms === 700 && p.successRate === 1);
 }
 
+console.log("\nan eval shows the cases it ran, whatever happens to the dataset afterwards");
+{
+  // The rows were the dataset's CURRENT cases: an edit rewrote what a past eval had been asked, a
+  // deleted case's row vanished while its job still counted in what was spent, and a deleted
+  // dataset left the eval with no rows at all.
+  const ds = await evalStore.createDataset(ctx, "a", "Screening cases");
+  const kept = await evalStore.addExample(ctx, ds.id, "Role: QA --- résumé", "decline");
+  const gone = await evalStore.addExample(ctx, ds.id, "Role: SRE --- résumé", "advance");
+  const run = await evalStore.createEvalRun(ctx, {
+    dataset_id: ds.id, agent_id: "a", rubric_id: "r", targets: [{ provider: "anthropic", model: "claude-haiku-4-5" }],
+    budget_usd: null, dataset_name: ds.name,
+  });
+  const jobs = await evalStore.createJobs(ctx, run.id, [
+    { example_id: kept.id, provider: "anthropic", model: "claude-haiku-4-5", input: kept.input, expected: kept.expected },
+    { example_id: gone.id, provider: "anthropic", model: "claude-haiku-4-5", input: gone.input, expected: gone.expected },
+  ]);
+  for (const j of jobs) await evalStore.finishJob(ctx, j.id, "succeeded", { cost_usd: 0.001 });
+
+  await evalStore.updateExample(ctx, kept.id, { input: "edited later", expected: "EDITED after the eval ran" });
+  await evalStore.deleteExample(ctx, gone.id);
+  let res = (await aggregateEval(ctx, evalStore, run.id))!;
+  check("an edited case still reads as it ran", res.rows[0]?.input === "Role: QA --- résumé" && res.rows[0]?.expected === "decline",
+    JSON.stringify(res.rows[0]));
+  check("a deleted case keeps its row", res.rows.length === 2 && res.rows[1]?.input === "Role: SRE --- résumé",
+    JSON.stringify(res.rows.map((r) => r.input)));
+
+  await evalStore.deleteDataset(ctx, ds.id);
+  res = (await aggregateEval(ctx, evalStore, run.id))!;
+  check("a deleted dataset's eval keeps every row", res.rows.length === 2, `${res.rows.length}`);
+  check("and the dataset's name", res.datasetName === "Screening cases", `${res.datasetName}`);
+}
+
 await store.close();
 rmSync(DB, { force: true });
 rmSync(`${DB}-wal`, { force: true });

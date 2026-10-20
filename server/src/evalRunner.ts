@@ -476,9 +476,14 @@ export class EvalRunner {
     // (example × provider) — the fan-out. Ordered example-major so the first results to
     // land cover one example across every provider, which is the comparison the user is
     // actually waiting to see.
+    // Each job carries its case: an edit or a delete after this moment changes the next eval, not
+    // this one — neither its runs nor the results anybody later reads back.
     const spec = examples.flatMap((ex) =>
-      req.targets.map((t) => ({ example_id: ex.id, provider: t.provider, model: t.model })),
+      req.targets.map((t) => ({
+        example_id: ex.id, provider: t.provider, model: t.model, input: ex.input, expected: ex.expected,
+      })),
     );
+    const dataset = await this.deps.evalStore.getDataset(req.ctx, req.datasetId);
 
     const evalRun = await this.deps.evalStore.createEvalRun(req.ctx, {
       id: evalId,
@@ -487,6 +492,7 @@ export class EvalRunner {
       rubric_id: req.rubricId,
       targets: req.targets,
       budget_usd: req.budgetUsd,
+      dataset_name: dataset?.name ?? null,
     });
     // Rows first, dispatch second. If the process dies right here, the eval is recoverable
     // rather than a set of runs nothing points at.
@@ -777,10 +783,11 @@ export class EvalRunner {
    * pool.freeSlots one eval at a time.
    */
   private async enqueueJob(live: Live, job: EvalJob): Promise<void> {
-    const example = await this.deps.evalStore.getExample(this.ctx(live.evalId), job.example_id);
-    if (!example) {
-      // The example was deleted after the eval was queued. Record it rather than skipping
-      // silently — a missing cell in the dashboard needs a reason.
+    // The case as it was when the eval started. Only a job from before that copy existed reads the
+    // dataset, and only that job can find its case gone.
+    const input = job.input ?? (await this.deps.evalStore.getExample(this.ctx(live.evalId), job.example_id))?.input;
+    if (input === undefined || input === null) {
+      // Record it rather than skipping silently — a missing cell in the dashboard needs a reason.
       await this.deps.evalStore.finishJob(this.ctx(live.evalId), job.id, "failed", { error: "example no longer exists" });
       return;
     }
@@ -789,7 +796,7 @@ export class EvalRunner {
       evalId: live.evalId,
       jobId: job.id,
       agentId: evalRun.agent_id,
-      input: example.input,
+      input,
       provider: job.provider,
       model: job.model,
       attempt: job.attempt,
