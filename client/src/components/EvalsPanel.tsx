@@ -9,7 +9,8 @@ import { useEffect, useState } from "react";
 import { useBuildStore } from "../store/buildStore.ts";
 import { datasetsOf, evalListKey, liveEvalOf, useEvalStore } from "../store/evalStore.ts";
 import { useTraceStore } from "../store/traceStore.ts";
-import { sendListEvals, sendLoadEvalResults, sendLoadJudge, sendSetJudgeOwnKey } from "../lib/socket.ts";
+import { sendListEvals, sendLoadEvalResults, sendLoadJudge, sendRetryEval, sendSetJudgeOwnKey } from "../lib/socket.ts";
+import { parseCeiling, suggestedCeiling } from "./EvalRunBar.tsx";
 import { useCanRun } from "../lib/useCapability.ts";
 import { useUiStore } from "../store/uiStore.ts";
 import { DatasetBuilder } from "./DatasetBuilder.tsx";
@@ -95,6 +96,82 @@ export function ResultsHeader({ results, live }: { results: EvalResults; live: E
  * every eval came back unscored, and nothing on the panel led anywhere that could change that. The
  * workspace's own Anthropic key can judge, if somebody allowed to decide whose key pays says so.
  */
+/**
+ * What can be done with a finished eval: run its unfinished cells again, or run the whole thing again.
+ *
+ * NEITHER EXISTED. A budget stop that cancelled thirteen cells could only be followed by a new eval
+ * of all fifteen, and repeating an eval meant choosing its models and ceiling again by hand.
+ */
+export function EvalActions({ results }: { results: EvalResults }) {
+  const [retrying, setRetrying] = useState(false);
+  const [ceiling, setCeiling] = useState("");
+  const live = useEvalStore((s) => s.progressByEval[results.evalId]);
+  const datasets = useEvalStore((s) => datasetsOf(s.datasetsByAgent, results.agentId));
+  const finished = !["running", "queued"].includes(results.status) && !(live && (live.status === undefined || live.scoring));
+  if (!finished) return null;
+  const cells = results.rows.flatMap((r) => r.cells);
+  const again = cells.filter((c) => ["failed", "timed_out", "cancelled"].includes(c.status)).length;
+  const ran = cells.filter((c) => ["succeeded", "failed", "timed_out"].includes(c.status)).length;
+  const { totals } = results;
+  // WHAT THE RETRY WILL NEED: the spend so far, plus the cells left at what a cell has cost.
+  const need = totals.trueSpendUsd + (ran ? totals.agentSpendUsd / ran : 0) * again;
+  const spentOut = totals.budgetUsd !== null && totals.budgetUsd <= need;
+  const parsed = spentOut ? parseCeiling(ceiling || suggestedCeiling(need)) : null;
+  const datasetHere = datasets.some((d) => d.id === results.datasetId);
+
+  const runAgain = (): void => {
+    const store = useEvalStore.getState();
+    store.setTargets(results.agentId, results.targets ?? results.providers.map((p) => ({ provider: p.provider, model: p.model })));
+    store.selectDataset(results.agentId, results.datasetId);
+    store.setMode(results.agentId, "dataset");
+    store.requestEstimate(results.agentId);
+  };
+
+  return (
+    <div className="flex flex-wrap items-center gap-2 pb-3 text-tiny">
+      {again > 0 && !retrying && (
+        <button
+          onClick={() => (spentOut ? setRetrying(true) : sendRetryEval(results.evalId, results.agentId, totals.budgetUsd))}
+          className="rounded-control bg-active px-2 py-1 text-ink transition-opacity hover:opacity-80"
+          title="Run the failed, timed-out and cancelled cells again, inside this eval"
+        >
+          Retry {again} cell{again === 1 ? "" : "s"}
+        </button>
+      )}
+      {retrying && parsed && (
+        <span className="flex flex-wrap items-center gap-1.5">
+          <span className="text-muted">Its ceiling is spent — retry with Stop at $</span>
+          <input
+            value={ceiling || suggestedCeiling(need)}
+            onChange={(e) => setCeiling(e.target.value)}
+            aria-label="New ceiling for the retry, in dollars"
+            inputMode="decimal"
+            className="w-16 rounded-input border border-edge bg-elevated px-1.5 py-0.5 tabular-nums text-ink outline-none focus:shadow-focusring"
+          />
+          <button
+            disabled={"error" in parsed}
+            title={"error" in parsed ? parsed.error : undefined}
+            onClick={() => { if ("usd" in parsed) sendRetryEval(results.evalId, results.agentId, parsed.usd); setRetrying(false); }}
+            className="rounded-control bg-active px-2 py-1 text-ink disabled:opacity-30"
+          >
+            Retry
+          </button>
+          <button onClick={() => setRetrying(false)} className="text-faint hover:text-ink">Cancel</button>
+        </span>
+      )}
+      {datasetHere && (
+        <button
+          onClick={runAgain}
+          className="rounded-control px-2 py-1 text-muted transition-colors hover:bg-active hover:text-ink"
+          title="Choose the same models and open the estimate for a new eval of this dataset as it is now"
+        >
+          Run again
+        </button>
+      )}
+    </div>
+  );
+}
+
 export function JudgeLine() {
   const judge = useEvalStore((s) => s.judge);
   const canSwitch = useCanRun("setJudgeOwnKey");
@@ -313,6 +390,7 @@ export function EvalsPanel() {
           {results ? (
             <>
               <ResultsHeader results={results} live={progress} />
+              <EvalActions results={results} />
               <JudgeLine />
               <ComparisonTable results={results} />
               <ExampleDrillDown results={results} />

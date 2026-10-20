@@ -5561,6 +5561,8 @@ const COMMAND_RATE_ACTIONS: Partial<Record<string, RateAction>> = {
   branchRun: "run.start",
   resumeRun: "run.start",
   startEval: "eval.start",
+  // A retry starts runs exactly as a start does.
+  retryEval: "eval.start",
   // DEPLOY WAS MISSING, and it is the one in its family that consumes. `enforcement.ts` says a
   // rung takes away "the ability to CONSUME: to start runs, evals, generations and deploys" —
   // three of those four were gated. A suspended workspace could still build an image and leave a
@@ -11512,6 +11514,36 @@ async function handleEvalCommand(ctx: TenantContext, cmd: ForwardedCommand): Pro
           kind: "eval",
           refId: started.evalId,
         });
+        return;
+      }
+      case "retryEval": {
+        // THE EVAL NAMED MUST BE THE AGENT'S NAMED: the agent is what the permission was checked on.
+        const row = await evalStore.getEvalRun(ctx, cmd.evalId);
+        if (!row || row.agent_id !== cmd.agentId) {
+          reply({ type: "error", message: "unknown eval" });
+          return;
+        }
+        // A NEW CEILING, OR THE OLD ONE IF IT STILL HAS ROOM. One already spent would stop the retry
+        // on its first pump, which is a Retry that does nothing — refused here in words instead.
+        const spent = await evalStore.trueSpend(ctx, row.id);
+        const budget = typeof cmd.budgetUsd === "number" && Number.isFinite(cmd.budgetUsd) && cmd.budgetUsd > 0 ? cmd.budgetUsd : row.budget_usd;
+        if (budget !== null && budget <= spent) {
+          reply({ type: "error", message: `this eval has spent $${spent.toFixed(4)} — raise its ceiling above that to retry` });
+          return;
+        }
+        // Money asks first, here as for a start.
+        const verdict = await budgetGate.mayStart(ctx, { estimateUsd: null, purpose: "eval" });
+        if (!verdict.ok) {
+          reply({ type: "error", message: verdict.message ?? "this retry was refused" });
+          return;
+        }
+        const resumed = await evalRunner.resume({ ctx, evalId: row.id, budgetUsd: budget, ...(origin ? { origin } : {}) });
+        if ("error" in resumed) {
+          if (verdict.holdId) await balances.release(ctx, verdict.holdId);
+          reply({ type: "error", message: resumed.error });
+          return;
+        }
+        if (verdict.holdId) evalHolds.set(row.id, verdict.holdId);
         return;
       }
       case "cancelEval": {

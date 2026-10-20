@@ -845,17 +845,51 @@ export class EvalStore {
     return out;
   }
 
-  /** Mark a job dispatched, binding it to the ordinary run that will carry its trace. */
+  /**
+   * Mark a job dispatched, binding it to the ordinary run that will carry its trace — and say whether
+   * this call is the one that did.
+   *
+   * ONLY A QUEUED JOB. Two queue entries for one job (one left over from before a retry, say) would
+   * otherwise both start it and both bill it; the second finds it already running and drops.
+   */
   async markJobRunning(
     ctx: TenantContext,
     jobId: string,
     runId: string,
     attempt: number,
-  ): Promise<void> {
-    await this.q(ctx).run(
+  ): Promise<boolean> {
+    const res = await this.q(ctx).run(
       `UPDATE eval_jobs SET status = 'running', run_id = ?, attempt = ?, started_at = ?
-        WHERE id = ? AND workspace_id = ?`,
+        WHERE id = ? AND workspace_id = ? AND status = 'queued'`,
       [runId, attempt, nowIso(), jobId, ctx.workspaceId],
+    );
+    return res.changes > 0;
+  }
+
+  /**
+   * A finished eval's failed, timed-out and cancelled jobs, back in its queue — Retry.
+   *
+   * A failed attempt really ran, so the retry is the next attempt; a cancelled job never ran, so it
+   * keeps its number. What every attempt spent stays in `spent_usd`. Returns how many went back.
+   */
+  async requeueUnfinished(ctx: TenantContext, evalId: string): Promise<number> {
+    const res = await this.q(ctx).run(
+      `UPDATE eval_jobs
+          SET attempt = CASE WHEN status = 'cancelled' THEN attempt ELSE attempt + 1 END,
+              status = 'queued', run_id = NULL, started_at = NULL, ended_at = NULL,
+              retry_not_before = NULL, error = NULL
+        WHERE eval_id = ? AND workspace_id = ? AND status IN ('failed', 'timed_out', 'cancelled')`,
+      [evalId, ctx.workspaceId],
+    );
+    return res.changes;
+  }
+
+  /** An eval running again after Retry: no end, no stop reason, and the ceiling it was given now. */
+  async reopenEval(ctx: TenantContext, evalId: string, budgetUsd: number | null): Promise<void> {
+    await this.q(ctx).run(
+      `UPDATE eval_runs SET status = 'running', ended_at = NULL, error = NULL, budget_usd = ?
+        WHERE id = ? AND workspace_id = ?`,
+      [budgetUsd, evalId, ctx.workspaceId],
     );
   }
 

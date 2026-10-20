@@ -114,6 +114,9 @@ interface EvalState {
   setMode: (agentId: string, mode: "dataset" | "results") => void;
   openCellByEval: Record<string, string | null>;
   setOpenCell: (evalId: string, jobId: string | null) => void;
+  /** An agent whose run bar should open its estimate — Run again's hand-off. Consumed by the bar. */
+  estimateRequest: string | null;
+  requestEstimate: (agentId: string | null) => void;
 
   // --- eval runs ---
   /** evalListKey(agent, dataset) -> that scope's history, newest first. */
@@ -213,6 +216,8 @@ export const useEvalStore = create<EvalState>((set) => ({
   setMode: (agentId, mode) => set((s) => ({ modeByAgent: { ...s.modeByAgent, [agentId]: mode } })),
   openCellByEval: {},
   setOpenCell: (evalId, jobId) => set((s) => ({ openCellByEval: { ...s.openCellByEval, [evalId]: jobId } })),
+  estimateRequest: null,
+  requestEstimate: (estimateRequest) => set({ estimateRequest }),
 
   evalLists: {},
   selectedEvalByAgent: {},

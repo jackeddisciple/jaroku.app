@@ -2375,6 +2375,10 @@ export function sendStartEval(
 ): void {
   send({ cmd: "startEval", datasetId, agentId, targets, budgetUsd, threadId: activeThread(), origin: EVAL_ORIGIN });
 }
+/** Retry a finished eval's failed, timed-out and cancelled cells, in the same eval, under this ceiling. */
+export function sendRetryEval(evalId: string, agentId: string, budgetUsd: number | null): void {
+  send({ cmd: "retryEval", evalId, agentId, budgetUsd, origin: EVAL_ORIGIN });
+}
 export function sendCancelEval(evalId: string): void {
   send({ cmd: "cancelEval", evalId, origin: EVAL_ORIGIN });
 }

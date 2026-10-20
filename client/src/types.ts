@@ -2626,6 +2626,7 @@ export type ClientCommand =
   | { cmd: "promoteTestInput"; agentId: string; agentName?: string; input: string; expected?: string | null; origin?: string }
   | { cmd: "startEval"; datasetId: string; agentId: string; targets: EvalTarget[]; budgetUsd?: number | null; threadId?: string; origin?: string }
   | { cmd: "cancelEval"; evalId: string; origin?: string }
+  | { cmd: "retryEval"; evalId: string; agentId: string; budgetUsd?: number | null; origin?: string }
   | { cmd: "loadEvalResults"; evalId: string }
   | { cmd: "listEvals"; agentId?: string; datasetId?: string; limit?: number }
   | { cmd: "estimateEval"; datasetId: string; agentId: string; targets: EvalTarget[]; origin?: string }

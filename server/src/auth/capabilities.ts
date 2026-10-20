@@ -795,6 +795,7 @@ export const COMMAND_CAPABILITY: Record<string, Capability> = {
   // WHOSE KEY PAYS for verdicts — the same authority as the workspace-wide switch beside it.
   setJudgeOwnKey: "provider:manage",
   startEval: "eval:run",
+  retryEval: "eval:run",
   cancelEval: "eval:run",
 
   // MCP
@@ -1201,6 +1202,7 @@ export const COMMAND_AGENT_CAPABILITY: Record<string, AgentCapability> = {
 
   // --- eval: start, cancel, and the datasets they run against ---------------------------------
   startEval: "eval",
+  retryEval: "eval",
   createDataset: "eval",
   deleteDataset: "eval",
   promoteTestInput: "eval",

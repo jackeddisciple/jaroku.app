@@ -192,6 +192,17 @@ export function EvalRunBar() {
     setConfirming(true);
   };
 
+  // RUN AGAIN'S HAND-OFF: the same models are already chosen; open their estimate, as a click would.
+  const estimateRequest = useEvalStore((s) => s.estimateRequest);
+  useEffect(() => {
+    if (!estimateRequest || estimateRequest !== activeAgentId || !selectedDatasetId) return;
+    useEvalStore.getState().requestEstimate(null);
+    if (!running && !unbuilt && examples.length && targets.length) {
+      sendEstimateEval(selectedDatasetId, activeAgentId, targets);
+      setConfirming(true);
+    }
+  }, [estimateRequest, selectedDatasetId, examples.length]);
+
   const parsedCeiling = parseCeiling(ceiling);
   const refusal = refusalOf(estimate);
   const warning = estimate && "usd" in parsedCeiling ? ceilingWarning(parsedCeiling.usd, estimate) : null;

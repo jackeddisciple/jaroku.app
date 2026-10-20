@@ -511,6 +511,50 @@ console.log("\neach leg runs at the reasoning effort it was given");
   }
 }
 
+console.log("\nRetry runs a finished eval's unfinished cells again, in the same eval");
+{
+  const pool = new FakePool(1);
+  const dispatcher = new Dispatcher(new InMemoryQueueBackend());
+  const finished: string[] = [];
+  const started: string[] = [];
+  const runner = new EvalRunner({
+    pool: pool as unknown as RunPool, store, dispatcher, evalStore, runtimeDir: ".", context: () => ctx,
+    markEvalRun: () => {}, onStarted: (e) => started.push(e.evalId), onProgress: () => {}, onFinished: (e) => finished.push(e.status),
+  });
+  const ds = await evalStore.createDataset(ctx, "agent_again", "retry in place");
+  for (let i = 0; i < 3; i++) await evalStore.addExample(ctx, ds.id, `case-${i}`, null, null);
+  const rubric = await evalStore.putRubric(ctx, { dataset_id: null, name: "r", criteria: [] });
+  const begun = await runner.start({
+    ctx, datasetId: ds.id, agentId: "agent_again", rubricId: rubric.id,
+    targets: [{ provider: "fake", model: "fake" }], budgetUsd: 0.001,
+  });
+  if ("error" in begun) { check(false, `start failed: ${begun.error}`); }
+  else {
+    // The first job spends past the ceiling, so the other two are cancelled — a budget stop.
+    for (let i = 0; i < 40 && pool.started.length < 1; i++) await sleep(15);
+    const first = pool.started[0]!.runId;
+    const now = new Date().toISOString();
+    await store.upsertRun(ctx, { id: first, agent_id: "agent_again", provider: "fake", model: "fake", status: "completed", started_at: now, ended_at: now, cost: 0, tokens: 0, error: null });
+    const job = (await evalStore.jobsForEval(ctx, begun.evalId)).find((j) => j.run_id === first)!;
+    await evalStore.finishJob(ctx, job.id, "succeeded", { cost_usd: 0.01 });
+    await evalStore.markJobRunning(ctx, job.id, first, 0);
+    check(!(await evalStore.markJobRunning(ctx, job.id, "a-second-run", 0)), "a job already running cannot be claimed a second time");
+    pool.finish(first);
+    for (let i = 0; i < 60 && finished.length < 1; i++) await sleep(15);
+    check(finished[0] === "aborted_over_budget", `the eval stopped at its ceiling (${finished.join(",")})`);
+
+    const refused = await runner.resume({ ctx, evalId: begun.evalId, budgetUsd: 0.5 });
+    check(!("error" in refused) && refused.retried === 2, `Retry puts the two cancelled cells back (${JSON.stringify(refused)})`);
+    check(started.filter((id) => id === begun.evalId).length === 2, "and the eval is announced as running again");
+    for (let i = 0; i < 40 && pool.started.length < 2; i++) await sleep(15);
+    check(pool.started.length === 2, `the retried cells run (${pool.started.length})`);
+    check((await evalStore.getEvalRun(ctx, begun.evalId))?.status === "running", "inside the same eval, running again");
+    check((await evalStore.getEvalRun(ctx, begun.evalId))?.budget_usd === 0.5, "with the new ceiling");
+    check("error" in (await runner.resume({ ctx, evalId: begun.evalId })), "and a second Retry while it runs is refused");
+    await runner.cancel(begun.evalId);
+  }
+}
+
 console.log("\na retry that came due between two reads of the clock still gets its wake");
 {
   // The pump read the clock, found the retry a millisecond short of due, and skipped it; the wake,

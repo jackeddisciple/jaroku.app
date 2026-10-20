@@ -484,6 +484,52 @@ export class EvalRunner {
     }
   }
 
+  /**
+   * Retry: a finished eval's failed, timed-out and cancelled cells run again, inside the same eval.
+   *
+   * IN PLACE, so one comparison ends up complete rather than two partial ones. It takes the workspace's
+   * claim exactly as a start does — one eval at a time still holds — and can be given a new ceiling,
+   * because an eval stopped by its own is otherwise stopped again on the first pump.
+   */
+  async resume(req: { ctx: TenantContext; evalId: string; budgetUsd?: number | null; origin?: string }): Promise<{ evalId: string; retried: number } | { error: string }> {
+    const { ctx, evalId } = req;
+    if (this.live.has(evalId) || this.activeIn(ctx.workspaceId)) return { error: "an eval is already running" };
+    const row = await this.deps.evalStore.getEvalRun(ctx, evalId);
+    if (!row) return { error: "unknown eval" };
+    if (row.status === "queued" || row.status === "running") return { error: "that eval is still running" };
+    const holder = evalClaimHolder(evalId, this.replicaId);
+    this.starting.add(ctx.workspaceId);
+    try {
+      if (!(await this.shared.acquireSemaphore(evalClaimKey(ctx.workspaceId), 1, holder, CLAIM_TTL_MS))) {
+        return { error: "an eval is already running" };
+      }
+      // Anything this machine still has queued for the eval's jobs goes first, so nothing old can
+      // start beside the retry. markJobRunning's guard is the backstop.
+      const jobs = await this.deps.evalStore.jobsForEval(ctx, evalId);
+      const keys = new Set(jobs.flatMap((j) => [`run.eval:${j.id}:${j.attempt}`, `run.eval:${j.id}:${j.attempt + 1}`]));
+      await this.deps.dispatcher.purgePending("run.eval", ctx.workspaceId, keys);
+      const retried = await this.deps.evalStore.requeueUnfinished(ctx, evalId);
+      if (!retried) {
+        await this.shared.releaseSemaphore(evalClaimKey(ctx.workspaceId), holder);
+        return { error: "nothing to retry — every case succeeded" };
+      }
+      await this.deps.evalStore.reopenEval(ctx, evalId, req.budgetUsd === undefined ? row.budget_usd : req.budgetUsd);
+      this.live.set(evalId, {
+        evalId, workspaceId: ctx.workspaceId, runToJob: new Map(), enqueuedAttempts: new Set(), cancelled: false, retryTimer: null,
+      });
+      this.deps.bindWorkspace?.(evalId, ctx);
+      console.log(`[eval] ${evalId} retrying ${retried} job(s)`);
+      this.deps.onStarted({
+        evalId, datasetId: row.dataset_id, agentId: row.agent_id, total: jobs.length, targets: row.targets,
+        ...(req.origin ? { origin: req.origin } : {}),
+      });
+      this.guard("retry pump", this.pump(evalId));
+      return { evalId, retried };
+    } finally {
+      this.starting.delete(ctx.workspaceId);
+    }
+  }
+
   private async startClaimed(req: StartEvalRequest, evalId: string): Promise<{ evalId: string } | { error: string }> {
     const examples = await this.deps.evalStore.listExamples(req.ctx, req.datasetId);
     if (!examples.length) return { error: "that dataset has no examples" };
@@ -930,7 +976,16 @@ export class EvalRunner {
     // silently retired one of the two provider slots a real provider gets, permanently.
     let started = false;
     try {
-      await this.deps.evalStore.markJobRunning(this.ctx(payload.evalId), payload.jobId, runId, payload.attempt);
+      if (!(await this.deps.evalStore.markJobRunning(this.ctx(payload.evalId), payload.jobId, runId, payload.attempt))) {
+        // ALREADY STARTED, OR NOT THIS EVAL'S TO START: a second queue entry for one job (left from
+        // before a Retry). Give back what was taken and drop it; the job runs once.
+        live.runToJob.delete(runId);
+        this.leaseByRun.delete(runId);
+        this.deps.markEvalRun(runId, false);
+        await provSem.release(provLeaseId);
+        await this.deps.dispatcher.ack("run.eval", leaseId);
+        return "dropped";
+      }
       const setup = (await this.deps.runSetup?.(payload.evalId, runId, { provider: payload.provider, agentId: payload.agentId })) ?? {};
       if (setup.refusal) {
         // It cannot start, and saying so is a failed job with the reason on it — the same ending a

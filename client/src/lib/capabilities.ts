@@ -241,6 +241,7 @@ export const COMMAND_CAPABILITY: Record<string, string> = {
   setDatasetCheck: "eval:write",
   setJudgeOwnKey: "provider:manage",
   startEval: "eval:run",
+  retryEval: "eval:run",
   cancelEval: "eval:run",
 
   // MCP
@@ -581,6 +582,7 @@ export const COMMAND_AGENT_CAPABILITY: Record<string, AgentCapability> = {
   restoreAgentVersion: "edit",
 
   startEval: "eval",
+  retryEval: "eval",
   createDataset: "eval",
   deleteDataset: "eval",
   promoteTestInput: "eval",

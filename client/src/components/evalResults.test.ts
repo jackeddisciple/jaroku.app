@@ -219,5 +219,30 @@ console.log("\nanswers checked against expected are counted, and each cell says 
   check(csv[1]![csv[0]!.indexOf("matches_expected")] === "no", "and the export says so too");
 }
 
+console.log("\na finished eval can retry its unfinished cells, or run again");
+{
+  const { EvalActions } = await import("./EvalsPanel.tsx");
+  const { useEvalStore } = await import("../store/evalStore.ts");
+  const cell = (status: string) => ({
+    jobId: `j-${status}-${Math.random()}`, provider: "anthropic", model: "claude-haiku-4-5", status, runId: null, costUsd: null,
+    costComplete: true, latencyMs: null, attempt: 0, error: null, score: null, scoreError: null, perCriterion: null, rationale: null,
+  });
+  seed(useEvalStore, {
+    datasetsByAgent: { liven: [{ id: "d1", agent_id: "liven", name: "Screening cases", created_at: "", updated_at: "" }] },
+    progressByEval: {},
+  } as never);
+  const stopped = results({
+    rows: [{ exampleId: "x1", input: "a", expected: null, cells: [cell("succeeded"), cell("succeeded"), ...Array.from({ length: 13 }, () => cell("cancelled"))] }],
+    totals: { trueSpendUsd: 0.0048, judgeCostUsd: 0, agentSpendUsd: 0.0048, budgetUsd: 0.001 },
+  });
+  const words = text(markup(createElement(EvalActions, { results: stopped })));
+  check(words.includes("Retry 13 cells"), "it offers to retry the thirteen cancelled cells", words);
+  check(words.includes("Run again"), "and to run the eval again", words);
+  const done = results({ status: "completed", stopReason: null, rows: [{ exampleId: "x1", input: "a", expected: null, cells: [cell("succeeded")] }] });
+  check(!text(markup(createElement(EvalActions, { results: done }))).includes("Retry"), "a complete eval has nothing to retry");
+  const running = results({ status: "running" });
+  check(text(markup(createElement(EvalActions, { results: running }))) === "", "and a running one offers neither");
+}
+
 console.log(failures === 0 ? "\nALL CORRECT" : `\n${failures} FAILURES`);
 (globalThis as { process?: { exit(code: number): void } }).process?.exit(failures === 0 ? 0 : 1);

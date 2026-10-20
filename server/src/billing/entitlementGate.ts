@@ -89,6 +89,7 @@ export const COMMAND_ENTITLEMENT: Record<string, EntitlementKind | typeof NO_ENT
   // Eval runs are counted per dataset CASE rather than per batch — a batch over a hundred cases is
   // a hundred — which is decided at dispatch rather than here. This gates the dispatch.
   startEval: "canStartEvalRun",
+  retryEval: "canStartEvalRun",
   // Estimating is reading a price list. Gating it would mean a workspace at its limit could not
   // find out what going over would cost, which is the moment it most wants to know.
   estimateEval: NO_ENTITLEMENT,

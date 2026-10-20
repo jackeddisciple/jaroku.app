@@ -523,6 +523,8 @@ export type StartEvalCommand = {
   origin?: string;
 };
 export type CancelEvalCommand = { cmd: "cancelEval"; evalId: string; origin?: string };
+/** Run a finished eval's failed, timed-out and cancelled cells again, in the same eval. */
+export type RetryEvalCommand = { cmd: "retryEval"; evalId: string; agentId: string; budgetUsd?: number | null; origin?: string };
 // The rubric is product surface, not a constant — "correct" for a refund bot is not
 // "correct" for a SQL agent. Saving one for a dataset overrides the shared default.
 export type LoadRubricCommand = { cmd: "loadRubric"; datasetId: string; origin?: string };
@@ -1956,6 +1958,7 @@ export type EvalCommand =
   | PromoteTestInputCommand
   | StartEvalCommand
   | CancelEvalCommand
+  | RetryEvalCommand
   | LoadRubricCommand
   | SaveRubricCommand
   | ResetRubricCommand
@@ -1969,7 +1972,7 @@ export type EvalCommand =
 const EVAL_COMMANDS = new Set([
   "createDataset", "renameDataset", "deleteDataset", "listDatasets",
   "loadDataset", "addExample", "addExamples", "updateExample", "deleteExample", "promoteTestInput",
-  "startEval", "cancelEval", "loadRubric", "saveRubric", "resetRubric", "loadJudge", "setJudgeOwnKey", "setDatasetCheck",
+  "startEval", "cancelEval", "retryEval", "loadRubric", "saveRubric", "resetRubric", "loadJudge", "setJudgeOwnKey", "setDatasetCheck",
   "loadEvalResults", "listEvals", "estimateEval",
 ]);
 
@@ -4039,7 +4042,7 @@ export const COMMAND_CHANNEL: Record<string, string> = {
   editTurn: "threads",
   createDataset: "eval", renameDataset: "eval", deleteDataset: "eval", listDatasets: "eval",
   loadDataset: "eval", addExample: "eval", addExamples: "eval", updateExample: "eval", deleteExample: "eval",
-  promoteTestInput: "eval", startEval: "eval", cancelEval: "eval", loadRubric: "eval",
+  promoteTestInput: "eval", startEval: "eval", cancelEval: "eval", retryEval: "eval", loadRubric: "eval",
   saveRubric: "eval", resetRubric: "eval", loadJudge: "eval", setJudgeOwnKey: "eval", setDatasetCheck: "eval", loadEvalResults: "eval", listEvals: "eval", estimateEval: "eval",
   listMcpServers: "mcp", addMcpServer: "mcp", removeMcpServer: "mcp", rediscoverMcpServer: "mcp",
   setMcpServerAuth: "mcp", setMcpToolImpact: "mcp", resolveMcpConfirm: "mcp",
