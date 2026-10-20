@@ -16,7 +16,7 @@
 
 import type { Db } from "./db/db.ts";
 import { openTestSqlite, testContext, withScratchPostgres } from "./db/testDb.ts";
-import { EvalStore } from "./evalStore.ts";
+import { EvalStore, checkDatasetName, uniqueDatasetName } from "./evalStore.ts";
 
 let fail = 0;
 const check = (name: string, ok: boolean, detail = ""): void => {
@@ -91,6 +91,19 @@ async function suite(label: string, db: Db): Promise<void> {
   check(`[${label}] and editing the first leaves it first`, (await evals.listExamples(ctx, imported.id))[0]?.id === first.id);
   check(`[${label}] and an eval from before reads null, not version 0`,
     (await evals.getEvalRun(ctx, old))?.agent_version === null, String((await evals.getEvalRun(ctx, old))?.agent_version));
+}
+
+console.log("\na new dataset's name is one this agent does not have");
+{
+  // From the count: delete one of three, add one, and there were two "Test set 3".
+  check("the first is Test set", uniqueDatasetName([]) === "Test set");
+  check("after a delete it skips the names still in use",
+    uniqueDatasetName(["Test set", "Test set 3"]) === "Test set 2" && uniqueDatasetName(["Test set", "Test set 2", "Test set 3"]) === "Test set 4");
+  check("a typed name is made unique the same way", uniqueDatasetName(["Screening"], "Screening") === "Screening 2");
+  check("a blank name is refused in words", "error" in checkDatasetName("   "));
+  check("so is one past 80 characters", "error" in checkDatasetName("x".repeat(115)));
+  const tidy = checkDatasetName("  Screening   cases ");
+  check("and a name is tidied", !("error" in tidy) && tidy.name === "Screening cases");
 }
 
 await suite("sqlite", await openTestSqlite());

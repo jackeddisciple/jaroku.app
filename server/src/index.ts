@@ -32,7 +32,7 @@ import { RetentionSweeper, describeSweep, deleted as sweptRows } from "./lifecyc
 import { openDb } from "./db/open.ts";
 import { readRoleFacts, rlsRefusal } from "./db/rlsGuard.ts";
 import { newRequestId, systemContext, systemContextFor, type TenantContext } from "./db/tenant.ts";
-import { EvalStore, type Rubric, type RubricCriterion } from "./evalStore.ts";
+import { EvalStore, checkDatasetName, uniqueDatasetName, type Rubric, type RubricCriterion } from "./evalStore.ts";
 import { EvalRunner, evalRunsOwnedElsewhere } from "./evalRunner.ts";
 import { DEFAULT_CRITERIA, validateRubric } from "./judge/rubric.ts";
 import { JudgeScorer } from "./judge/score.ts";
@@ -11286,14 +11286,31 @@ async function handleEvalCommand(ctx: TenantContext, cmd: ForwardedCommand): Pro
         await broadcastDataset(ctx, cmd.datasetId);
         return;
       case "createDataset": {
-        const ds = await evalStore.createDataset(ctx, cmd.agentId, cmd.name);
+        // A NAME NOBODY ELSE ON THIS AGENT HAS. With no name asked for, the next free "Test set N";
+        // with one, that name made unique the same way, so two datasets are never told apart by id.
+        const existing = (await evalStore.listDatasets(ctx, cmd.agentId)).map((d) => d.name);
+        const asked = typeof cmd.name === "string" && cmd.name.trim() ? checkDatasetName(cmd.name) : null;
+        if (asked && "error" in asked) {
+          reply({ type: "error", message: asked.error });
+          return;
+        }
+        const ds = await evalStore.createDataset(ctx, cmd.agentId, uniqueDatasetName(existing, asked?.name ?? "Test set"));
         console.log(`[eval] dataset "${ds.name}" created for ${cmd.agentId}`);
         await broadcastDatasets(ctx, cmd.agentId);
         await broadcastDataset(ctx, ds.id);
+        // To whoever made it, so their builder selects it and offers its name for editing — it used
+        // to appear as a chip to the left with the old dataset still selected.
+        if (origin) relay.broadcastEval(ctx, { type: "datasetCreated", datasetId: ds.id, agentId: cmd.agentId, origin });
         return;
       }
       case "renameDataset": {
-        await evalStore.renameDataset(ctx, cmd.datasetId, cmd.name);
+        // Refused in words rather than ignored: a blank rename used to do nothing and say nothing.
+        const checked = checkDatasetName(cmd.name);
+        if ("error" in checked) {
+          reply({ type: "error", datasetId: cmd.datasetId, message: checked.error });
+          return;
+        }
+        await evalStore.renameDataset(ctx, cmd.datasetId, checked.name);
         await broadcastDatasets(ctx, (await evalStore.getDataset(ctx, cmd.datasetId))?.agent_id ?? null);
         return;
       }
@@ -11343,6 +11360,12 @@ async function handleEvalCommand(ctx: TenantContext, cmd: ForwardedCommand): Pro
         return;
       }
       case "updateExample": {
+        // THE SERVER'S RULE, not only the client's: an empty input is a run with nothing to do, and
+        // `addExample` refuses one — so an edit must not be a way to make one.
+        if (cmd.input !== undefined && !String(cmd.input).trim()) {
+          reply({ type: "error", datasetId: cmd.datasetId, message: "a case needs an input" });
+          return;
+        }
         await evalStore.updateExample(ctx, cmd.exampleId, {
           ...(cmd.input !== undefined ? { input: cmd.input } : {}),
           ...(cmd.expected !== undefined ? { expected: cmd.expected } : {}),

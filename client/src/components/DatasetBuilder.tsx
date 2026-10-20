@@ -49,10 +49,13 @@ function ExampleRow({
 }) {
   const [editing, setEditing] = useState<null | "input" | "expected">(null);
   const [draft, setDraft] = useState("");
+  /** Why the edit cannot be saved as it stands — said, rather than quietly putting the old text back. */
+  const [refusal, setRefusal] = useState<string | null>(null);
   const ref = useRef<HTMLTextAreaElement>(null);
 
   const begin = (field: "input" | "expected") => {
     setDraft(field === "input" ? example.input : (example.expected ?? ""));
+    setRefusal(null);
     setEditing(field);
   };
 
@@ -63,17 +66,24 @@ function ExampleRow({
     }
   }, [editing]);
 
-  const commit = () => {
+  const commit = (leaving = false) => {
     if (!editing) return;
     const value = draft.trim();
+    // An empty input would be a run with nothing to do. Pressing Enter on one used to put the old
+    // text back without a word; now it says why, and stays open until it is fixed or Escaped. Leaving
+    // the field (a blur) still keeps the old text, because a click elsewhere is not a decision.
+    if (editing === "input" && !value) {
+      if (leaving) { setEditing(null); setRefusal(null); }
+      else setRefusal("A case needs an input — Escape keeps the old one.");
+      return;
+    }
     const unchanged =
       editing === "input" ? value === example.input : value === (example.expected ?? "");
-    // An empty input would be a run with nothing to do — the server rejects it anyway,
-    // so don't even send it.
-    if (!unchanged && !(editing === "input" && !value)) {
+    if (!unchanged) {
       sendUpdateExample(datasetId, example.id,
         editing === "input" ? { input: value } : { expected: value || null });
     }
+    setRefusal(null);
     setEditing(null);
   };
 
@@ -83,9 +93,9 @@ function ExampleRow({
         ref={ref}
         value={draft}
         onChange={(e) => setDraft(e.target.value)}
-        onBlur={commit}
+        onBlur={() => commit(true)}
         onKeyDown={(e) => {
-          if (e.key === "Escape") { e.preventDefault(); setEditing(null); }
+          if (e.key === "Escape") { e.preventDefault(); setRefusal(null); setEditing(null); }
           if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); commit(); }
         }}
         rows={Math.min(draft.split("\n").length + 1, 6)}
@@ -115,6 +125,7 @@ function ExampleRow({
       </span>
       <div className="min-w-0 flex-1 space-y-0.5">
         {field("input", example.input, "(empty)")}
+        {refusal && <div className="px-2 text-tiny text-err" role="alert">{refusal}</div>}
         {field("expected", example.expected ?? "", "+ expected output (optional)")}
       </div>
       <button
@@ -397,11 +408,22 @@ export function DatasetBuilder() {
    * `prompt()` returns null there without asking — so Rename did nothing in the desktop app.
    */
   const [renaming, setRenaming] = useState<string | null>(null);
+  /** Why the rename was not sent — a blank name used to close the field and do nothing. */
+  const [renameError, setRenameError] = useState<string | null>(null);
+  const renameRequest = useEvalStore((s) => s.renameRequest);
+  const requestRename = useEvalStore((s) => s.requestRename);
   const fileRef = useRef<HTMLInputElement>(null);
   const examples = examplesOf(examplesByDataset, selectedDatasetId);
   const selected = datasets.find((d) => d.id === selectedDatasetId);
   // A half-typed rename belongs to the dataset it was started on, not to the next one picked.
-  useEffect(() => setRenaming(null), [selectedDatasetId]);
+  useEffect(() => { setRenaming(null); setRenameError(null); }, [selectedDatasetId]);
+  // A dataset this tab just created opens with its name ready to edit.
+  useEffect(() => {
+    if (renameRequest && selected?.id === renameRequest) {
+      setRenaming(selected.name);
+      requestRename(null);
+    }
+  }, [renameRequest, selected?.id]);
 
   // Datasets are per-agent; re-list whenever the agent (or the connection) changes.
   useEffect(() => {
@@ -413,11 +435,6 @@ export function DatasetBuilder() {
     if (connected && selectedDatasetId) sendLoadDataset(selectedDatasetId);
   }, [connected, selectedDatasetId]);
 
-  // Agent names are generated from prompts and run long ("a support agent that looks up
-  // orders in Postgres and checks…"), so a name derived from one overflows every chip it
-  // appears in. Number them instead; the agent is already established by the sidebar.
-  const nextDatasetName = () =>
-    datasets.length === 0 ? "Test set" : `Test set ${datasets.length + 1}`;
 
   const addExample = () => {
     const input = newInput.trim();
@@ -473,7 +490,10 @@ export function DatasetBuilder() {
           </Chip>
         ))}
         <button
-          onClick={() => sendCreateDataset(activeAgentId, nextDatasetName())}
+          // NO NAME: the server picks one this agent does not have. Numbering from the count here gave
+          // two "Test set 3"s after a delete. Agent names are not used — they are generated from prompts
+          // and run long, and the agent is already established by the sidebar.
+          onClick={() => sendCreateDataset(activeAgentId)}
           disabled={!connected}
           className="rounded-control px-2.5 py-1 text-caption text-faint hover:text-ink transition-colors disabled:opacity-40 shrink-0"
         >
@@ -493,17 +513,22 @@ export function DatasetBuilder() {
               onSubmit={(e) => {
                 e.preventDefault();
                 const name = renaming.trim();
-                if (name && name !== selected.name) sendRenameDataset(selected.id, name);
+                if (!name) { setRenameError("A dataset needs a name."); return; }
+                if (name.length > 80) { setRenameError("A dataset name can be at most 80 characters."); return; }
+                if (name !== selected.name) sendRenameDataset(selected.id, name);
+                setRenameError(null);
                 setRenaming(null);
               }}
             >
               <input
                 value={renaming}
-                onChange={(e) => setRenaming(e.target.value)}
+                onChange={(e) => { setRenaming(e.target.value); setRenameError(null); }}
+                aria-invalid={renameError !== null}
+                title={renameError ?? undefined}
                 onKeyDown={(e) => {
                   // The panel's own keys must not fire from a field somebody is typing a name into.
                   e.stopPropagation();
-                  if (e.key === "Escape") setRenaming(null);
+                  if (e.key === "Escape") { setRenaming(null); setRenameError(null); }
                 }}
                 autoFocus
                 aria-label="Dataset name"
@@ -512,11 +537,12 @@ export function DatasetBuilder() {
               <button type="submit" className="shrink-0 text-tiny font-medium text-ink underline underline-offset-2">Rename</button>
               <button
                 type="button"
-                onClick={() => setRenaming(null)}
+                onClick={() => { setRenaming(null); setRenameError(null); }}
                 className="shrink-0 text-tiny font-medium text-muted underline underline-offset-2"
               >
                 Cancel
               </button>
+              {renameError && <span className="shrink-0 text-tiny text-err" role="alert">{renameError}</span>}
             </form>
           ) : (
           <button

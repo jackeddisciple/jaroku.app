@@ -2198,6 +2198,8 @@ export type EvalEvent =
   | { type: "datasets"; agentId: string | null; datasets: unknown[] }
   | { type: "dataset"; datasetId: string; examples: unknown[] }
   | { type: "datasetDeleted"; datasetId: string }
+  // To the tab that created it only (it carries `origin`): select it and offer its name for editing.
+  | { type: "datasetCreated"; datasetId: string; agentId: string; origin: string }
   // Answer to a one-click promotion, so the composer can confirm where the input landed.
   // `duplicate` means the dataset already had that exact input and nothing was added.
   | { type: "promoted"; datasetId: string; datasetName: string; duplicate: boolean; origin?: string }

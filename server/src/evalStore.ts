@@ -182,6 +182,29 @@ export interface RunEvalScore {
   error: string | null;
 }
 
+/** The longest name a dataset may have — it is a chip in a row, and a tab title in an export. */
+export const MAX_DATASET_NAME = 80;
+
+/**
+ * A name for a new dataset that this agent does not already have: "Test set", then "Test set 2", …
+ *
+ * FROM THE COUNT IT REPEATED. Delete one of three and add one, and the fourth was named after the
+ * count — a second "Test set 3", and the confirmation that names a dataset named the wrong one.
+ */
+export function uniqueDatasetName(taken: readonly string[], base = "Test set"): string {
+  const names = new Set(taken.map((n) => n.trim().toLowerCase()));
+  if (!names.has(base.toLowerCase())) return base;
+  for (let n = 2; ; n++) if (!names.has(`${base} ${n}`.toLowerCase())) return `${base} ${n}`;
+}
+
+/** A dataset name as typed, tidied — or the sentence saying why it cannot be one. */
+export function checkDatasetName(raw: unknown): { name: string } | { error: string } {
+  const name = typeof raw === "string" ? raw.trim().replace(/\s+/g, " ") : "";
+  if (!name) return { error: "a dataset needs a name" };
+  if (name.length > MAX_DATASET_NAME) return { error: `a dataset name can be at most ${MAX_DATASET_NAME} characters` };
+  return { name };
+}
+
 // --- store -------------------------------------------------------------------
 
 const nowIso = (): string => new Date().toISOString();

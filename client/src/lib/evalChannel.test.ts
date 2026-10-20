@@ -130,6 +130,15 @@ console.log("\nstate a message names still reaches everybody");
   check(useEvalStore.getState().datasetsByAgent["liven"]?.length === 1, "and a list naming no agent replaces nobody's");
 }
 
+console.log("\na dataset this tab created is selected, with its name open for editing");
+{
+  socket.deliver({ channel: "eval", type: "datasetCreated", datasetId: "d-new", agentId: "liven", origin: OTHER });
+  check(useEvalStore.getState().renameRequest === null, "another member's new dataset does not open here");
+  socket.deliver({ channel: "eval", type: "datasetCreated", datasetId: "d-new", agentId: "liven", origin: EVAL_ORIGIN });
+  check(useEvalStore.getState().selectedDatasetByAgent["liven"] === "d-new", "this tab's is selected");
+  check(useEvalStore.getState().renameRequest === "d-new", "and its name is offered for editing");
+}
+
 stopSocket();
 console.log(failures === 0 ? "\nALL CORRECT" : `\n${failures} FAILURES`);
 (globalThis as { process?: { exit(code: number): void } }).process?.exit(failures === 0 ? 0 : 1);

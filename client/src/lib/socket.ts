@@ -366,6 +366,12 @@ function dispatch(msg: ServerMessage): void {
         if (msg.agentId) e.setDatasets(msg.agentId, msg.datasets);
       } else if (msg.type === "dataset") e.setExamples(msg.datasetId, msg.examples);
       else if (msg.type === "datasetDeleted") e.removeDataset(msg.datasetId);
+      else if (msg.type === "datasetCreated") {
+        if (isOurs(msg.origin)) {
+          e.selectDataset(msg.agentId, msg.datasetId);
+          e.requestRename(msg.datasetId);
+        }
+      }
       else if (msg.type === "promoted") { if (isOurs(msg.origin)) e.setPromoted(msg.datasetName, msg.duplicate); }
       else if (msg.type === "evalStarted") {
         // Its counters belong to its agent whoever started it; the panel follows it only in the tab
@@ -2305,8 +2311,9 @@ export function sendListDatasets(agentId?: string): void {
 export function sendLoadDataset(datasetId: string): void {
   send({ cmd: "loadDataset", datasetId });
 }
-export function sendCreateDataset(agentId: string, name: string): void {
-  send({ cmd: "createDataset", agentId, name, origin: EVAL_ORIGIN });
+/** No name: the server picks one this agent does not have yet ("Test set", "Test set 2", …). */
+export function sendCreateDataset(agentId: string, name?: string): void {
+  send({ cmd: "createDataset", agentId, ...(name ? { name } : {}), origin: EVAL_ORIGIN });
 }
 export function sendRenameDataset(datasetId: string, name: string): void {
   send({ cmd: "renameDataset", datasetId, name, origin: EVAL_ORIGIN });

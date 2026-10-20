@@ -682,6 +682,8 @@ export type EvalMessage =
   | { channel: "eval"; type: "datasets"; agentId: string | null; datasets: Dataset[] }
   | { channel: "eval"; type: "dataset"; datasetId: string; examples: DatasetExample[] }
   | { channel: "eval"; type: "datasetDeleted"; datasetId: string }
+  // To the tab that created it: select it, and offer its name for editing.
+  | { channel: "eval"; type: "datasetCreated"; datasetId: string; agentId: string; origin?: string }
   // `origin` on a reply: the tab that asked. Only that tab applies it (see socket.ts EVAL_ORIGIN).
   | { channel: "eval"; type: "promoted"; datasetId: string; datasetName: string; duplicate: boolean; origin?: string }
   | { channel: "eval"; type: "evalStarted"; evalId: string; datasetId: string; agentId: string; total: number; targets: EvalTarget[]; origin?: string }
@@ -2555,7 +2557,7 @@ export type ClientCommand =
     }
   // Eval: dataset CRUD. Every mutation is answered with a fresh snapshot on the "eval"
   // channel, so the client never reconciles a partial update against local state.
-  | { cmd: "createDataset"; agentId: string; name: string; origin?: string }
+  | { cmd: "createDataset"; agentId: string; name?: string; origin?: string }
   | { cmd: "renameDataset"; datasetId: string; name: string; origin?: string }
   | { cmd: "deleteDataset"; datasetId: string; agentId: string; origin?: string }
   | { cmd: "listDatasets"; agentId?: string }

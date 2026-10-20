@@ -74,6 +74,12 @@ interface EvalState {
   setError: (message: string | null) => void;
   setPromoted: (datasetName: string, duplicate: boolean) => void;
   clearPromoted: () => void;
+  /**
+   * A dataset this tab just created, whose name the builder should open for editing. A new dataset
+   * used to appear as a chip to the left with the old one still selected and a numbered name.
+   */
+  renameRequest: string | null;
+  requestRename: (datasetId: string | null) => void;
 
   // --- eval runs ---
   /** evalListKey(agent, dataset) -> that scope's history, newest first. */
@@ -156,6 +162,9 @@ export const useEvalStore = create<EvalState>((set) => ({
 
   setPromoted: (datasetName, duplicate) => set({ promoted: { datasetName, duplicate, at: Date.now() } }),
   clearPromoted: () => set({ promoted: null }),
+
+  renameRequest: null,
+  requestRename: (renameRequest) => set({ renameRequest }),
 
   evalLists: {},
   selectedEvalByAgent: {},
