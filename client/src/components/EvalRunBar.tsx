@@ -126,6 +126,10 @@ export function EstimateDetail({ estimate }: { estimate: EvalEstimate }) {
 
 export function EvalRunBar() {
   const activeAgentId = useBuildStore((s) => s.activeAgentId);
+  // A DRAFT HAS NO CODE: every job of an eval on it would fail on load. Said here, before an estimate.
+  const agent = useBuildStore((s) => s.agents.find((a) => a.agent_id === s.activeAgentId));
+  const unbuilt = agent?.draft === true ? `Build ${agent.name} before running an eval on it — it has no code yet.` : null;
+  const error = useEvalStore((s) => s.error);
   const connected = useTraceStore((s) => s.connection === "open");
   const selectedDatasetId = useEvalStore((s) => (activeAgentId ? (s.selectedDatasetByAgent[activeAgentId] ?? null) : null));
   const examplesByDataset = useEvalStore((s) => s.examplesByDataset);
@@ -256,7 +260,8 @@ export function EvalRunBar() {
       {confirming && (
         <div className="rounded-card border border-edge bg-panel px-3 py-2 space-y-1.5">
           {!estimate ? (
-            <div className="text-tiny text-muted">estimating…</div>
+            // A refusal in place of the estimate, rather than "estimating…" for ever.
+            error ? <div className="text-tiny text-err" role="alert">{error}</div> : <div className="text-tiny text-muted">estimating…</div>
           ) : (
             <>
               <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-tiny">
@@ -332,7 +337,9 @@ export function EvalRunBar() {
             {examples.length} × {targets.length} = {examples.length * targets.length} run
             {examples.length * targets.length === 1 ? "" : "s"}
           </span>
-          {targets.length > 0 && (
+          {unbuilt ? (
+            <span className="min-w-0 text-tiny text-muted">{unbuilt}</span>
+          ) : targets.length > 0 && (
             <span className="text-run text-tiny whitespace-nowrap">billed per token</span>
           )}
           <span className="ml-auto" />
@@ -354,6 +361,7 @@ export function EvalRunBar() {
               label="Estimate the cost of this eval"
               disabledReason={
                 !connected ? "Not connected"
+                  : unbuilt ? unbuilt
                   : !examples.length ? "Add an example first"
                   : !targets.length ? "Choose a model to run against"
                   : null

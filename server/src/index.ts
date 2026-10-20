@@ -11265,6 +11265,23 @@ async function broadcastDataset(ctx: TenantContext, datasetId: string): Promise<
   });
 }
 
+/**
+ * Why this agent cannot be evaluated yet, or null when it can: it has never been built.
+ *
+ * A DRAFT HAS NO CODE, and every job of an eval on one fails on load. The tab let one be built, run
+ * and paid for anyway, and never said the agent had not been generated. The same two facts the agent
+ * list's `draft` reads: a published version with an agent.py, or — for this process's own workspace —
+ * one on disk.
+ */
+async function evalBlockedFor(ctx: TenantContext, slug: string): Promise<string | null> {
+  if ((await agentRepo.currentVersionHas(ctx, "agent.py")).has(slug)) return null;
+  if (ctx.workspaceId === serverContext().workspaceId && scanAgentDirectory(RUNTIME_DIR).some((a) => a.agent_id === slug && a.runnable)) {
+    return null;
+  }
+  const name = (await agentRepo.bySlug(ctx, slug))?.display_name ?? slug;
+  return `${name} has not been built yet — build it before running an eval on it`;
+}
+
 /** The most cases one import may add. A CSV a person wrote by hand is a fraction of this. */
 const MAX_IMPORT_ROWS = 2_000;
 
@@ -11400,6 +11417,12 @@ async function handleEvalCommand(ctx: TenantContext, cmd: ForwardedCommand): Pro
           reply({ type: "error", message: `invalid agent id: ${cmd.agentId}` });
           return;
         }
+        // NOTHING TO RUN. Refused before a row is written or a hold is taken, in words.
+        const blocked = await evalBlockedFor(ctx, cmd.agentId);
+        if (blocked) {
+          reply({ type: "error", message: blocked });
+          return;
+        }
         // MONEY ASKS FIRST, here as on the interactive path — and here it matters more, because
         // an eval is the one thing in this product that multiplies cost by examples x providers
         // and then adds a judge call per cell. The estimate is the same one the UI showed before
@@ -11476,6 +11499,12 @@ async function handleEvalCommand(ctx: TenantContext, cmd: ForwardedCommand): Pro
         return;
       }
       case "estimateEval": {
+        // An estimate for an agent with no code is an estimate for runs that cannot happen.
+        const blocked = await evalBlockedFor(ctx, cmd.agentId);
+        if (blocked) {
+          reply({ type: "error", message: blocked });
+          return;
+        }
         reply({
           type: "estimate",
           estimate: await estimateEval(ctx, store, evalStore, {

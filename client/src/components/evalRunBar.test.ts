@@ -119,5 +119,25 @@ console.log("\nthe estimate says each model's share, and a refusal before Run");
   check(words.includes("reached its $5.00 ceiling"), "and a refusal is said before Run is pressed", words);
 }
 
+console.log("\nan agent that has never been built cannot be estimated or run");
+{
+  const { createElement } = await import("react");
+  const { markup, seed } = await import("../lib/testRender.ts");
+  const { useBuildStore } = await import("../store/buildStore.ts");
+  const { useEvalStore } = await import("../store/evalStore.ts");
+  const { EvalRunBar } = await import("./EvalRunBar.tsx");
+  seed(useBuildStore, { activeAgentId: "bruno", agents: [{ agent_id: "bruno", name: "Bruno", draft: true }] } as never);
+  seed(useEvalStore, {
+    selectedDatasetByAgent: { bruno: "d9" },
+    examplesByDataset: { d9: [{ id: "x1", dataset_id: "d9", input: "a", expected: null, notes: null, position: 0, created_at: "" }] },
+    targetsByAgent: { bruno: [{ provider: "anthropic", model: "claude-haiku-4-5" }] },
+    progressByEval: {},
+  } as never);
+  const html = markup(createElement(EvalRunBar));
+  check(html.includes("Build Bruno before running an eval on it"), "the bar says to build it first", html.replace(/<[^>]+>/g, " ").slice(0, 300));
+  const button = (html.match(/<button[^>]*>/g) ?? []).find((b) => b.includes("Estimate the cost")) ?? "";
+  check(/\sdisabled=""/.test(button), "and Estimate is off", button);
+}
+
 console.log(failures === 0 ? "\nALL CORRECT" : `\n${failures} FAILURES`);
 (globalThis as { process?: { exit(code: number): void } }).process?.exit(failures === 0 ? 0 : 1);

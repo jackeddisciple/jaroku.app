@@ -222,6 +222,12 @@ console.log("\nand the server is wired the way this suite assumes");
   check("the eval handler answers through `reply`, which names the asker",
     handler.includes("const reply = (") && !/relay\.broadcastEval\(ctx, \{ type: "(error|estimate|promoted)"/.test(handler));
   check("and a started eval names the tab that started it", handler.includes("...(origin ? { origin } : {}),"));
+
+  // AN AGENT WITH NO CODE IS REFUSED, before an estimate and before a start — every job would fail.
+  const start = handler.slice(handler.indexOf('case "startEval": {'), handler.indexOf('case "cancelEval": {'));
+  const estimate = handler.slice(handler.indexOf('case "estimateEval": {'), handler.indexOf('case "loadEvalResults": {'));
+  check("a start asks whether the agent was ever built", start.includes("await evalBlockedFor(ctx, cmd.agentId)"));
+  check("and so does an estimate", estimate.includes("await evalBlockedFor(ctx, cmd.agentId)"));
 }
 
 console.log(fail === 0 ? "\nALL CORRECT" : `\n${fail} FAILURES`);
