@@ -94,12 +94,18 @@ export function EvalRunBar() {
   const providerStatuses = useProviderStore((s) => s.providers);
 
   // THE COMPOSER'S MODEL, when it can run: "how does this agent do on what I already run it on" is
-  // the common question, so it starts as one chosen leg rather than an empty row of chips.
-  const [targets, setTargets] = useState<EvalTarget[]>(() => {
+  // the common question, so it starts as one chosen leg rather than an empty row of chips — and after
+  // that it is whatever was chosen for this agent, kept in the store so a remount does not reset it.
+  const [initial] = useState<EvalTarget[]>(() => {
     const { provider, model } = useUiStore.getState();
     const runnable = isRunnable(useProviderStore.getState().providers, provider);
     return provider && model && runnable ? [{ provider, model }] : [];
   });
+  const stored = useEvalStore((s) => (activeAgentId ? s.targetsByAgent[activeAgentId] : undefined));
+  const targets = stored ?? initial;
+  const setTargets = (update: (cur: EvalTarget[]) => EvalTarget[]): void => {
+    if (activeAgentId) useEvalStore.getState().setTargets(activeAgentId, update(targets));
+  };
   const [confirming, setConfirming] = useState(false);
   const [ceiling, setCeiling] = useState<string>("");
   /** Whether somebody typed the ceiling. Until they do, each estimate suggests its own. */
@@ -147,32 +153,56 @@ export function EvalRunBar() {
 
   return (
     <div className="px-4 py-3 shrink-0 space-y-2">
-      {/* provider selection */}
-      <div className="flex flex-wrap items-center gap-1.5 text-caption">
-        {catalogue.flatMap((p) =>
-          p.models.map((m) => {
-            const t: EvalTarget = { provider: p.id, model: m };
-            const on = targets.some((x) => key(x) === key(t));
-            // DISABLED WITH A STATED REASON, the composer's rule: a model that vanishes because a
-            // key is missing reads as one the product does not support. A leg already chosen stays
-            // pressable, so it can always be taken back off.
-            const usable = isRunnable(providerStatuses, p.id);
-            return (
-              <Chip
-                key={key(t)}
-                onClick={() => toggle(t)}
-                selected={on}
-                disabled={running || (!usable && !on)}
-                // The model's name, in Sans: §04 lists model labels as prose, and §05 is explicit
-                // that looking technical is not the test.
-                title={usable ? `${p.label} · billed per token` : `No ${p.label} API key in this workspace`}
-                className="whitespace-nowrap"
-              >
-                {modelName(providerModels, m)}
-              </Chip>
-            );
-          }),
-        )}
+      {/* provider selection — GROUPED BY PROVIDER, and only the ones that can run spelled out. Three
+          rows of greyed chips for providers with no key said nothing a single link could not, and
+          pushed everything else down; a leg already chosen stays, so it can always be taken off. */}
+      <div className="space-y-1 text-caption">
+        {catalogue.map((p) => {
+          const usable = isRunnable(providerStatuses, p.id);
+          const shown = p.models.filter((m) => usable || targets.some((x) => key(x) === key({ provider: p.id, model: m })));
+          if (!shown.length) return null;
+          return (
+            <div key={p.id} className="flex flex-wrap items-center gap-1.5">
+              <span className="w-full text-tiny text-faint">{p.label}</span>
+              {shown.map((m) => {
+                const t: EvalTarget = { provider: p.id, model: m };
+                const on = targets.some((x) => key(x) === key(t));
+                return (
+                  <Chip
+                    key={key(t)}
+                    onClick={() => toggle(t)}
+                    selected={on}
+                    disabled={running || (!usable && !on)}
+                    // The model's name, in Sans: §04 lists model labels as prose, and §05 is explicit
+                    // that looking technical is not the test. LOCKED, AND SAID SO, while an eval runs:
+                    // the tooltip still read "billed per token" over a chip that would not press.
+                    title={
+                      running ? "Locked while this eval runs — choose the next eval's models when it finishes"
+                        : usable ? `${p.label} · billed per token` : `No ${p.label} API key in this workspace`
+                    }
+                    className="whitespace-nowrap"
+                  >
+                    {modelName(providerModels, m)}
+                  </Chip>
+                );
+              })}
+            </div>
+          );
+        })}
+        {(() => {
+          const missing = catalogue.filter((p) => !isRunnable(providerStatuses, p.id));
+          const count = missing.reduce((n, p) => n + p.models.length, 0);
+          if (!count) return null;
+          return (
+            <button
+              onClick={() => useUiStore.getState().openSecretsForProvider(missing[0]!.id)}
+              title={`Add a key for ${missing.map((p) => p.label).join(", ")} in Secrets to compare on these models`}
+              className="text-tiny text-faint transition-colors hover:text-ink"
+            >
+              +{count} model{count === 1 ? "" : "s"} need an API key →
+            </button>
+          );
+        })()}
       </div>
 
       {/* the estimate — shown only when money is involved, and always as a range */}

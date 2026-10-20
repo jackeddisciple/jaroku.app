@@ -17,7 +17,7 @@
 // about, and it lands under that name; a panel reads the agent it is showing.
 
 import { create } from "zustand";
-import type { Dataset, DatasetExample, EvalEstimate, EvalResults, EvalRunSummary, Rubric } from "../types.ts";
+import type { Dataset, DatasetExample, EvalEstimate, EvalResults, EvalRunSummary, EvalTarget, Rubric } from "../types.ts";
 
 /** Live counters while an eval drains. Counts only — no step traffic on this channel. */
 export interface EvalProgress {
@@ -97,6 +97,12 @@ interface EvalState {
   /** A delete waiting out its undo window: hidden from the lists, not yet sent. */
   pendingDelete: PendingDelete | null;
   setPendingDelete: (d: PendingDelete | null) => void;
+  /**
+   * agent -> the models chosen to compare it on. The run bar's own state was lost every time it
+   * remounted — switching Dataset and Results — and the choice went back to the composer's model.
+   */
+  targetsByAgent: Record<string, EvalTarget[]>;
+  setTargets: (agentId: string, targets: EvalTarget[]) => void;
 
   // --- eval runs ---
   /** evalListKey(agent, dataset) -> that scope's history, newest first. */
@@ -185,6 +191,9 @@ export const useEvalStore = create<EvalState>((set) => ({
 
   pendingDelete: null,
   setPendingDelete: (pendingDelete) => set({ pendingDelete }),
+
+  targetsByAgent: {},
+  setTargets: (agentId, targets) => set((s) => ({ targetsByAgent: { ...s.targetsByAgent, [agentId]: targets } })),
 
   evalLists: {},
   selectedEvalByAgent: {},

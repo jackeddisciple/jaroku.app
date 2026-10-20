@@ -59,5 +59,47 @@ console.log("\na ceiling too low for the estimate is said before Run");
   check(ceilingWarning(2, estimate()) === null, "and $2.00 is fine");
 }
 
+console.log("\nthe model chips, rendered");
+{
+  const { createElement } = await import("react");
+  const { markup, seed } = await import("../lib/testRender.ts");
+  const { useBuildStore } = await import("../store/buildStore.ts");
+  const { useEvalStore } = await import("../store/evalStore.ts");
+  const { useProviderStore } = await import("../store/providerStore.ts");
+  const { EvalRunBar } = await import("./EvalRunBar.tsx");
+  const text = (html: string): string => html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+  seed(useBuildStore, { activeAgentId: "liven" } as never);
+  seed(useProviderStore, {
+    models: [
+      { id: "claude-haiku-4-5", name: "Haiku 4.5", provider: "anthropic", label: "Anthropic" },
+      { id: "claude-sonnet-5", name: "Sonnet 5", provider: "anthropic", label: "Anthropic" },
+      { id: "gpt-5.6-luna", name: "GPT-5.6 Luna", provider: "openai", label: "OpenAI" },
+      { id: "muse-spark-1.3", name: "Muse Spark 1.3", provider: "meta", label: "Meta" },
+    ],
+    providers: [
+      { id: "anthropic", env_key: "ANTHROPIC_API_KEY", configured: true, runnable: true },
+      { id: "openai", env_key: "OPENAI_API_KEY", configured: false, runnable: false },
+      { id: "meta", env_key: "META_API_KEY", configured: false, runnable: false },
+    ],
+  } as never);
+  seed(useEvalStore, {
+    selectedDatasetByAgent: { liven: "d1" },
+    examplesByDataset: { d1: [{ id: "x1", dataset_id: "d1", input: "a", expected: null, notes: null, position: 0, created_at: "" }] },
+    targetsByAgent: { liven: [{ provider: "anthropic", model: "claude-sonnet-5" }] },
+    progressByEval: {},
+  } as never);
+  let words = text(markup(createElement(EvalRunBar)));
+  check(words.includes("Anthropic") && words.includes("Haiku 4.5") && words.includes("Sonnet 5"), "a provider's models sit under its name", words);
+  check(!words.includes("GPT-5.6 Luna") && !words.includes("Muse Spark"), "models with no key are not drawn as greyed chips", words);
+  check(words.includes("+2 models need an API key"), "they are one link to Secrets instead", words);
+  check(words.includes("1 × 1 = 1 run"), "the models chosen for this agent are the ones counted, from the store", words);
+
+  seed(useEvalStore, {
+    progressByEval: { e1: { evalId: "e1", total: 1, done: 0, running: 1, queued: 0, failed: 0, agentId: "liven", startedHere: true } },
+  } as never);
+  const html = markup(createElement(EvalRunBar));
+  check(/title="Locked while this eval runs/.test(html), "a chip locked by a running eval says so", html.match(/title="[^"]*"/g)?.slice(0, 2).join(" ") ?? "");
+}
+
 console.log(failures === 0 ? "\nALL CORRECT" : `\n${failures} FAILURES`);
 (globalThis as { process?: { exit(code: number): void } }).process?.exit(failures === 0 ? 0 : 1);
