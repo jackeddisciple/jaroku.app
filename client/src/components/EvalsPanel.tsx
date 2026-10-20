@@ -84,9 +84,10 @@ export function EvalsPanel() {
     if (connected && activeAgentId) sendListEvals(activeAgentId, scopeDataset, list?.window);
   }, [connected, activeAgentId, scopeDataset]);
 
-  // An eval starting is the moment the results view becomes the thing to look at.
+  // An eval starting is the moment the results view becomes the thing to look at — for whoever
+  // started it. Another member's eval on this agent shows as running here, and does not take the panel.
   useEffect(() => {
-    if (progress && progress.status === undefined) setMode("results");
+    if (progress && progress.status === undefined && progress.startedHere) setMode("results");
   }, [progress?.evalId]);
 
   useEffect(() => {

@@ -168,7 +168,7 @@ export interface EvalRunnerDeps {
   runtimeDir: string;
   /** Register/unregister a run id as belonging to an eval, so its events stay off "trace". */
   markEvalRun: (runId: string, isEval: boolean) => void;
-  onStarted: (e: { evalId: string; datasetId: string; agentId: string; total: number; targets: EvalTarget[] }) => void;
+  onStarted: (e: { evalId: string; datasetId: string; agentId: string; total: number; targets: EvalTarget[]; origin?: string }) => void;
   onProgress: (p: EvalProgress) => void;
   onFinished: (e: { evalId: string; status: string; error?: string }) => void;
   /** Called when a job reaches a terminal state, so later stages (aggregation, judging)
@@ -312,6 +312,8 @@ export interface StartEvalRequest {
   rubricId: string;
   targets: EvalTarget[];
   budgetUsd: number | null;
+  /** The tab that asked — echoed on `evalStarted` so only it switches to the results. */
+  origin?: string;
 }
 
 interface Live {
@@ -524,6 +526,7 @@ export class EvalRunner {
       agentId: req.agentId,
       total: spec.length,
       targets: req.targets,
+      ...(req.origin ? { origin: req.origin } : {}),
     });
     this.guard("initial pump", this.pump(evalRun.id));
     return { evalId: evalRun.id };

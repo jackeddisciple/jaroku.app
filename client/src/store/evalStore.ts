@@ -36,6 +36,8 @@ export interface EvalProgress {
   /** Whose eval, from `evalStarted`. A count names only its eval, so these are kept from the start. */
   agentId?: string;
   datasetId?: string;
+  /** Started from THIS tab. Only then does the panel switch to it — another member's eval does not. */
+  startedHere?: boolean;
 }
 
 /** One eval history list, as the server answered it for one scope. */
@@ -191,7 +193,12 @@ export const useEvalStore = create<EvalState>((set) => ({
       return {
         progressByEval: {
           ...s.progressByEval,
-          [p.evalId]: { ...p, agentId: p.agentId ?? before?.agentId, datasetId: p.datasetId ?? before?.datasetId },
+          [p.evalId]: {
+            ...p,
+            agentId: p.agentId ?? before?.agentId,
+            datasetId: p.datasetId ?? before?.datasetId,
+            startedHere: p.startedHere ?? before?.startedHere,
+          },
         },
       };
     }),

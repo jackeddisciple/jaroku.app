@@ -366,13 +366,16 @@ function dispatch(msg: ServerMessage): void {
         if (msg.agentId) e.setDatasets(msg.agentId, msg.datasets);
       } else if (msg.type === "dataset") e.setExamples(msg.datasetId, msg.examples);
       else if (msg.type === "datasetDeleted") e.removeDataset(msg.datasetId);
-      else if (msg.type === "promoted") e.setPromoted(msg.datasetName, msg.duplicate);
+      else if (msg.type === "promoted") { if (isOurs(msg.origin)) e.setPromoted(msg.datasetName, msg.duplicate); }
       else if (msg.type === "evalStarted") {
+        // Its counters belong to its agent whoever started it; the panel follows it only in the tab
+        // that pressed Run.
+        const mine = msg.origin === EVAL_ORIGIN;
         e.noteStarted({
           evalId: msg.evalId, total: msg.total, done: 0, running: 0, queued: msg.total, failed: 0,
-          agentId: msg.agentId, datasetId: msg.datasetId,
+          agentId: msg.agentId, datasetId: msg.datasetId, startedHere: mine,
         });
-        e.selectEval(msg.agentId, msg.evalId);
+        if (mine) e.selectEval(msg.agentId, msg.evalId);
         // A running eval belongs in the history strip from its first moment, not after it finishes.
         refreshEvalLists(msg.agentId);
       } else if (msg.type === "evalProgress") {
@@ -410,8 +413,8 @@ function dispatch(msg: ServerMessage): void {
         }
       }
       else if (msg.type === "rubric") e.setRubric(msg.datasetId, msg.rubric, msg.isDefault);
-      else if (msg.type === "estimate") e.setEstimate(msg.estimate);
-      else if (msg.type === "error") e.setError(msg.message);
+      else if (msg.type === "estimate") { if (isOurs(msg.origin)) e.setEstimate(msg.estimate); }
+      else if (msg.type === "error") { if (isOurs(msg.origin)) e.setError(msg.message); }
       break;
     }
     case "mcp": {
@@ -2273,6 +2276,25 @@ export function sendRemoveMember(userId: string): void {
   send({ cmd: "removeMember", userId });
 }
 
+/**
+ * This tab, as an eval command's `origin`.
+ *
+ * The eval channel reaches every socket in the workspace, which is right for what it files under a
+ * name (a dataset's cases, an eval's progress) and wrong for an ANSWER: one person's estimate filled
+ * another's open confirm box, their errors and their "saved to …" showed up in everybody's tab, and
+ * an eval one person started switched every member's panel to it. A reply now names the tab that
+ * asked, and only that tab applies it.
+ */
+export const EVAL_ORIGIN: string =
+  typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+    ? crypto.randomUUID()
+    : `tab-${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;
+
+/** Whether a reply is this tab's to apply: addressed to it, or to nobody in particular. */
+export function isOurs(origin: string | undefined): boolean {
+  return origin === undefined || origin === EVAL_ORIGIN;
+}
+
 // --- eval: dataset CRUD ----------------------------------------------------
 // Each of these is answered on the "eval" channel with a fresh snapshot of whatever it
 // changed, so callers never have to optimistically patch local state.
@@ -2284,13 +2306,13 @@ export function sendLoadDataset(datasetId: string): void {
   send({ cmd: "loadDataset", datasetId });
 }
 export function sendCreateDataset(agentId: string, name: string): void {
-  send({ cmd: "createDataset", agentId, name });
+  send({ cmd: "createDataset", agentId, name, origin: EVAL_ORIGIN });
 }
 export function sendRenameDataset(datasetId: string, name: string): void {
-  send({ cmd: "renameDataset", datasetId, name });
+  send({ cmd: "renameDataset", datasetId, name, origin: EVAL_ORIGIN });
 }
 export function sendDeleteDataset(datasetId: string, agentId: string): void {
-  send({ cmd: "deleteDataset", datasetId, agentId });
+  send({ cmd: "deleteDataset", datasetId, agentId, origin: EVAL_ORIGIN });
 }
 export function sendAddExample(
   datasetId: string,
@@ -2298,17 +2320,17 @@ export function sendAddExample(
   expected?: string | null,
   notes?: string | null,
 ): void {
-  send({ cmd: "addExample", datasetId, input, expected, notes });
+  send({ cmd: "addExample", datasetId, input, expected, notes, origin: EVAL_ORIGIN });
 }
 export function sendUpdateExample(
   datasetId: string,
   exampleId: string,
   patch: { input?: string; expected?: string | null; notes?: string | null },
 ): void {
-  send({ cmd: "updateExample", datasetId, exampleId, ...patch });
+  send({ cmd: "updateExample", datasetId, exampleId, ...patch, origin: EVAL_ORIGIN });
 }
 export function sendDeleteExample(datasetId: string, exampleId: string): void {
-  send({ cmd: "deleteExample", datasetId, exampleId });
+  send({ cmd: "deleteExample", datasetId, exampleId, origin: EVAL_ORIGIN });
 }
 
 /** One-click "save this test input to the eval dataset" (doc §4.7.6). The target dataset
@@ -2320,7 +2342,7 @@ export function sendPromoteTestInput(
   agentName?: string,
   expected?: string | null,
 ): void {
-  send({ cmd: "promoteTestInput", agentId, agentName, input, expected });
+  send({ cmd: "promoteTestInput", agentId, agentName, input, expected, origin: EVAL_ORIGIN });
 }
 
 // --- eval runs -------------------------------------------------------------
@@ -2332,10 +2354,10 @@ export function sendStartEval(
   targets: EvalTarget[],
   budgetUsd?: number | null,
 ): void {
-  send({ cmd: "startEval", datasetId, agentId, targets, budgetUsd, threadId: activeThread() });
+  send({ cmd: "startEval", datasetId, agentId, targets, budgetUsd, threadId: activeThread(), origin: EVAL_ORIGIN });
 }
 export function sendCancelEval(evalId: string): void {
-  send({ cmd: "cancelEval", evalId });
+  send({ cmd: "cancelEval", evalId, origin: EVAL_ORIGIN });
 }
 export function sendLoadEvalResults(evalId: string): void {
   send({ cmd: "loadEvalResults", evalId });
@@ -2367,13 +2389,13 @@ function refreshEvalLists(agentId: string): void {
 }
 /** Ask what a real-provider eval would roughly cost, BEFORE committing to it. */
 export function sendEstimateEval(datasetId: string, agentId: string, targets: EvalTarget[]): void {
-  send({ cmd: "estimateEval", datasetId, agentId, targets });
+  send({ cmd: "estimateEval", datasetId, agentId, targets, origin: EVAL_ORIGIN });
 }
 export function sendLoadRubric(datasetId: string): void {
-  send({ cmd: "loadRubric", datasetId });
+  send({ cmd: "loadRubric", datasetId, origin: EVAL_ORIGIN });
 }
 export function sendSaveRubric(datasetId: string, criteria: RubricCriterion[], name?: string): void {
-  send({ cmd: "saveRubric", datasetId, criteria, name });
+  send({ cmd: "saveRubric", datasetId, criteria, name, origin: EVAL_ORIGIN });
 }
 
 // --- threads ---------------------------------------------------------------

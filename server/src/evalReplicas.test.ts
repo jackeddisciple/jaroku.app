@@ -211,6 +211,13 @@ console.log("\nand the server is wired the way this suite assumes");
   check("a boot settles evals through the runner, not by cancelling every unfinished one",
     index.includes("evalRunner\n  .reconcile(workspaceContexts") && !index.includes("for (const stale of await evalStore.unfinishedEvalRuns(ctx))"));
   check("a cancel names its workspace, so it can reach another machine or none", index.includes("evalRunner.cancel(cmd.evalId, ctx)"));
+
+  // AND AN ANSWER GOES TO THE TAB THAT ASKED. Every eval message reaches every socket in the
+  // workspace; a reply that does not name its asker lands in everybody's tab.
+  const handler = index.slice(index.indexOf("async function handleEvalCommand("), index.indexOf("// --- pipeline -----"));
+  check("the eval handler answers through `reply`, which names the asker",
+    handler.includes("const reply = (") && !/relay\.broadcastEval\(ctx, \{ type: "(error|estimate|promoted)"/.test(handler));
+  check("and a started eval names the tab that started it", handler.includes("...(origin ? { origin } : {}),"));
 }
 
 console.log(fail === 0 ? "\nALL CORRECT" : `\n${fail} FAILURES`);

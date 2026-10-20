@@ -676,8 +676,9 @@ export type EvalMessage =
   | { channel: "eval"; type: "datasets"; agentId: string | null; datasets: Dataset[] }
   | { channel: "eval"; type: "dataset"; datasetId: string; examples: DatasetExample[] }
   | { channel: "eval"; type: "datasetDeleted"; datasetId: string }
-  | { channel: "eval"; type: "promoted"; datasetId: string; datasetName: string; duplicate: boolean }
-  | { channel: "eval"; type: "evalStarted"; evalId: string; datasetId: string; agentId: string; total: number; targets: EvalTarget[] }
+  // `origin` on a reply: the tab that asked. Only that tab applies it (see socket.ts EVAL_ORIGIN).
+  | { channel: "eval"; type: "promoted"; datasetId: string; datasetName: string; duplicate: boolean; origin?: string }
+  | { channel: "eval"; type: "evalStarted"; evalId: string; datasetId: string; agentId: string; total: number; targets: EvalTarget[]; origin?: string }
   // `spentDeltaUsd` is §4.3.3's live figure for an eval — the only cost this channel carries, and the
   // only route a running eval's spend has to a client, since its runs are kept off `trace`.
   | {
@@ -689,9 +690,9 @@ export type EvalMessage =
   | { channel: "eval"; type: "scoringFinished"; evalId: string; scored: number; unscored: number }
   | { channel: "eval"; type: "evalResults"; evalId: string; results: EvalResults }
   | { channel: "eval"; type: "evals"; agentId?: string | null; datasetId?: string | null; evals: EvalRunSummary[]; complete?: boolean; window?: number }
-  | { channel: "eval"; type: "estimate"; estimate: EvalEstimate }
+  | { channel: "eval"; type: "estimate"; estimate: EvalEstimate; origin?: string }
   | { channel: "eval"; type: "rubric"; datasetId: string; rubric: Rubric; isDefault: boolean }
-  | { channel: "eval"; type: "error"; message: string; datasetId?: string };
+  | { channel: "eval"; type: "error"; message: string; datasetId?: string; origin?: string };
 
 // --- MCP (see server/src/mcpRegistry.ts, server/src/mcpStore.ts) ---
 //
@@ -2548,22 +2549,22 @@ export type ClientCommand =
     }
   // Eval: dataset CRUD. Every mutation is answered with a fresh snapshot on the "eval"
   // channel, so the client never reconciles a partial update against local state.
-  | { cmd: "createDataset"; agentId: string; name: string }
-  | { cmd: "renameDataset"; datasetId: string; name: string }
-  | { cmd: "deleteDataset"; datasetId: string; agentId: string }
+  | { cmd: "createDataset"; agentId: string; name: string; origin?: string }
+  | { cmd: "renameDataset"; datasetId: string; name: string; origin?: string }
+  | { cmd: "deleteDataset"; datasetId: string; agentId: string; origin?: string }
   | { cmd: "listDatasets"; agentId?: string }
   | { cmd: "loadDataset"; datasetId: string }
-  | { cmd: "addExample"; datasetId: string; input: string; expected?: string | null; notes?: string | null }
-  | { cmd: "updateExample"; datasetId: string; exampleId: string; input?: string; expected?: string | null; notes?: string | null }
-  | { cmd: "deleteExample"; datasetId: string; exampleId: string }
-  | { cmd: "promoteTestInput"; agentId: string; agentName?: string; input: string; expected?: string | null }
-  | { cmd: "startEval"; datasetId: string; agentId: string; targets: EvalTarget[]; budgetUsd?: number | null; threadId?: string }
-  | { cmd: "cancelEval"; evalId: string }
+  | { cmd: "addExample"; datasetId: string; input: string; expected?: string | null; notes?: string | null; origin?: string }
+  | { cmd: "updateExample"; datasetId: string; exampleId: string; input?: string; expected?: string | null; notes?: string | null; origin?: string }
+  | { cmd: "deleteExample"; datasetId: string; exampleId: string; origin?: string }
+  | { cmd: "promoteTestInput"; agentId: string; agentName?: string; input: string; expected?: string | null; origin?: string }
+  | { cmd: "startEval"; datasetId: string; agentId: string; targets: EvalTarget[]; budgetUsd?: number | null; threadId?: string; origin?: string }
+  | { cmd: "cancelEval"; evalId: string; origin?: string }
   | { cmd: "loadEvalResults"; evalId: string }
   | { cmd: "listEvals"; agentId?: string; datasetId?: string; limit?: number }
-  | { cmd: "estimateEval"; datasetId: string; agentId: string; targets: EvalTarget[] }
-  | { cmd: "loadRubric"; datasetId: string }
-  | { cmd: "saveRubric"; datasetId: string; name?: string; criteria: RubricCriterion[] }
+  | { cmd: "estimateEval"; datasetId: string; agentId: string; targets: EvalTarget[]; origin?: string }
+  | { cmd: "loadRubric"; datasetId: string; origin?: string }
+  | { cmd: "saveRubric"; datasetId: string; name?: string; criteria: RubricCriterion[]; origin?: string }
   // MCP: server registry. Same discipline as the eval commands — every mutation comes back
   // as a full snapshot on the "mcp" channel.
   | { cmd: "listMcpServers" }

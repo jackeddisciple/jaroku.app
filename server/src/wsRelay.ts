@@ -467,9 +467,10 @@ export type BranchRunCommand = {
 // they mutate the eval tables and never touch the frozen trace stream. They're forwarded
 // to the app rather than answered here so the relay stays a transport and doesn't grow a
 // second store dependency; the app answers by broadcasting on the "eval" channel.
-export type CreateDatasetCommand = { cmd: "createDataset"; agentId: string; name: string };
-export type RenameDatasetCommand = { cmd: "renameDataset"; datasetId: string; name: string };
-export type DeleteDatasetCommand = { cmd: "deleteDataset"; datasetId: string; agentId: string };
+/** `origin` on an eval command: the asking tab, which the reply is addressed to. See handleEvalCommand. */
+export type CreateDatasetCommand = { cmd: "createDataset"; agentId: string; name: string; origin?: string };
+export type RenameDatasetCommand = { cmd: "renameDataset"; datasetId: string; name: string; origin?: string };
+export type DeleteDatasetCommand = { cmd: "deleteDataset"; datasetId: string; agentId: string; origin?: string };
 export type ListDatasetsCommand = { cmd: "listDatasets"; agentId?: string };
 export type LoadDatasetCommand = { cmd: "loadDataset"; datasetId: string };
 export type AddExampleCommand = {
@@ -478,6 +479,7 @@ export type AddExampleCommand = {
   input: string;
   expected?: string | null;
   notes?: string | null;
+  origin?: string;
 };
 export type UpdateExampleCommand = {
   cmd: "updateExample";
@@ -486,8 +488,9 @@ export type UpdateExampleCommand = {
   input?: string;
   expected?: string | null;
   notes?: string | null;
+  origin?: string;
 };
-export type DeleteExampleCommand = { cmd: "deleteExample"; datasetId: string; exampleId: string };
+export type DeleteExampleCommand = { cmd: "deleteExample"; datasetId: string; exampleId: string; origin?: string };
 // One-click "promote this test input into the eval dataset" (doc §4.7.6). It resolves the
 // target dataset server-side (agent's most recent, or a new default) so promotion is a
 // single round trip and lands in the SAME dataset_examples table the builder writes —
@@ -498,6 +501,7 @@ export type PromoteTestInputCommand = {
   agentName?: string;
   input: string;
   expected?: string | null;
+  origin?: string;
 };
 /** Fan a dataset out across providers. `budgetUsd` is a hard ceiling on TRUE spend. */
 export type StartEvalCommand = {
@@ -508,11 +512,12 @@ export type StartEvalCommand = {
   budgetUsd?: number | null;
   /** The session this sweep was started from. See RunCommand.threadId. */
   threadId?: string;
+  origin?: string;
 };
-export type CancelEvalCommand = { cmd: "cancelEval"; evalId: string };
+export type CancelEvalCommand = { cmd: "cancelEval"; evalId: string; origin?: string };
 // The rubric is product surface, not a constant — "correct" for a refund bot is not
 // "correct" for a SQL agent. Saving one for a dataset overrides the shared default.
-export type LoadRubricCommand = { cmd: "loadRubric"; datasetId: string };
+export type LoadRubricCommand = { cmd: "loadRubric"; datasetId: string; origin?: string };
 /** The comparison dashboard's data: per-provider rollups plus per-example rows. */
 export type LoadEvalResultsCommand = { cmd: "loadEvalResults"; evalId: string };
 /** Past evals for a dataset (or all), so a finished comparison stays reachable. */
@@ -524,12 +529,14 @@ export type EstimateEvalCommand = {
   datasetId: string;
   agentId: string;
   targets: { provider: string; model: string }[];
+  origin?: string;
 };
 export type SaveRubricCommand = {
   cmd: "saveRubric";
   datasetId: string;
   name?: string;
   criteria: { id: string; label: string; description: string; weight: number }[];
+  origin?: string;
 };
 
 // MCP server management. Control-plane commands like the eval set: they mutate the MCP
@@ -2182,7 +2189,7 @@ export type EvalEvent =
   | { type: "datasetDeleted"; datasetId: string }
   // Answer to a one-click promotion, so the composer can confirm where the input landed.
   // `duplicate` means the dataset already had that exact input and nothing was added.
-  | { type: "promoted"; datasetId: string; datasetName: string; duplicate: boolean }
+  | { type: "promoted"; datasetId: string; datasetName: string; duplicate: boolean; origin?: string }
   // Eval lifecycle. Progress is counts only — the individual runs' steps stay off this
   // channel (and off "trace") so a fan-out never disturbs the timeline.
   | {
@@ -2192,6 +2199,8 @@ export type EvalEvent =
       agentId: string;
       total: number;
       targets: { provider: string; model: string }[];
+      /** The tab that started it: only that one switches to Results and selects it. */
+      origin?: string;
     }
   // `spentDeltaUsd` is §4.3.3's live figure for an eval, and it is the only cost this channel
   // carries. Eval runs are kept off `trace` on purpose, so this is the one route a running eval's
@@ -2212,8 +2221,8 @@ export type EvalEvent =
   // actually served after the cap, so a "load more" control asks for the next size up rather than
   // guessing what it already has.
   | { type: "evals"; agentId?: string | null; datasetId?: string | null; evals: unknown[]; complete?: boolean; window?: number }
-  | { type: "estimate"; estimate: unknown }
-  | { type: "error"; message: string; datasetId?: string };
+  | { type: "estimate"; estimate: unknown; origin?: string }
+  | { type: "error"; message: string; datasetId?: string; origin?: string };
 
 // MCP rides its own channel too, parallel to trace/gen/edit/debug/reply/eval.
 //

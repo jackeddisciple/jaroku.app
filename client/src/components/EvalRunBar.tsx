@@ -207,7 +207,9 @@ export function EvalRunBar() {
           {running ? (
             <IconButton
               icon={Icon.evals.cancel}
-              label="Cancel this eval"
+              // One eval per workspace, so this agent's running eval may be a teammate's. Say so before
+              // somebody stops it.
+              label={progress?.startedHere ? "Cancel this eval" : "Cancel this eval — it was started elsewhere in this workspace"}
               danger
               onClick={() => progress && sendCancelEval(progress.evalId)}
             />

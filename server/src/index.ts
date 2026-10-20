@@ -64,6 +64,7 @@ import {
   type ThreadSnapshot,
   type ThreadView,
   type EditEvent,
+  type EvalEvent,
   type GenEvent,
   type ReplyEvent,
 } from "./wsRelay.ts";
@@ -11263,6 +11264,14 @@ async function broadcastDataset(ctx: TenantContext, datasetId: string): Promise<
 }
 
 async function handleEvalCommand(ctx: TenantContext, cmd: ForwardedCommand): Promise<void> {
+  // WHO ASKED, so the answer reaches only them. Every eval message goes to every socket in the
+  // workspace — right for state, which each client files under what it names, and wrong for a reply:
+  // one person's estimate filled whichever confirm box another had open, their error appeared in
+  // everybody's dataset view, and their "saved to …" flashed in every composer. A reply carries the
+  // asking tab's `origin` and a client applies only its own.
+  const origin = typeof (cmd as { origin?: unknown }).origin === "string" ? (cmd as { origin: string }).origin : undefined;
+  const reply = (event: Extract<EvalEvent, { type: "error" | "estimate" | "promoted" }>): void =>
+    relay.broadcastEval(ctx, origin ? { ...event, origin } : event);
   try {
     switch (cmd.cmd) {
       case "listDatasets":
@@ -11294,7 +11303,7 @@ async function handleEvalCommand(ctx: TenantContext, cmd: ForwardedCommand): Pro
         // let it become a job that burns a real API call on whitespace.
         const input = (cmd.input ?? "").trim();
         if (!input) {
-          relay.broadcastEval(ctx, { type: "error", datasetId: cmd.datasetId, message: "an example needs an input" });
+          reply({ type: "error", datasetId: cmd.datasetId, message: "an example needs an input" });
           return;
         }
         await evalStore.addExample(ctx, cmd.datasetId, input, cmd.expected ?? null, cmd.notes ?? null);
@@ -11327,14 +11336,14 @@ async function handleEvalCommand(ctx: TenantContext, cmd: ForwardedCommand): Pro
         // dispatches commands concurrently — so `EvalRunner.start` claims synchronously and refuses
         // with the same message; this only saves the round trip when the answer is already obvious.
         if (await evalRunner.busyIn(ctx.workspaceId)) {
-          relay.broadcastEval(ctx, { type: "error", message: "an eval is already running" });
+          reply({ type: "error", message: "an eval is already running" });
           return;
         }
         // Same reason as runAgent: this id ends up as the working directory of every job's
         // subprocess. Refusing it here also keeps a whole eval run and its jobs from being
         // written for an agent that cannot exist.
         if (!isSafeAgentId(cmd.agentId ?? "")) {
-          relay.broadcastEval(ctx, { type: "error", message: `invalid agent id: ${cmd.agentId}` });
+          reply({ type: "error", message: `invalid agent id: ${cmd.agentId}` });
           return;
         }
         // MONEY ASKS FIRST, here as on the interactive path — and here it matters more, because
@@ -11356,7 +11365,7 @@ async function handleEvalCommand(ctx: TenantContext, cmd: ForwardedCommand): Pro
           purpose: "eval",
         });
         if (!verdict.ok) {
-          relay.broadcastEval(ctx, { type: "error", message: verdict.message ?? "this eval was refused" });
+          reply({ type: "error", message: verdict.message ?? "this eval was refused" });
           return;
         }
 
@@ -11369,6 +11378,7 @@ async function handleEvalCommand(ctx: TenantContext, cmd: ForwardedCommand): Pro
           rubricId: await rubricIdFor(ctx, cmd.datasetId),
           targets: cmd.targets ?? [],
           budgetUsd: cmd.budgetUsd ?? null,
+          ...(origin ? { origin } : {}),
         });
         // The workspace was bound inside `start`, before the first job — see bindWorkspace.
         // Binding it here, on the way back, left a window in which the eval was already
@@ -11377,7 +11387,7 @@ async function handleEvalCommand(ctx: TenantContext, cmd: ForwardedCommand): Pro
           // No eval, so no `evalFinished` is coming to settle the hold. Give it back now rather
           // than leaving it to the sweeper — the same shape as a run refused a pool slot.
           if (verdict.holdId) await balances.release(ctx, verdict.holdId);
-          relay.broadcastEval(ctx, { type: "error", message: started.error });
+          reply({ type: "error", message: started.error });
           return;
         }
         // Whose hold to settle when this eval finishes. Keyed by the eval id, which only exists
@@ -11404,7 +11414,7 @@ async function handleEvalCommand(ctx: TenantContext, cmd: ForwardedCommand): Pro
         // would be written off against their rows. `getEvalRun` is scoped, so an eval that is
         // not this workspace's simply is not there.
         if (!(await evalStore.getEvalRun(ctx, cmd.evalId))) {
-          relay.broadcastEval(ctx, { type: "error", message: "unknown eval" });
+          reply({ type: "error", message: "unknown eval" });
           return;
         }
         // With the context, so an eval running on the other gateway — or on none — is still ended.
@@ -11412,7 +11422,7 @@ async function handleEvalCommand(ctx: TenantContext, cmd: ForwardedCommand): Pro
         return;
       }
       case "estimateEval": {
-        relay.broadcastEval(ctx, {
+        reply({
           type: "estimate",
           estimate: await estimateEval(ctx, store, evalStore, {
             datasetId: cmd.datasetId,
@@ -11429,7 +11439,7 @@ async function handleEvalCommand(ctx: TenantContext, cmd: ForwardedCommand): Pro
       case "loadEvalResults": {
         const results = await aggregateEval(ctx, evalStore, cmd.evalId);
         if (!results) {
-          relay.broadcastEval(ctx, { type: "error", message: "unknown eval" });
+          reply({ type: "error", message: "unknown eval" });
           return;
         }
         relay.broadcastEval(ctx, { type: "evalResults", evalId: cmd.evalId, results });
@@ -11482,11 +11492,11 @@ async function handleEvalCommand(ctx: TenantContext, cmd: ForwardedCommand): Pro
             typeof c?.id === "string" && c.id.trim() !== "" && typeof c.description === "string",
         );
         if (!criteria.length) {
-          relay.broadcastEval(ctx, { type: "error", message: "a rubric needs at least one criterion" });
+          reply({ type: "error", message: "a rubric needs at least one criterion" });
           return;
         }
         if (!criteria.some((c) => c.weight > 0)) {
-          relay.broadcastEval(ctx, { type: "error", message: "a rubric needs at least one criterion with weight above zero" });
+          reply({ type: "error", message: "a rubric needs at least one criterion with weight above zero" });
           return;
         }
         const existing = await evalStore.rubricForDataset(ctx, cmd.datasetId);
@@ -11503,7 +11513,7 @@ async function handleEvalCommand(ctx: TenantContext, cmd: ForwardedCommand): Pro
       case "promoteTestInput": {
         const input = (cmd.input ?? "").trim();
         if (!input) {
-          relay.broadcastEval(ctx, { type: "error", message: "nothing to promote — the test input is empty" });
+          reply({ type: "error", message: "nothing to promote — the test input is empty" });
           return;
         }
         const ds = await evalStore.defaultDatasetFor(ctx, cmd.agentId, cmd.agentName);
@@ -11514,7 +11524,7 @@ async function handleEvalCommand(ctx: TenantContext, cmd: ForwardedCommand): Pro
         console.log(
           `[eval] promote → "${ds.name}"${duplicate ? " (already present)" : ""}: ${input.slice(0, 60)}`,
         );
-        relay.broadcastEval(ctx, { type: "promoted", datasetId: ds.id, datasetName: ds.name, duplicate });
+        reply({ type: "promoted", datasetId: ds.id, datasetName: ds.name, duplicate });
         await broadcastDatasets(ctx, cmd.agentId);
         await broadcastDataset(ctx, ds.id);
         return;
@@ -11523,7 +11533,7 @@ async function handleEvalCommand(ctx: TenantContext, cmd: ForwardedCommand): Pro
   } catch (err) {
     const message = (err as Error).message;
     console.error(`[eval] ${cmd.cmd} failed:`, message);
-    relay.broadcastEval(ctx, { type: "error", message: `${cmd.cmd} failed: ${message}` });
+    reply({ type: "error", message: `${cmd.cmd} failed: ${message}` });
   }
 }
 
