@@ -97,5 +97,26 @@ console.log("\na cell that did not succeed says which of five things happened");
   check(cellLook("succeeded") === null, "a succeeded cell shows its score instead");
 }
 
+console.log("\na case keeps its line breaks, and one response has nothing to step to");
+{
+  const { ExampleDrillDown, CellDetail } = await import("./EvalDrillDown.tsx");
+  const cell = {
+    jobId: "j1", provider: "anthropic", model: "claude-haiku-4-5", status: "succeeded", runId: "r1", costUsd: 0.001,
+    costComplete: true, latencyMs: 900, attempt: 0, error: null, output: "decline",
+    score: null, scoreError: null, perCriterion: null, rationale: null,
+  };
+  const html = markup(createElement(ExampleDrillDown, {
+    results: results({ rows: [{ exampleId: "x1", input: "Role: QA\n---\nCandidate: tests things", expected: "decline", cells: [cell] }] }),
+  }));
+  check(/whitespace-pre-wrap[^>]*>Role: QA\n---\nCandidate/.test(html), "the case's newlines reach the page and are kept", html.slice(0, 300));
+  const one = markup(createElement(CellDetail, { cell, expected: null, criteria: [], onStep: () => {}, responses: 1 }));
+  const tag = (label: string): string => (one.match(/<button[^>]*>/g) ?? []).find((b) => b.includes(label)) ?? "";
+  check(/\sdisabled=""/.test(tag("Previous response")) && /\sdisabled=""/.test(tag("Next response")),
+    "Prev and Next are disabled with one response", `${tag("Previous response")} ${tag("Next response")}`);
+  const two = markup(createElement(CellDetail, { cell, expected: null, criteria: [], onStep: () => {}, responses: 2 }));
+  const prev = (two.match(/<button[^>]*>/g) ?? []).find((b) => b.includes("Previous response")) ?? "";
+  check(prev !== "" && !/\sdisabled=""/.test(prev), "and enabled with two", prev);
+}
+
 console.log(failures === 0 ? "\nALL CORRECT" : `\n${failures} FAILURES`);
 (globalThis as { process?: { exit(code: number): void } }).process?.exit(failures === 0 ? 0 : 1);

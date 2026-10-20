@@ -109,6 +109,7 @@ export function CellDetail({
   expected,
   criteria,
   onStep,
+  responses = 2,
 }: {
   cell: ExampleCell;
   /** What the case expected, to read beside what was answered. */
@@ -123,6 +124,8 @@ export function CellDetail({
    * question — cost a round trip through the control that opened it.
    */
   onStep: (delta: -1 | 1) => void;
+  /** How many responses this case has. With one there is nothing to step to. */
+  responses?: number;
 }) {
   const setRightTab = useUiStore((s) => s.setRightTab);
   const selectRun = useTraceStore((s) => s.selectRun);
@@ -144,12 +147,15 @@ export function CellDetail({
             icon={Icon.evals.prevResponse}
             label="Previous response"
             size={ICON.xs}
+            // One response is a ring of one: stepping "wrapped" onto the same answer.
+            disabledReason={responses < 2 ? "This case has only one response" : null}
             onClick={() => onStep(-1)}
           />
           <IconButton
             icon={Icon.evals.nextResponse}
             label="Next response"
             size={ICON.xs}
+            disabledReason={responses < 2 ? "This case has only one response" : null}
             onClick={() => onStep(1)}
           />
         </span>
@@ -253,10 +259,14 @@ export function ExampleDrillDown({ results }: { results: EvalResults }) {
                   {i + 1}
                 </span>
                 <div className="min-w-0 flex-1">
-                  <div className="text-caption text-ink break-words">{row.input}</div>
+                  {/* LINE BREAKS KEPT, LONG CASES FOLDED. The input was one run-on paragraph with every
+                      newline collapsed, so a Liven case's `---` between the job and the résumé ran
+                      into the text — and a whole case filled the panel. */}
+                  <ClampedText text={row.input} lines={3} className="text-caption text-ink" />
                   {row.expected && (
-                    <div className="text-tiny text-faint break-words mt-0.5">
-                      expected: {row.expected}
+                    <div className="mt-0.5 flex gap-1 text-tiny text-faint">
+                      <span className="shrink-0">expected:</span>
+                      <ClampedText text={row.expected} lines={2} className="min-w-0" />
                     </div>
                   )}
                   <div className="flex flex-wrap gap-1 mt-1">
@@ -274,6 +284,7 @@ export function ExampleDrillDown({ results }: { results: EvalResults }) {
                       cell={open}
                       expected={row.expected}
                       criteria={criteria}
+                      responses={row.cells.length}
                       onStep={(delta) => {
                         // WRAPS, because a row is a ring of two to four answers to one question
                         // and stopping at the end would make the last one a dead end.
