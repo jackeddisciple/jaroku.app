@@ -202,6 +202,21 @@ export function EvalRefusal() {
   );
 }
 
+/**
+ * Which dataset a past eval ran on, as the strip and the compare picker say it: the name it ran
+ * under, or — for an eval from before that was kept — the dataset's name now, or that it is gone.
+ * Without it, two evals from one afternoon on two datasets both read only "4d ago".
+ */
+export function evalDatasetLabel(
+  e: { dataset_id: string; dataset_name?: string | null; dataset_gone?: boolean },
+  datasets: { id: string; name: string }[],
+): string | null {
+  if (e.dataset_name) return e.dataset_gone ? `${e.dataset_name} · deleted` : e.dataset_name;
+  const now = datasets.find((d) => d.id === e.dataset_id)?.name;
+  if (now) return now;
+  return e.dataset_gone ? "a deleted dataset" : null;
+}
+
 export function JudgeLine() {
   const judge = useEvalStore((s) => s.judge);
   const canSwitch = useCanRun("setJudgeOwnKey");
@@ -252,7 +267,8 @@ export function EvalsPanel() {
   // EVERYTHING BELOW IS THIS AGENT'S. These were single values for the whole tab, so another agent's
   // running eval — its table, its cases, its `running 2/12` — was what this agent's Results showed.
   const selectedDatasetId = useEvalStore((s) => (activeAgentId ? (s.selectedDatasetByAgent[activeAgentId] ?? null) : null));
-  const hasDatasets = useEvalStore((s) => datasetsOf(s.datasetsByAgent, activeAgentId).length > 0);
+  const agentDatasets = useEvalStore((s) => datasetsOf(s.datasetsByAgent, activeAgentId));
+  const hasDatasets = agentDatasets.length > 0;
   const selectedEvalId = useEvalStore((s) => (activeAgentId ? (s.selectedEvalByAgent[activeAgentId] ?? null) : null));
   const selectEval = useEvalStore((s) => s.selectEval);
   const resultsByEval = useEvalStore((s) => s.resultsByEval);
@@ -392,8 +408,8 @@ export function EvalsPanel() {
                 >
                   {relTime(e.started_at)}
                   {/* ACROSS DATASETS, each names its own — and says when that dataset is gone. */}
-                  {scopeDataset === null && e.dataset_name && (
-                    <span className="text-muted">{e.dataset_name}{e.dataset_gone ? " · deleted" : ""}</span>
+                  {scopeDataset === null && evalDatasetLabel(e, agentDatasets) && (
+                    <span className="text-muted">{evalDatasetLabel(e, agentDatasets)}</span>
                   )}
                   {/* THE WORD IS NO LONGER COLOURED. It was `text-err` for one status and
                       `text-muted` for the rest — a status word rendered as coloured text, which is
@@ -440,6 +456,9 @@ export function EvalsPanel() {
                   title={`${EVAL_WORD[e.status]} · ${e.targets.map((t) => t.model).join(", ")}`}
                 >
                   {relTime(e.started_at)}
+                  {/* WHICH ONE: two from the same afternoon both read "4d ago". */}
+                  {evalDatasetLabel(e, agentDatasets) && <span className="text-muted">{evalDatasetLabel(e, agentDatasets)}</span>}
+                  {e.status !== "completed" && <span className="text-muted">{EVAL_WORD[e.status]}</span>}
                 </Chip>
               ))}
               <button onClick={() => setPicking(false)} className="text-faint hover:text-ink">Cancel</button>

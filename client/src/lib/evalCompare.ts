@@ -49,7 +49,7 @@ export function compareEvals(before: EvalResults, after: EvalResults): EvalCompa
     caveats.push(`the agent changed between them — v${before.agentVersion} → v${after.agentVersion}`);
   }
   if (before.datasetId !== after.datasetId) {
-    caveats.push(`they ran on different datasets — ${before.datasetName ?? "one"} and ${after.datasetName ?? "another"} — so only the cases both had are compared`);
+    caveats.push(`they ran on different datasets — ${before.datasetName ?? "a deleted dataset"} and ${after.datasetName ?? "a deleted dataset"} — so only the cases both had are compared`);
   }
   if ((before.checkMode ?? null) !== (after.checkMode ?? null)) caveats.push("their answers were checked against expected in different ways");
 

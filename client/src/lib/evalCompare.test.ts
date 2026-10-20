@@ -77,6 +77,26 @@ console.log("\nthe comparison, rendered");
   check(words.includes("What changed") && words.includes("matched → did not match") && words.includes("case 1"), "it lists the case that changed", words);
   const same = markup(createElement(EvalCompare, { before, after: before, onClose: () => {} })).replace(/<[^>]+>/g, " ");
   check(same.includes("No case changed its outcome"), "and says so when nothing did");
+  // WHICH EVAL, not only when — two from the same afternoon both read "4d ago".
+  check(/the eval .* on Screening cases/.test(words), "it names the dataset the earlier eval ran on", words.slice(0, 160));
+  const gone = markup(createElement(EvalCompare, { before: { ...before, datasetId: "d-gone", datasetName: null }, after, onClose: () => {} }))
+    .replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
+  check(gone.includes("on a deleted dataset") && gone.includes("a deleted dataset and Screening cases"),
+    "and calls a deleted one that, in the header and the caveat", gone.slice(0, 260));
+
+  // NARROW: the six columns were clipped — Per run cut in half, p50 off the edge.
+  const { CompareCards } = await import("../components/EvalCompare.tsx");
+  const cards = markup(createElement(CompareCards, { models: compareEvals(before, after).models })).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
+  check(["Quality", "Ran OK", "Matches", "Per run", "p50"].every((l) => cards.includes(l)) && cards.includes("claude-haiku-4-5"),
+    "as cards, every figure of every model is there", cards.slice(0, 200));
+
+  // THE STRIP AND THE PICKER name each past eval's dataset, so two from one afternoon differ.
+  const { evalDatasetLabel } = await import("../components/EvalsPanel.tsx");
+  const ds = [{ id: "d1", name: "Screening cases" }];
+  check(evalDatasetLabel({ dataset_id: "d1", dataset_name: "Screening cases" }, ds) === "Screening cases", "a named eval reads its dataset");
+  check(evalDatasetLabel({ dataset_id: "d1", dataset_name: null }, ds) === "Screening cases", "an eval from before names were kept reads the dataset's name now");
+  check(evalDatasetLabel({ dataset_id: "gone", dataset_name: null, dataset_gone: true }, ds) === "a deleted dataset", "and one whose dataset is gone says so");
+  check(evalDatasetLabel({ dataset_id: "gone", dataset_name: "Test set 2", dataset_gone: true }, ds) === "Test set 2 · deleted", "naming it when the name was kept");
 }
 
 console.log(failures === 0 ? "\nALL CORRECT" : `\n${failures} FAILURES`);
