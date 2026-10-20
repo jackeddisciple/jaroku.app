@@ -517,7 +517,7 @@ export type LoadRubricCommand = { cmd: "loadRubric"; datasetId: string };
 export type LoadEvalResultsCommand = { cmd: "loadEvalResults"; evalId: string };
 /** Past evals for a dataset (or all), so a finished comparison stays reachable. */
 /** `limit` is a growing WINDOW, capped at HISTORY_WINDOW_MAX — see LoadHistoryCommand. */
-export type ListEvalsCommand = { cmd: "listEvals"; datasetId?: string; limit?: number };
+export type ListEvalsCommand = { cmd: "listEvals"; agentId?: string; datasetId?: string; limit?: number };
 /** What a real-provider eval will roughly cost, BEFORE committing to it. */
 export type EstimateEvalCommand = {
   cmd: "estimateEval";
@@ -2211,7 +2211,7 @@ export type EvalEvent =
   // `complete` is false when there are older evals than the window returned; `window` is what was
   // actually served after the cap, so a "load more" control asks for the next size up rather than
   // guessing what it already has.
-  | { type: "evals"; evals: unknown[]; complete?: boolean; window?: number }
+  | { type: "evals"; agentId?: string | null; datasetId?: string | null; evals: unknown[]; complete?: boolean; window?: number }
   | { type: "estimate"; estimate: unknown }
   | { type: "error"; message: string; datasetId?: string };
 

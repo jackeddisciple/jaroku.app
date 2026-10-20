@@ -11449,14 +11449,20 @@ async function handleEvalCommand(ctx: TenantContext, cmd: ForwardedCommand): Pro
         // one the history uses, because it is the same question about the same kind of list.
         const asked = typeof cmd.limit === "number" && Number.isFinite(cmd.limit) ? Math.floor(cmd.limit) : 50;
         const limit = Math.max(1, Math.min(asked, HISTORY_WINDOW_MAX));
-        const all = await evalStore.listEvalRuns(ctx, limit);
+        // ONE AGENT'S OR ONE DATASET'S, IN THE QUERY. Filtering a workspace window afterwards made
+        // "older…" a dead end behind fifty evals elsewhere. The scope rides back so a client applies
+        // only the list it asked for — two people in a workspace each have their own.
+        const evals = await evalStore.listEvalRuns(ctx, {
+          limit,
+          ...(cmd.agentId ? { agentId: cmd.agentId } : {}),
+          ...(cmd.datasetId ? { datasetId: cmd.datasetId } : {}),
+        });
         relay.broadcastEval(ctx, {
           type: "evals",
-          evals: cmd.datasetId ? all.filter((e) => e.dataset_id === cmd.datasetId) : all,
-          // Whether there is anything further back. Computed against the UNFILTERED window, because
-          // the filter is applied here rather than in the query: a dataset with two evals in a
-          // fifty-row window would otherwise report "complete" while older ones sit unread.
-          complete: all.length < limit,
+          agentId: cmd.agentId ?? null,
+          datasetId: cmd.datasetId ?? null,
+          evals,
+          complete: evals.length < limit,
           window: limit,
         });
         return;

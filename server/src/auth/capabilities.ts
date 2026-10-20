@@ -1083,6 +1083,9 @@ export const COMMAND_AGENT_CAPABILITY: Record<string, AgentCapability> = {
   // may see an agent has to be able to see what evaluating it would.
   listDatasets: "view",
   estimateEval: "view",
+  // AND ITS EVAL HISTORY, now that the list names the agent it is for: the evals of an agent somebody
+  // cannot see would say what it was tested on, how, and how it did.
+  listEvals: "view",
   // What this one agent has been doing. `view`, beside the reads above, because that is what it is
   // — the Activity feed narrowed to one agent, carrying nothing the detail pane does not.
   getActivityFeed: "view",

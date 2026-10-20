@@ -310,9 +310,18 @@ export class EvalStore {
   }
 
   /** Deletes the dataset and its examples. Eval history that referenced it is left intact
-   *  — a past comparison stays readable even after its dataset is gone. */
+   *  — a past comparison stays readable even after its dataset is gone, because each eval keeps
+   *  the cases it ran (migration 089).
+   *
+   *  ITS RUBRIC GOES TOO, unless an eval scored with it: that one is part of the history the eval
+   *  is read back with. One nothing points at used to stay behind, orphaned, for ever. */
   async deleteDataset(ctx: TenantContext, datasetId: string): Promise<void> {
     await this.db.scoped(ctx.workspaceId, async (tx: Queryable) => {
+      await tx.run(
+        `DELETE FROM rubrics WHERE dataset_id = ? AND workspace_id = ?
+           AND NOT EXISTS (SELECT 1 FROM eval_runs r WHERE r.rubric_id = rubrics.id AND r.workspace_id = rubrics.workspace_id)`,
+        [datasetId, ctx.workspaceId],
+      );
       await tx.run(`DELETE FROM dataset_examples WHERE dataset_id = ? AND workspace_id = ?`, [
         datasetId,
         ctx.workspaceId,
@@ -579,13 +588,33 @@ export class EvalStore {
     return row ? this.hydrateEvalRun(row) : undefined;
   }
 
-  async listEvalRuns(ctx: TenantContext, limit = 50): Promise<EvalRun[]> {
+  /**
+   * The newest evals, optionally of one agent or one dataset — newest first, `limit` of them.
+   *
+   * FILTERED IN THE QUERY. The handler used to read the workspace's newest fifty and pick one
+   * dataset's out of them, so fifty evals elsewhere made "older…" widen the window for ever without
+   * adding anything to this dataset's list. Each row says whether its dataset still exists, which is
+   * how a deleted dataset's evals stay reachable — and say why there is no dataset to open.
+   */
+  async listEvalRuns(
+    ctx: TenantContext,
+    opts: { limit?: number; agentId?: string; datasetId?: string } = {},
+  ): Promise<(EvalRun & { dataset_gone: boolean })[]> {
+    const where: string[] = ["r.workspace_id = ?"];
+    const args: unknown[] = [ctx.workspaceId];
+    if (opts.agentId) { where.push("r.agent_id = ?"); args.push(opts.agentId); }
+    if (opts.datasetId) { where.push("r.dataset_id = ?"); args.push(opts.datasetId); }
+    args.push(opts.limit ?? 50);
     const rows = await this.q(ctx).all<Record<string, unknown>>(
-      `SELECT ${EVAL_RUN_COLUMNS} FROM eval_runs
-        WHERE workspace_id = ? ORDER BY started_at DESC LIMIT ?`,
-      [ctx.workspaceId, limit],
+      `SELECT ${EVAL_RUN_COLUMNS.split(",").map((c) => `r.${c.trim()}`).join(", ")},
+              CASE WHEN EXISTS (SELECT 1 FROM datasets d
+                                 WHERE d.id = r.dataset_id AND d.workspace_id = r.workspace_id)
+                   THEN 0 ELSE 1 END AS dataset_gone
+         FROM eval_runs r
+        WHERE ${where.join(" AND ")} ORDER BY r.started_at DESC LIMIT ?`,
+      args,
     );
-    return rows.map((r) => this.hydrateEvalRun(r));
+    return rows.map((r) => ({ ...this.hydrateEvalRun(r), dataset_gone: asInt(r["dataset_gone"]) === 1 }));
   }
 
   /**

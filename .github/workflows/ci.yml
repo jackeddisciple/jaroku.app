@@ -340,6 +340,8 @@ jobs:
           npm run test:retry
           # Two gateways over one Redis: who owns an eval, who runs its jobs, who may end it.
           npm run test:eval-replicas
+          # Which evals a list shows, and what a deleted dataset leaves behind — on both drivers.
+          npm run test:eval-history
           npm run test:eval-stress
           npm run test:eval-off-trace
           npm run test:eval-budget

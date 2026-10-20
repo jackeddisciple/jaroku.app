@@ -160,6 +160,7 @@
     "test:retry": "tsx src/evalRetry.test.ts && tsx src/evalOwnership.test.ts && tsx src/evalDispatch.test.ts",
     "test:eval-dispatch": "tsx src/evalDispatch.test.ts",
     "test:eval-replicas": "tsx src/evalReplicas.test.ts",
+    "test:eval-history": "tsx src/evalHistory.test.ts",
     "test:eval-stress": "tsx src/evalStress.test.ts",
     "test:judge": "tsx src/judge/rubric.test.ts",
     "test:cleanup": "tsx src/evalCleanup.test.ts",

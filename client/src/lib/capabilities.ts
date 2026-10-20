@@ -540,6 +540,7 @@ export const COMMAND_AGENT_CAPABILITY: Record<string, AgentCapability> = {
   recordChatTurn: "view",
   listDatasets: "view",
   estimateEval: "view",
+  listEvals: "view",
   getActivityFeed: "view",
   // The work list narrowed to one agent. `cancelWork` and `retryWork` are deliberately absent —
   // they carry an item id rather than an agent id, so the relay cannot resolve an agent for them

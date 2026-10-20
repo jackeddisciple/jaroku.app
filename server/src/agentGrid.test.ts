@@ -236,7 +236,7 @@ async function seedAgent(
       await db.forWorkspace(A.workspaceId).run(`UPDATE eval_runs SET started_at = ? WHERE id = ?`, [ISO(HOUR), mine]);
       for (let i = 0; i < 55; i++) await run("noisy_agent");
       check("a workspace page of fifty holds none of it — the old read's blind spot",
-        !(await evals.listEvalRuns(A, 50)).some((e) => e.id === mine));
+        !(await evals.listEvalRuns(A, { limit: 50 })).some((e) => e.id === mine));
       const [last] = await evals.listEvalRunsForAgent(A, "quiet_agent", 1);
       check("...while the agent's own read still finds its last eval", last?.id === mine, String(last?.id));
       check("...and another agent's newest is its own, not this one",
