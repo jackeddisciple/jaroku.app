@@ -387,6 +387,10 @@ function dispatch(msg: ServerMessage): void {
       } else if (msg.type === "evalProgress") {
         const { channel: _channel, type: _type, ...counts } = msg;
         e.applyProgress(counts);
+        // THE CELLS MOVE WITH THE COUNTS, for an eval somebody has open. Only the judge's `scored`
+        // reloaded them, and a failed run is never judged — so a failed cell sat on "running" until
+        // the eval finished, and with a slow judge the succeeded ones lagged the same way.
+        if (useEvalStore.getState().resultsByEval[msg.evalId]) refreshResultsSoon(msg.evalId);
         // §4.3.3, the eval half. An eval's runs are kept off the `trace` channel on purpose, so
         // this is the only route its spend has to a thread row — and the progress numbers are what
         // give `projectCost` a denominator that moves. Both go to `threadStore` rather than being
@@ -2386,6 +2390,17 @@ export function sendLoadEvalResults(evalId: string): void {
  */
 export function sendListEvals(agentId: string, datasetId: string | null, limit?: number): void {
   send({ cmd: "listEvals", agentId, ...(datasetId ? { datasetId } : {}), ...(limit === undefined ? {} : { limit }) });
+}
+
+/** Results to reload, at most one request per eval per beat however many runs finish inside it. */
+const resultsReloads = new Map<string, ReturnType<typeof setTimeout>>();
+export const RESULTS_RELOAD_MS = 750;
+function refreshResultsSoon(evalId: string): void {
+  if (resultsReloads.has(evalId)) return;
+  resultsReloads.set(evalId, setTimeout(() => {
+    resultsReloads.delete(evalId);
+    sendLoadEvalResults(evalId);
+  }, RESULTS_RELOAD_MS));
 }
 
 /**

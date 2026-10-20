@@ -164,6 +164,22 @@ console.log("\na delete waits out its undo window before it is sent");
   check(sentCmds().slice(before).filter((c) => c === "deleteExample").length === 2, "and the window closing sends the second");
 }
 
+console.log("\nan open eval's cells reload as its runs finish, at most once a beat");
+{
+  const { RESULTS_RELOAD_MS } = await import("./socket.ts");
+  const loads = (): number => socket.sent.filter((f) => (JSON.parse(f) as { cmd?: string; evalId?: string }).cmd === "loadEvalResults" && f.includes("e-open")).length;
+  useEvalStore.getState().setResults("e-open", { evalId: "e-open" } as never);
+  const before = loads();
+  for (let done = 1; done <= 3; done++) {
+    socket.deliver({ channel: "eval", type: "evalProgress", evalId: "e-open", total: 6, done, running: 1, queued: 6 - done - 1, failed: done, succeeded: 0, cancelled: 0, spentDeltaUsd: 0 });
+  }
+  await new Promise((r) => setTimeout(r, RESULTS_RELOAD_MS + 100));
+  check(loads() - before === 1, `three finished runs in one beat are one reload, not none and not three (${loads() - before})`);
+  socket.deliver({ channel: "eval", type: "evalProgress", evalId: "e-closed", total: 2, done: 1, running: 1, queued: 0, failed: 1, succeeded: 0, cancelled: 0, spentDeltaUsd: 0 });
+  await new Promise((r) => setTimeout(r, RESULTS_RELOAD_MS + 100));
+  check(!socket.sent.some((f) => f.includes("e-closed") && f.includes("loadEvalResults")), "an eval nobody has open is not reloaded");
+}
+
 stopSocket();
 console.log(failures === 0 ? "\nALL CORRECT" : `\n${failures} FAILURES`);
 (globalThis as { process?: { exit(code: number): void } }).process?.exit(failures === 0 ? 0 : 1);
