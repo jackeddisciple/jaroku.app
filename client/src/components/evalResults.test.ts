@@ -353,6 +353,17 @@ console.log("\nthe Activity feed shows its rows before its viewport is measured"
   check(words.includes("Evaluated") && words.includes("Screening cases") && words.includes("Ran"), "both rows are drawn", words.slice(0, 240));
 }
 
+console.log("\nResults reached from elsewhere still knows the agent's datasets");
+{
+  // Only the Dataset half asked for them, so Results opened from the Activity feed had none — no
+  // Run again, no switch to every dataset's evals. The panel asks, whichever half is open.
+  const { readFileSync } = await import("node:fs");
+  const panel = readFileSync("src/components/EvalsPanel.tsx", "utf8");
+  const builder = readFileSync("src/components/DatasetBuilder.tsx", "utf8");
+  check(/if \(connected && activeAgentId\) sendListDatasets\(activeAgentId\)/.test(panel), "the panel asks for the agent's datasets itself");
+  check(!/sendListDatasets\(/.test(builder), "and the Dataset half no longer asks twice");
+}
+
 console.log("\nthe rail says that pressing the tab already showing hides the panel");
 {
   const { railTip } = await import("../lib/railTip.ts");

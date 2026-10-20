@@ -17,7 +17,6 @@ import {
   sendAddExample,
   sendAddExamples,
   sendCreateDataset,
-  sendListDatasets,
   sendLoadDataset,
   sendLoadRubric,
   sendRenameDataset,
@@ -507,9 +506,7 @@ export function DatasetBuilder() {
   }, [renameRequest, selected?.id]);
 
   // Datasets are per-agent; re-list whenever the agent (or the connection) changes.
-  useEffect(() => {
-    if (connected && activeAgentId) sendListDatasets(activeAgentId);
-  }, [connected, activeAgentId]);
+  // The agent's datasets are asked for by EvalsPanel, whichever half is open.
 
   // Examples load on demand — a dataset list shouldn't drag every example over the wire.
   useEffect(() => {

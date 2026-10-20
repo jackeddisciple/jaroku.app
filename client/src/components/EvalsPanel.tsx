@@ -9,7 +9,7 @@ import { useEffect, useState } from "react";
 import { useBuildStore } from "../store/buildStore.ts";
 import { datasetsOf, evalListKey, liveEvalOf, useEvalStore } from "../store/evalStore.ts";
 import { useTraceStore } from "../store/traceStore.ts";
-import { sendListEvals, sendLoadEvalResults, sendLoadJudge, sendRetryEval, sendSetJudgeOwnKey } from "../lib/socket.ts";
+import { sendListDatasets, sendListEvals, sendLoadEvalResults, sendLoadJudge, sendRetryEval, sendSetJudgeOwnKey } from "../lib/socket.ts";
 import { parseCeiling, suggestedCeiling } from "./EvalRunBar.tsx";
 import { useCanRun } from "../lib/useCapability.ts";
 import { useUiStore } from "../store/uiStore.ts";
@@ -311,6 +311,13 @@ export function EvalsPanel() {
   useEffect(() => {
     if (connected) sendLoadJudge();
   }, [connected]);
+
+  // THE AGENT'S DATASETS, WHICHEVER HALF IS OPEN. Only the Dataset half asked for them, so Results
+  // reached straight from the Activity feed or a trace had none: no Run again, no switch to every
+  // dataset's evals, and a header that could not name an old eval's dataset.
+  useEffect(() => {
+    if (connected && activeAgentId) sendListDatasets(activeAgentId);
+  }, [connected, activeAgentId]);
 
   // Past evals for this scope, so a finished comparison stays reachable.
   useEffect(() => {
