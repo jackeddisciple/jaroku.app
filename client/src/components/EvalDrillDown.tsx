@@ -9,7 +9,7 @@
 // is the whole reason eval jobs were built on the normal execution path — the debugger the
 // user already knows is the drill-down.
 
-import { useState } from "react";
+import { useState, type CSSProperties } from "react";
 import { sendLoadRun } from "../lib/socket.ts";
 import { useTraceStore } from "../store/traceStore.ts";
 import { useUiStore } from "../store/uiStore.ts";
@@ -87,8 +87,8 @@ export function ClampedText({ text, lines = 3, className = "" }: { text: string;
   return (
     <div className={className}>
       <div
-        className="whitespace-pre-wrap break-words"
-        style={open || !long ? undefined : { display: "-webkit-box", WebkitLineClamp: lines, WebkitBoxOrient: "vertical", overflow: "hidden" }}
+        className={`whitespace-pre-wrap break-words${open || !long ? "" : " clamp-lines"}`}
+        style={open || !long ? undefined : ({ "--clamp": lines } as CSSProperties)}
       >
         {text}
       </div>

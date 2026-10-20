@@ -108,6 +108,12 @@ console.log("\na dataset can leave the tab, be found in, and keep its notes");
   const words = html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
   check(/aria-label="Find a case"/.test(html), "a long list of cases can be searched");
   check(words.includes("show more"), "a long case folds, with a way to read the rest");
+  // WebKit hid the folded lines but kept their height: a blank block above "show more".
+  check(/class="clamp-lines" style="--clamp:4"/.test(html), "folded by the shared class, four lines", (/<span class="clamp-lines[^>]*>/.exec(html) ?? [""])[0]);
+  const { readFileSync } = await import("node:fs");
+  const rule = /\.clamp-lines \{[^}]*\}/.exec(readFileSync("src/index.css", "utf8"))?.[0] ?? "";
+  check(/max-height: calc\(var\(--clamp\) \* 1lh\)/.test(rule) && /max-height: calc\(var\(--clamp\) \* 1\.4em\)/.test(rule),
+    "and that class takes the hidden lines' height away, not only their text", rule);
   check(words.includes("why this case exists") && words.includes("+ note"), "notes are shown, and can be added", words.slice(0, 200));
   check(/aria-label="Export these cases as a CSV"/.test(html) && /aria-label="Duplicate this dataset"/.test(html), "and a dataset can be exported and duplicated");
 }

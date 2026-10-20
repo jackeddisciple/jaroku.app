@@ -9,7 +9,7 @@
 // Every mutation goes over the eval channel and comes back as a full snapshot, so nothing
 // here keeps optimistic local state; the only local state is which row is being edited.
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { useBuildStore } from "../store/buildStore.ts";
 import { datasetsOf, examplesOf, useEvalStore } from "../store/evalStore.ts";
 import { useTraceStore } from "../store/traceStore.ts";
@@ -126,8 +126,8 @@ function ExampleRow({
       >
         {/* FOLDED WHEN LONG. Unfolded, one case filled the panel and the others were a scroll away. */}
         <span
-          className="block"
-          style={which === "input" && long && !unfolded ? { display: "-webkit-box", WebkitLineClamp: 4, WebkitBoxOrient: "vertical", overflow: "hidden" } : undefined}
+          className={which === "input" && long && !unfolded ? "clamp-lines" : "block"}
+          style={which === "input" && long && !unfolded ? ({ "--clamp": 4 } as CSSProperties) : undefined}
         >
           {text || placeholder}
         </span>

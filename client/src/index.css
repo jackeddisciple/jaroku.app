@@ -599,4 +599,18 @@
   .react-flow__attribution {
     display: none;
   }
+
+  /* TEXT FOLDED TO `--clamp` LINES, line breaks kept. `-webkit-line-clamp` alone hid the lines past
+     the clamp in WebKit — the desktop app's engine — but kept their height, so a folded Liven case
+     left a blank block the size of the résumé above "show more". The max-height takes the height
+     away: `1lh` where it is understood, and a little over the caption's 1.33 where it is not
+     (macOS 11's WebKit), which leaves a few pixels of space rather than a line of text. */
+  .clamp-lines {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: var(--clamp);
+    overflow: hidden;
+    max-height: calc(var(--clamp) * 1.4em);
+    max-height: calc(var(--clamp) * 1lh);
+  }
 }
