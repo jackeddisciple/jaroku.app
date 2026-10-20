@@ -214,6 +214,44 @@ console.log("\nnine sources, one chronology");
   check("the failed deploy is in the feed", page.rows.some((r) => r.kind === "deploy" && r.outcome === "error"));
 }
 
+console.log("\nan eval is one row, named by its dataset, and its runs are not run rows");
+{
+  const ctx = await workspace("evals");
+  await agents.upsertFromDisk(ctx, { slug: "liven", display_name: "Liven" });
+  const q = db.forWorkspace(ctx.workspaceId);
+  const evalRow = async (status: string, at: string, name: string | null): Promise<string> => {
+    const id = randomUUID();
+    await q.run(
+      `INSERT INTO eval_runs (id, workspace_id, dataset_id, agent_id, rubric_id, status, targets, started_at, dataset_name)
+       VALUES (?, ?, 'ds-gone', 'liven', 'rb1', ?, '[]', ?, ?)`,
+      [id, ctx.workspaceId, status, at, name],
+    );
+    return id;
+  };
+  const done = await evalRow("completed", ago(3 * HOUR), "Screening cases");
+  const failed = await evalRow("error", ago(2 * HOUR), "Screening cases");
+  const stopped = await evalRow("aborted_over_budget", ago(90 * MINUTE), null);
+  // One of the eval's own runs, and one the agent did for somebody.
+  const evalRun = await makeRun(ctx, "liven", ago(170 * MINUTE));
+  await q.run(
+    `INSERT INTO eval_jobs (id, workspace_id, eval_id, example_id, provider, model, status, run_id)
+     VALUES (?, ?, ?, 'x1', 'anthropic', 'claude-haiku-4-5', 'succeeded', ?)`,
+    [randomUUID(), ctx.workspaceId, done, evalRun],
+  );
+  const ownRun = await makeRun(ctx, "liven", ago(HOUR));
+
+  const rows = (await store.feed(ctx, w)).rows;
+  const of = (id: string) => rows.find((r) => r.id === `eval:${id}`);
+  check("an eval reads by the dataset it ran, not the dataset's id", of(done)?.object === "Screening cases", of(done)?.object ?? "missing");
+  check("a deleted dataset with no name kept falls back to its id rather than nothing", of(stopped)?.object === "ds-gone");
+  check("a finished eval is ok", of(done)?.outcome === "ok");
+  check("a failed one is an error, not still running", of(failed)?.outcome === "error", of(failed)?.outcome ?? "");
+  check("one stopped over budget says it stopped", of(stopped)?.outcome === "stopped", of(stopped)?.outcome ?? "");
+  check("an eval opens the eval", of(done)?.targetType === "eval" && of(done)?.targetId === done);
+  check("an eval's run is not a run row of its own", !rows.some((r) => r.id === `run:${evalRun}`));
+  check("the agent's own run still is", rows.some((r) => r.id === `run:${ownRun}`));
+}
+
 // --- keyset pagination, under concurrent inserts ------------------------------------------------------
 
 console.log("\nthe cursor survives rows arriving mid-scroll");

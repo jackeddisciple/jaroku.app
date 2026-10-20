@@ -263,5 +263,25 @@ console.log("\nan eval's run is tagged in Runs");
   check(tags === 1, `the eval's run carries an eval tag, and the agent's own does not (${tags})`);
 }
 
+console.log("\nan eval in the Activity feed says when it stopped, and opens on its results");
+{
+  const { FeedDetail, navigationHint, openFeedRow } = await import("./ActivityFeed.tsx");
+  const { useEvalStore } = await import("../store/evalStore.ts");
+  const { useUiStore } = await import("../store/uiStore.ts");
+  const row = (outcome: string) => ({
+    id: "eval:e9", at: new Date().toISOString(), kind: "eval", agent_id: "liven", actor_user_id: null,
+    object: "Screening cases", outcome, num: null, target_type: "eval", target_id: "e9",
+  });
+  const words = (outcome: string) => markup(createElement(FeedDetail, { row: row(outcome) } as never)).replace(/<[^>]+>/g, " ");
+  check(/stopped/.test(words("stopped")) && !/stopped/.test(words("ok")), "an eval cancelled or over budget says it stopped, a finished one does not");
+  check(navigationHint("eval") === "Open the eval's results", "its row says where it goes");
+  let closed = false;
+  openFeedRow(row("ok"), () => false, () => { closed = true; });
+  const evals = useEvalStore.getState() as unknown as { selectedEvalByAgent: Record<string, string>; modeByAgent: Record<string, string> };
+  check(evals.selectedEvalByAgent["liven"] === "e9" && evals.modeByAgent["liven"] === "results", "and opens that eval on Results",
+    JSON.stringify({ e: evals.selectedEvalByAgent, m: evals.modeByAgent }));
+  check(useUiStore.getState().rightTab === "evals" && closed, "in the Evals panel, with the overlay closed");
+}
+
 console.log(failures === 0 ? "\nALL CORRECT" : `\n${failures} FAILURES`);
 (globalThis as { process?: { exit(code: number): void } }).process?.exit(failures === 0 ? 0 : 1);

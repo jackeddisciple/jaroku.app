@@ -23,10 +23,12 @@ import { FEED_KINDS, actionForFeedKind, type FeedKind } from "../lib/actionIcons
 import { RANGE_PROSE } from "../lib/activityRange.ts";
 import { EMPTY_FIGURE } from "../lib/activityMetrics.ts";
 import { FEED_ROW_HEIGHT, feedWindow, shouldFetchMore } from "../lib/feedWindow.ts";
+import { openEvalResults } from "../lib/evalNav.ts";
 import { absTime, relTime } from "../lib/format.ts";
 import { selectAgent, selectRun } from "../lib/selection.ts";
 import { sendGetActivityFeed, sendLoadRun } from "../lib/socket.ts";
 import { ICON, STATUS } from "../lib/tokens.ts";
+import type { ActivityFeedRow } from "../types.ts";
 import { dimmedBy, useActivityStore } from "../store/activityStore.ts";
 import { useTraceStore } from "../store/traceStore.ts";
 import { useUiStore } from "../store/uiStore.ts";
@@ -203,16 +205,10 @@ export function EventFeedCard() {
                           {r.object ?? r.agent_id ?? ""}
                         </Truncate>
                       }
-                      detail={
-                        <span className="text-tiny">
-                          {r.agent_id && r.object !== r.agent_id ? r.agent_id : ""}
-                          {r.num !== null && r.kind === "version" ? ` v${r.num}` : ""}
-                          {r.outcome === "refused" && <span style={{ color: STATUS.error }}> refused</span>}
-                        </span>
-                      }
+                      detail={<FeedDetail row={r} />}
                       trailing={<span className="text-faint" title={absTime(r.at)}>{relTime(r.at)}</span>}
                       title={navigationHint(r.target_type)}
-                      onClick={() => open(r, needsLoad, closeNav)}
+                      onClick={() => openFeedRow(r, needsLoad, closeNav)}
                     />
                   </div>
                 );
@@ -228,12 +224,24 @@ export function EventFeedCard() {
   );
 }
 
+/** The row's second line: whose it was, a version's number, and how it ended where that is news. */
+export function FeedDetail({ row: r }: { row: ActivityFeedRow }) {
+  return (
+    <span className="text-tiny">
+      {r.agent_id && r.object !== r.agent_id ? r.agent_id : ""}
+      {r.num !== null && r.kind === "version" ? ` v${r.num}` : ""}
+      {r.outcome === "refused" && <span style={{ color: STATUS.error }}> refused</span>}
+      {r.outcome === "stopped" && <span className="text-muted"> stopped</span>}
+    </span>
+  );
+}
+
 /** What clicking a row does, per §5's list. Navigation only — never an action. */
-function navigationHint(target: string): string {
+export function navigationHint(target: string): string {
   if (target === "run" || target === "step") return "Open the trace";
   if (target === "deploy") return "Open the agent's Deploy panel";
   if (target === "version") return "Open the version";
-  if (target === "eval") return "Open the agent's Evals panel";
+  if (target === "eval") return "Open the eval's results";
   return "";
 }
 
@@ -244,7 +252,7 @@ function navigationHint(target: string): string {
  * handler: the trace, the Deploy panel, the version browser. This tab shows nothing per-agent
  * itself, so every row's job is to hand somebody off to the surface that does.
  */
-function open(
+export function openFeedRow(
   row: { target_type: string; target_id: string; agent_id: string | null },
   needsLoad: (runId: string) => boolean,
   closeNav: () => void,
@@ -258,6 +266,12 @@ function open(
       selectRun(runId);
       closeNav();
     }
+    return;
+  }
+  // An eval opens on its own Results, not on whatever the agent's Evals tab last showed.
+  if (row.target_type === "eval" && row.agent_id) {
+    openEvalResults(row.agent_id, row.target_id);
+    closeNav();
     return;
   }
   if (row.agent_id) {

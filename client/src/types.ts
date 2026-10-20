@@ -3398,7 +3398,8 @@ export interface ActivityFeedRow {
   agent_id: string | null;
   actor_user_id: string | null;
   object: string | null;
-  outcome: "ok" | "error" | "refused" | "running" | null;
+  /** `stopped`: an eval cancelled or over budget. */
+  outcome: "ok" | "error" | "refused" | "running" | "stopped" | null;
   num: number | null;
   target_type: "run" | "version" | "deploy" | "eval" | "step" | "workspace";
   target_id: string;

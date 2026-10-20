@@ -25,6 +25,7 @@
 
 import type { Dialect } from "../db/db.ts";
 import type { TenantContext } from "../db/tenant.ts";
+import { notEvalRun } from "../evalRuns.ts";
 import { TraceStore } from "../store.ts";
 import type { Window } from "./range.ts";
 
@@ -85,8 +86,8 @@ export interface FeedRow {
   actorUserId: string | null;
   /** The thing acted on: a tool name, a deploy target, a dataset. Bounded, never prose. */
   object: string | null;
-  /** How it went, where the row has an outcome at all. */
-  outcome: "ok" | "error" | "refused" | "running" | null;
+  /** How it went, where the row has an outcome at all. `stopped`: an eval cancelled or over budget. */
+  outcome: "ok" | "error" | "refused" | "running" | "stopped" | null;
   /** A number the row's trailing column shows: a version, a token count, a step count. */
   num: number | null;
   targetType: FeedTarget;
@@ -217,6 +218,8 @@ function sources(w: Window, dialect: Dialect): FeedSource[] {
 
   return [
     {
+      // Not an eval's runs: the eval is its own row below, and fifteen "Ran" rows beside it read as
+      // the agent's traffic. See `evalRuns.ts`.
       kind: "run",
       hasAgent: true,
       hasActor: false,
@@ -232,6 +235,7 @@ function sources(w: Window, dialect: Dialect): FeedSource[] {
           FROM runs r
          WHERE r.workspace_id = ? AND ${bound("r.started_at")}
            AND r.parent_run_id IS NULL
+           AND ${notEvalRun("r")}
            AND ${key("r.started_at", "('run:' || r.id)")}
            ${agentFilter ? "AND r.agent_id = ?" : ""}`,
     },
@@ -327,16 +331,22 @@ function sources(w: Window, dialect: Dialect): FeedSource[] {
            ${agentFilter ? "AND d.agent_id = ?" : ""}`,
     },
     {
+      // NAMED BY ITS DATASET, as it was called when the eval ran (migration 089) — the row used to
+      // read "Evaluated 14380410-aeaa-…", the dataset's id. And its outcome from the statuses an eval
+      // actually has: `failed` is not one, so a failed eval read as still running, and `cancelled`
+      // read as "refused", which nobody did. An eval that stopped short is `stopped`.
       kind: "eval",
       hasAgent: true,
       hasActor: false,
       sql: ({ agentFilter }) => `
         SELECT 'eval:' || e.id AS feed_id, e.started_at AS at, 'eval' AS kind,
                e.agent_id AS agent_id, CAST(NULL AS TEXT) AS actor_user_id,
-               e.dataset_id AS object,
+               COALESCE(e.dataset_name,
+                        (SELECT d.name FROM datasets d WHERE d.id = e.dataset_id AND d.workspace_id = e.workspace_id),
+                        e.dataset_id) AS object,
                CASE WHEN e.status = 'completed' THEN 'ok'
-                    WHEN e.status = 'failed'    THEN 'error'
-                    WHEN e.status = 'cancelled' THEN 'refused'
+                    WHEN e.status = 'error'     THEN 'error'
+                    WHEN e.status IN ('cancelled', 'aborted_over_budget') THEN 'stopped'
                     ELSE 'running' END AS outcome,
                CAST(NULL AS INTEGER) AS num, 'eval' AS target_type, e.id AS target_id
           FROM eval_runs e

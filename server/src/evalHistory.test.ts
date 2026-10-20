@@ -17,6 +17,8 @@
 import type { Db } from "./db/db.ts";
 import { openTestSqlite, testContext, withScratchPostgres } from "./db/testDb.ts";
 import { EvalStore, checkDatasetName, uniqueDatasetName } from "./evalStore.ts";
+import { ActivityStore } from "./activity/activityStore.ts";
+import { resolveWindow } from "./activity/range.ts";
 
 let fail = 0;
 const check = (name: string, ok: boolean, detail = ""): void => {
@@ -101,6 +103,14 @@ async function suite(label: string, db: Db): Promise<void> {
   check(`[${label}] a second duplicate does not repeat the name`, (await evals.duplicateDataset(ctx, imported.id))?.name === "Imported copy 2");
   check(`[${label}] and an eval from before reads null, not version 0`,
     (await evals.getEvalRun(ctx, old))?.agent_version === null, String((await evals.getEvalRun(ctx, old))?.agent_version));
+  // THE ACTIVITY FEED NAMES AN EVAL BY ITS DATASET — the union's COALESCE over a correlated subquery
+  // is a shape the two drivers type differently, so it is read on both — here with no name kept.
+  const named = await evals.createEvalRun(ctx, {
+    dataset_id: imported.id, agent_id: "quiet", rubric_id: rubric, targets: [], budget_usd: null, dataset_name: null,
+  });
+  const feed = await new ActivityStore(db).feed(ctx, resolveWindow("30d", new Date(Date.now() + 1000), null), { kinds: ["eval"] });
+  const row = feed.rows.find((r) => r.id === `eval:${named.id}`);
+  check(`[${label}] an eval reads in the Activity feed by its dataset's name`, row?.object === "Imported", JSON.stringify(row));
 }
 
 console.log("\na new dataset's name is one this agent does not have");
