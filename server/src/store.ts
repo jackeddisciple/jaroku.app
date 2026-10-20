@@ -395,11 +395,12 @@ export class TraceStore {
   static readonly INTERRUPTED_BY_RESTART = "interrupted by a server restart";
   static readonly CANCELLED_BY_USER = "cancelled by user";
 
-  async reconcileInterruptedRuns(ctx: TenantContext): Promise<string[]> {
-    const rows = await this.q(ctx).all<{ id: string }>(
+  async reconcileInterruptedRuns(ctx: TenantContext, except: ReadonlySet<string> = new Set()): Promise<string[]> {
+    // `except`: runs another machine is still running — an eval's, held by its claim.
+    const rows = (await this.q(ctx).all<{ id: string }>(
       `SELECT id FROM runs WHERE workspace_id = ? AND status = 'running'`,
       [ctx.workspaceId],
-    );
+    )).filter((r) => !except.has(r.id));
     for (const r of rows) {
       await this.q(ctx).run(
         `UPDATE runs SET status = 'error', ended_at = ?, error = ?

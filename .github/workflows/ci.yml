@@ -338,6 +338,8 @@ jobs:
         working-directory: server
         run: |
           npm run test:retry
+          # Two gateways over one Redis: who owns an eval, who runs its jobs, who may end it.
+          npm run test:eval-replicas
           npm run test:eval-stress
           npm run test:eval-off-trace
           npm run test:eval-budget

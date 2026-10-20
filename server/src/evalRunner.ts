@@ -31,6 +31,7 @@ import type { TenantContext } from "./db/tenant.ts";
 import type { EvalStore, EvalJob, EvalTarget } from "./evalStore.ts";
 import { aggregateJob } from "./evalAggregate.ts";
 import { Dispatcher } from "./queue/dispatcher.ts";
+import type { QueueBackend } from "./queue/backend.ts";
 import { jobClassConfig, type QueueJob } from "./queue/jobs.ts";
 import { providerSemaphore } from "./queue/semaphores.ts";
 
@@ -230,6 +231,68 @@ export interface EvalRunnerDeps {
    * as it did.
    */
   workspaceOverBudget?: (evalId: string) => Promise<string | null>;
+  /**
+   * What every machine of this deployment shares: the claims that keep one eval per workspace, and
+   * the per-provider caps. Defaults to the dispatcher's own backend, which is right whenever the two
+   * are one — a single process, and every suite.
+   *
+   * SEPARATE FROM THE DISPATCHER on a deployment of several machines, and the separation is the fix
+   * for an eval that stalled forever. The run.eval queue was shared too, so whichever machine's
+   * drain came round first admitted a job — and a machine that did not own the eval had no record of
+   * it, acked the job and dropped it. Its row stayed `queued` and the owner, having already enqueued
+   * it once, never did again. A job can only run where its eval is live (and where the desktop app
+   * that runs it is connected), so the queue each runner drains is its own lane, and only the claim
+   * and the provider caps are shared.
+   */
+  shared?: QueueBackend;
+  /** This machine's name in a claim. A restarted machine that keeps its name recognises its own. */
+  replicaId?: string;
+  /** Tell the machine that owns this eval to cancel it — the socket asking may be on another one. */
+  forwardCancel?: (workspaceId: string, evalId: string) => void;
+}
+
+/** How long a claim lives without a heartbeat. A machine that stops beating loses it in this long. */
+const CLAIM_TTL_MS = Number(process.env.JAROKU_EVAL_CLAIM_TTL_MS ?? 60_000);
+const CLAIM_HEARTBEAT_MS = Math.max(50, Math.floor(CLAIM_TTL_MS / 4));
+
+/** The one slot an eval takes in its workspace, on every machine at once. */
+export function evalClaimKey(workspaceId: string): string {
+  return `run.eval:claim:${workspaceId}`;
+}
+
+/** A claim's lease names the eval AND the machine, so "is this eval alive, and where" has an answer. */
+export function evalClaimHolder(evalId: string, replicaId: string): string {
+  return `${evalId}@${replicaId}`;
+}
+
+/** The machine holding this eval's claim, or null when nobody does — which means nobody is running it. */
+export function claimOwner(holders: readonly string[], evalId: string): string | null {
+  const held = holders.find((h) => h.startsWith(`${evalId}@`));
+  return held ? held.slice(evalId.length + 1) : null;
+}
+
+/**
+ * The runs of this workspace's evals that ANOTHER machine is still running.
+ *
+ * A restart closes every run left `running` as interrupted, which is right for the runs this machine
+ * was running and wrong for these: the eval is alive on the other gateway, and its runs with it.
+ */
+export async function evalRunsOwnedElsewhere(
+  shared: QueueBackend,
+  evalStore: EvalStore,
+  ctx: TenantContext,
+  replicaId: string,
+): Promise<Set<string>> {
+  const out = new Set<string>();
+  const unfinished = await evalStore.unfinishedEvalRuns(ctx);
+  if (!unfinished.length) return out;
+  const holders = await shared.semaphoreHolders(evalClaimKey(ctx.workspaceId));
+  for (const run of unfinished) {
+    const owner = claimOwner(holders, run.id);
+    if (owner === null || owner === replicaId) continue;
+    for (const job of await evalStore.jobsForEval(ctx, run.id)) if (job.run_id) out.add(job.run_id);
+  }
+  return out;
 }
 
 export interface StartEvalRequest {
@@ -281,8 +344,16 @@ export class EvalRunner {
   private live = new Map<string, Live>();
   private jobToEval = new Map<string, string>();
   private leaseByRun = new Map<string, RunLease>();
+  /** See `EvalRunnerDeps.shared`. */
+  private readonly shared: QueueBackend;
+  readonly replicaId: string;
 
   constructor(private deps: EvalRunnerDeps) {
+    this.shared = deps.shared ?? deps.dispatcher.backend;
+    this.replicaId = deps.replicaId ?? randomUUID();
+    // EACH LIVE EVAL KEEPS ITS CLAIM. A machine that dies stops beating, its claims lapse, and the
+    // workspace may start again — and the evals it left are recognisably nobody's (see `reconcile`).
+    setInterval(() => this.guard("claim heartbeat", this.heartbeat()), CLAIM_HEARTBEAT_MS).unref();
     // A job's run finishing is what advances the queue. Attribution is by run id — the
     // pool tags every event with one precisely so N concurrent runs stay distinguishable.
     deps.pool.on("exit", ({ runId, timedOut }) => this.guard("run exit", this.onRunExit(runId, timedOut, null)));
@@ -338,6 +409,18 @@ export class EvalRunner {
     return false;
   }
 
+  /**
+   * `activeIn`, asked of every machine: this one's own state, then the workspace's shared claim.
+   *
+   * THE CLAIM IS THE ANSWER, and it used to be each machine's own memory. A reload that landed the
+   * socket on the other gateway could start a second eval while the first was still running, and a
+   * machine holding a stalled eval refused every eval its workspace started until it restarted.
+   */
+  async busyIn(workspaceId: string): Promise<boolean> {
+    if (this.activeIn(workspaceId)) return true;
+    return (await this.shared.semaphoreCount(evalClaimKey(workspaceId))) > 0;
+  }
+
   /** The context an eval's reads and writes happen in — its own workspace's, never another's. */
   private ctx(evalId: string): TenantContext {
     return this.deps.context(evalId);
@@ -364,14 +447,28 @@ export class EvalRunner {
     const workspaceId = req.ctx.workspaceId;
     if (this.activeIn(workspaceId)) return { error: "an eval is already running" };
     this.starting.add(workspaceId);
+    // THE SHARED CLAIM, before any row exists, so an eval row is never written without one — which
+    // is what lets a machine that finds an unfinished eval with no claim call it abandoned. The id is
+    // minted here rather than by the store because the claim has to name it.
+    const evalId = randomUUID();
+    const holder = evalClaimHolder(evalId, this.replicaId);
     try {
-      return await this.startClaimed(req);
+      if (!(await this.shared.acquireSemaphore(evalClaimKey(workspaceId), 1, holder, CLAIM_TTL_MS))) {
+        return { error: "an eval is already running" };
+      }
+      let started: { evalId: string } | { error: string } = { error: "the eval did not start" };
+      try {
+        started = await this.startClaimed(req, evalId);
+        return started;
+      } finally {
+        if ("error" in started) await this.shared.releaseSemaphore(evalClaimKey(workspaceId), holder);
+      }
     } finally {
       this.starting.delete(workspaceId);
     }
   }
 
-  private async startClaimed(req: StartEvalRequest): Promise<{ evalId: string } | { error: string }> {
+  private async startClaimed(req: StartEvalRequest, evalId: string): Promise<{ evalId: string } | { error: string }> {
     const examples = await this.deps.evalStore.listExamples(req.ctx, req.datasetId);
     if (!examples.length) return { error: "that dataset has no examples" };
     if (!req.targets.length) return { error: "pick at least one provider to compare" };
@@ -384,6 +481,7 @@ export class EvalRunner {
     );
 
     const evalRun = await this.deps.evalStore.createEvalRun(req.ctx, {
+      id: evalId,
       dataset_id: req.datasetId,
       agent_id: req.agentId,
       rubric_id: req.rubricId,
@@ -439,9 +537,91 @@ export class EvalRunner {
    * and in `live`, never told anybody it had finished, and refused every later eval in its workspace.
    * The pump after the cancel reports the cancelled cells and finishes the eval when nothing is left.
    */
-  async cancel(evalId: string): Promise<void> {
+  async cancel(evalId: string, ctx?: TenantContext): Promise<"here" | "forwarded" | "settled" | "none"> {
     const live = this.live.get(evalId);
-    if (!live) return;
+    if (!live) return ctx ? this.cancelElsewhere(ctx, evalId) : "none";
+    await this.cancelLive(evalId, live);
+    return "here";
+  }
+
+  /**
+   * A cancel for an eval this machine is not running: the owner's, if it has one, else nobody's.
+   *
+   * THE SOCKET CAN BE ON EITHER MACHINE. A reload put it on the gateway that did not own the eval,
+   * and Cancel did nothing there. The owner is whoever holds the eval's claim; with no holder, no
+   * machine is running it, so its rows are settled here rather than left `running` forever.
+   */
+  private async cancelElsewhere(ctx: TenantContext, evalId: string): Promise<"forwarded" | "settled" | "none"> {
+    const row = await this.deps.evalStore.getEvalRun(ctx, evalId);
+    if (!row || (row.status !== "queued" && row.status !== "running")) return "none";
+    const owner = claimOwner(await this.shared.semaphoreHolders(evalClaimKey(ctx.workspaceId)), evalId);
+    if (owner !== null && owner !== this.replicaId) {
+      this.deps.forwardCancel?.(ctx.workspaceId, evalId);
+      return "forwarded";
+    }
+    await this.settleOrphan(ctx, evalId, "cancelled — no server was still running it", true);
+    return "settled";
+  }
+
+  /**
+   * End an unfinished eval that no machine is running: its queued and `running` rows become
+   * cancelled, the eval becomes cancelled with the reason, and — when `announce` — it finishes the
+   * way any eval does, so the panel watching it stops saying `running`.
+   */
+  async settleOrphan(ctx: TenantContext, evalId: string, reason: string, announce: boolean): Promise<void> {
+    if (this.live.has(evalId)) return;
+    this.deps.bindWorkspace?.(evalId, ctx);
+    const queued = await this.deps.evalStore.cancelQueuedJobs(ctx, evalId, reason);
+    let running = 0;
+    for (const job of await this.deps.evalStore.jobsForEval(ctx, evalId)) {
+      if (job.status !== "running") continue;
+      await this.deps.evalStore.finishJob(ctx, job.id, "cancelled", { error: reason });
+      running++;
+    }
+    await this.deps.evalStore.setEvalStatus(ctx, evalId, "cancelled", reason);
+    await this.shared.releaseSemaphore(evalClaimKey(ctx.workspaceId), evalClaimHolder(evalId, this.replicaId));
+    console.log(`[eval] ${evalId} ${reason} — ${queued} queued and ${running} running job(s) cancelled`);
+    if (announce) this.deps.onFinished({ evalId, status: "cancelled", error: reason });
+  }
+
+  /**
+   * The unfinished evals of these workspaces that NO machine is running, settled.
+   *
+   * AT BOOT this used to be every unfinished eval, and on a deployment of two machines that was the
+   * other machine's too: a rolling deploy restarted one gateway and it cancelled the evals the other
+   * was still draining. An eval whose claim is held by another machine is that machine's, and is left
+   * alone. One held under THIS machine's name is one this machine was running before it restarted.
+   */
+  async reconcile(contexts: readonly TenantContext[], reason: string, announce: boolean): Promise<number> {
+    let settled = 0;
+    for (const ctx of contexts) {
+      const unfinished = await this.deps.evalStore.unfinishedEvalRuns(ctx);
+      if (!unfinished.length) continue;
+      const holders = await this.shared.semaphoreHolders(evalClaimKey(ctx.workspaceId));
+      for (const run of unfinished) {
+        if (this.live.has(run.id)) continue;
+        const owner = claimOwner(holders, run.id);
+        if (owner !== null && owner !== this.replicaId) continue;
+        await this.settleOrphan(ctx, run.id, reason, announce);
+        settled++;
+      }
+    }
+    return settled;
+  }
+
+  /** Keep every live eval's claim; take back one that lapsed while this machine was busy. */
+  private async heartbeat(): Promise<void> {
+    for (const l of this.live.values()) {
+      const key = evalClaimKey(l.workspaceId);
+      const holder = evalClaimHolder(l.evalId, this.replicaId);
+      if (await this.shared.renewSemaphore(key, holder, CLAIM_TTL_MS)) continue;
+      if (!(await this.shared.acquireSemaphore(key, 1, holder, CLAIM_TTL_MS))) {
+        console.error(`[eval] ${l.evalId} lost its workspace claim to another eval`);
+      }
+    }
+  }
+
+  private async cancelLive(evalId: string, live: Live): Promise<void> {
     live.cancelled = true;
     if (live.retryTimer) { clearTimeout(live.retryTimer); live.retryTimer = null; }
     await this.deps.evalStore.cancelQueuedJobs(this.ctx(evalId), evalId, "cancelled");
@@ -691,7 +871,7 @@ export class EvalRunner {
     // own budget against the same provider. Checked here, after a fair admit rather than
     // fused into it: see queue/semaphores.ts for why that composition is deliberate.
     const provLeaseId = randomUUID();
-    const provSem = providerSemaphore(this.deps.dispatcher.backend, "run.eval", payload.provider);
+    const provSem = providerSemaphore(this.shared, "run.eval", payload.provider);
     if (!(await provSem.acquire(provLeaseId, PROVIDER_LEASE_TTL_MS))) {
       await this.deps.dispatcher.ack("run.eval", leaseId);
       await this.requeueVerbatim(job);
@@ -795,7 +975,7 @@ export class EvalRunner {
     if (lease) {
       this.leaseByRun.delete(runId);
       await this.deps.dispatcher.ack("run.eval", lease.dispatcherLeaseId);
-      await providerSemaphore(this.deps.dispatcher.backend, "run.eval", lease.provider).release(lease.providerLeaseId);
+      await providerSemaphore(this.shared, "run.eval", lease.provider).release(lease.providerLeaseId);
     }
 
     // Find the eval this run belongs to. Interactive runs match nothing and fall through.
@@ -925,6 +1105,7 @@ export class EvalRunner {
     if (live.retryTimer) { clearTimeout(live.retryTimer); live.retryTimer = null; }
     this.live.delete(evalId);
     this.reportedSpend.delete(evalId);
+    await this.shared.releaseSemaphore(evalClaimKey(live.workspaceId), evalClaimHolder(evalId, this.replicaId));
     // A budget abort already recorded its own status and reason; don't overwrite it with
     // the generic "cancelled", which would lose why the eval stopped.
     const current = (await this.deps.evalStore.getEvalRun(this.ctx(evalId), evalId))?.status;

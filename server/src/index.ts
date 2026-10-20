@@ -33,7 +33,7 @@ import { openDb } from "./db/open.ts";
 import { readRoleFacts, rlsRefusal } from "./db/rlsGuard.ts";
 import { newRequestId, systemContext, systemContextFor, type TenantContext } from "./db/tenant.ts";
 import { EvalStore, type Rubric, type RubricCriterion } from "./evalStore.ts";
-import { EvalRunner } from "./evalRunner.ts";
+import { EvalRunner, evalRunsOwnedElsewhere } from "./evalRunner.ts";
 import { DEFAULT_CRITERIA } from "./judge/rubric.ts";
 import { JudgeScorer } from "./judge/score.ts";
 import { aggregateEval, bestByQuality } from "./evalAggregate.ts";
@@ -338,6 +338,7 @@ import { LocalCodeCheckSandbox, type CodeCheckSandbox } from "./sandbox/codeChec
 import { TraceIngestMetrics } from "./sandbox/traceIngestMetrics.ts";
 import { BackpressureTracker } from "./sandbox/backpressure.ts";
 import { Dispatcher, defaultQueueBackend } from "./queue/dispatcher.ts";
+import { InMemoryQueueBackend } from "./queue/inMemoryBackend.ts";
 import { InteractiveSlots } from "./interactiveSlot.ts";
 import { EventBridge } from "./queue/eventBridge.ts";
 
@@ -866,11 +867,29 @@ const planner = new Planner();
 // job and an export to the request that asked for them, across the process boundary a worker
 // picks them up on.
 const dispatcher = new Dispatcher(defaultQueueBackend(), currentTraceparent);
+// THIS MACHINE'S OWN run.eval LANE. An eval's jobs can only run on the machine whose runner holds the
+// eval — and whose socket holds the desktop app that runs them — so its queue is this process's, and
+// only the claims and provider caps go through the shared backend above. See EvalRunnerDeps.shared.
+const evalLane = new Dispatcher(new InMemoryQueueBackend(), currentTraceparent);
+// Which machine this is, in an eval's claim. Fly keeps a machine's id across its restarts, so a
+// gateway that restarts recognises the evals it was running as its own and settles them.
+const REPLICA_ID = process.env.FLY_MACHINE_ID ?? process.env.JAROKU_REPLICA_ID ?? randomUUID();
 
 // THE CROSS-REPLICA EVENT BRIDGE. undefined with no JAROKU_REDIS_URL — see
 // queue/eventBridge.ts's own header for why that is the whole story for a single-replica
 // `npm run dev`, not a degraded mode of a feature that is otherwise on.
 const eventBridge = EventBridge.create();
+/**
+ * An instruction for the eval runner on whichever machine owns the eval, riding the same bridge. Taken
+ * off in the subscriber below and never delivered to a socket: it is addressed to a runner, not a person.
+ */
+const EVAL_CONTROL = "evalControl";
+function evalControlOf(payload: unknown): { type: "cancel"; evalId: string } | null {
+  const p = payload as { channel?: unknown; type?: unknown; evalId?: unknown } | null;
+  return p?.channel === EVAL_CONTROL && p.type === "cancel" && typeof p.evalId === "string"
+    ? { type: "cancel", evalId: p.evalId }
+    : null;
+}
 
 // THE PER-WORKSPACE INTERACTIVE RESERVATION — the descendant of the single reserved slot 0
 // used to be. Acquired before interactivePool.tryStart() in runAgent/resumeRun/branchRun,
@@ -1295,14 +1314,13 @@ async function spendCapBreach(ctx: TenantContext): Promise<CapBreach | null> {
 const workspaceIds = await bootIdentity.listWorkspaceIds(systemContext(newRequestId()));
 const workspaceContexts = workspaceIds.map((id) => systemContextFor(id, newRequestId()));
 
+// The interrupted EVALS are settled once the runner exists — see `evalRunner.reconcile` below — and
+// only the ones no other machine is still running.
 for (const ctx of workspaceContexts) {
-  for (const stale of await evalStore.unfinishedEvalRuns(ctx)) {
-    const cancelled = await evalStore.cancelQueuedJobs(ctx, stale.id, "server restarted before this job ran");
-    await evalStore.setEvalStatus(ctx, stale.id, "cancelled", "interrupted by a server restart");
-    console.log(`[eval] ${stale.id} was interrupted by a restart — ${cancelled} queued job(s) cancelled`);
-  }
-  // And the runs themselves, which nothing used to close. See reconcileInterruptedRuns.
-  for (const id of await store.reconcileInterruptedRuns(ctx)) {
+  // And the runs themselves, which nothing used to close. See reconcileInterruptedRuns. Not an eval's
+  // runs that another gateway is still draining: a rolling deploy restarts one machine at a time.
+  const elsewhere = await evalRunsOwnedElsewhere(dispatcher.backend, evalStore, ctx, REPLICA_ID);
+  for (const id of await store.reconcileInterruptedRuns(ctx, elsewhere)) {
     console.log(`[manager] run ${id} was interrupted by a restart`);
   }
 }
@@ -3704,6 +3722,8 @@ const workspaceDeleter = new WorkspaceDeleter({
     for (const jobClass of ["run.eval", "judge", "mcp.discover", "workspace.export"] as JobClass[]) {
       purged += await dispatcher.backend.purgeWorkspace(jobClass, ctx.workspaceId).catch(() => 0);
     }
+    // And this machine's own eval lane, which is where its run.eval jobs wait now.
+    purged += await evalLane.backend.purgeWorkspace("run.eval", ctx.workspaceId).catch(() => 0);
     return purged;
   },
 });
@@ -5631,6 +5651,13 @@ function refuseCommand(ctx: TenantContext, action: RateAction, message: string):
 // already checked on whichever replica actually handled the request.
 if (eventBridge) {
   void eventBridge.subscribe((workspaceId, payload) => {
+    // A cancel for an eval this machine may own. With no context it acts only on a live eval, so the
+    // machines that do not own it ignore it.
+    const control = evalControlOf(payload);
+    if (control) {
+      void evalRunner.cancel(control.evalId).catch((err) => console.error("[eval] forwarded cancel failed:", (err as Error)?.message ?? err));
+      return;
+    }
     relay.deliverFromPeer(systemContextFor(workspaceId, newRequestId()), payload);
   });
   console.log("[server] event bridge: subscribed for cross-replica fan-out");
@@ -5689,7 +5716,12 @@ const judge = new JudgeScorer({
 evalRunner = new EvalRunner({
   pool: evalPool,
   store,
-  dispatcher,
+  // This machine's lane; the claims and the provider caps are the shared backend's. See `evalLane`.
+  dispatcher: evalLane,
+  shared: dispatcher.backend,
+  replicaId: REPLICA_ID,
+  // The socket asking may be on the other gateway; the owner hears it over the event bridge.
+  forwardCancel: (workspaceId, evalId) => eventBridge?.publish(workspaceId, { channel: EVAL_CONTROL, type: "cancel", evalId }),
   evalStore,
   // THE EVAL'S OWN WORKSPACE, named by the eval — several can drain at once, one per workspace.
   context: (evalId) => contextForEval(evalId),
@@ -5793,6 +5825,21 @@ evalRunner = new EvalRunner({
     });
   },
 });
+
+// THE EVALS A RESTART LEFT BEHIND, settled now that there is a runner to settle them — and only the
+// ones no other machine is still running. Then the same question every five minutes, for an eval
+// whose machine went away without restarting: its claim lapses, and nobody else would ever end it.
+await evalRunner
+  .reconcile(workspaceContexts, "interrupted by a server restart", false)
+  .catch((err) => console.error("[eval] reconciliation failed:", (err as Error)?.message ?? err));
+setInterval(() => {
+  void (async () => {
+    const contexts = (await bootIdentity.listWorkspaceIds(systemContext(newRequestId()))).map((id) =>
+      systemContextFor(id, newRequestId()),
+    );
+    await evalRunner.reconcile(contexts, "stopped — the server running it went away", true);
+  })().catch((err) => console.error("[eval] orphan sweep failed:", (err as Error)?.message ?? err));
+}, 5 * 60_000).unref();
 
 // --- MCP: server registry ---------------------------------------------------
 // Control-plane only, on its own channel. Every mutation answers by re-broadcasting the
@@ -9846,11 +9893,11 @@ const checkRunner = new CheckRunner({
     checkForEval.set(started.evalId, { checkRunId: input.checkRunId, workspaceId: ctx.workspaceId });
     return started.evalId;
   },
-  cancelEval: async (_ctx, evalRunId) => {
+  cancelEval: async (ctx, evalRunId) => {
     // §B.1.2: a cancelled check never starts new jobs, but a job already dispatched runs to
     // completion. That is the eval engine's own rule (v0.1.9) and `cancel` already implements it,
     // which is why this is a call rather than a policy.
-    await evalRunner.cancel(evalRunId);
+    await evalRunner.cancel(evalRunId, ctx);
   },
 });
 
@@ -11279,7 +11326,7 @@ async function handleEvalCommand(ctx: TenantContext, cmd: ForwardedCommand): Pro
         // A FAST PATH, NOT THE GUARD. An await follows before `start` is called, and wsRelay
         // dispatches commands concurrently — so `EvalRunner.start` claims synchronously and refuses
         // with the same message; this only saves the round trip when the answer is already obvious.
-        if (evalRunner.activeIn(ctx.workspaceId)) {
+        if (await evalRunner.busyIn(ctx.workspaceId)) {
           relay.broadcastEval(ctx, { type: "error", message: "an eval is already running" });
           return;
         }
@@ -11360,7 +11407,8 @@ async function handleEvalCommand(ctx: TenantContext, cmd: ForwardedCommand): Pro
           relay.broadcastEval(ctx, { type: "error", message: "unknown eval" });
           return;
         }
-        await evalRunner.cancel(cmd.evalId);
+        // With the context, so an eval running on the other gateway — or on none — is still ended.
+        await evalRunner.cancel(cmd.evalId, ctx);
         return;
       }
       case "estimateEval": {
