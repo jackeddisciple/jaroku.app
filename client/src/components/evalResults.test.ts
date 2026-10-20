@@ -85,5 +85,17 @@ console.log("\na cell says what the agent answered, beside what was expected");
   check(words.includes("Expected") && words.includes("decline"), "and the expected output beside it", words);
 }
 
+console.log("\na cell that did not succeed says which of five things happened");
+{
+  const { cellLook } = await import("./EvalDrillDown.tsx");
+  const words = ["queued", "running", "cancelled", "timed_out", "failed"].map((s) => cellLook(s)?.label);
+  check(new Set(words).size === 5, `five words, not one (${words.join(", ")})`);
+  check(!/err/.test(cellLook("queued")!.tone) && !/err/.test(cellLook("cancelled")!.tone) && !/err/.test(cellLook("running")!.tone),
+    "waiting, running and cancelled are not red");
+  check(/err/.test(cellLook("failed")!.tone) && /err/.test(cellLook("timed_out")!.tone), "failing is");
+  check(cellLook("cancelled")!.struck === true, "and a cancelled cell is struck through");
+  check(cellLook("succeeded") === null, "a succeeded cell shows its score instead");
+}
+
 console.log(failures === 0 ? "\nALL CORRECT" : `\n${failures} FAILURES`);
 (globalThis as { process?: { exit(code: number): void } }).process?.exit(failures === 0 ? 0 : 1);

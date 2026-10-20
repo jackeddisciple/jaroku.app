@@ -22,16 +22,30 @@ import type { EvalResults, ExampleCell } from "../types.ts";
 import { Icon } from "../lib/icons/registry.ts";
 import { IconButton } from "./IconButton.tsx";
 
-/** Compact score chip. Distinguishes scored / unscored / failed — three different things. */
+/**
+ * How a cell that has no score yet reads: its word and its tone.
+ *
+ * FIVE STATES, NOT TWO. Everything that was not `succeeded` read "failed", in red — so ten jobs still
+ * waiting to run, and thirteen a budget stop had cancelled before they ever ran, were all shown as
+ * failures, and only a tooltip said otherwise. Red is kept for the two that are failures.
+ */
+export function cellLook(status: string): { label: string; tone: string; struck?: boolean } | null {
+  switch (status) {
+    case "succeeded": return null;
+    case "queued": return { label: "queued", tone: "text-faint" };
+    case "running": return { label: "running", tone: "text-run animate-stream-pulse motion-reduce:animate-none" };
+    case "cancelled": return { label: "cancelled", tone: "text-faint", struck: true };
+    case "timed_out": return { label: "timeout", tone: "text-err" };
+    default: return { label: "failed", tone: "text-err" };
+  }
+}
+
+/** Compact score chip. A score, unscored, or the job's state — see `cellLook`. */
 function ScoreChip({ cell, active, onClick }: { cell: ExampleCell; active: boolean; onClick: () => void }) {
-  const failed = cell.status !== "succeeded";
-  const label = failed
-    ? cell.status === "timed_out" ? "timeout" : "failed"
-    : cell.score === null
-      ? "—"
-      : (cell.score * 100).toFixed(0);
-  const tone = failed
-    ? "text-err"
+  const look = cellLook(cell.status);
+  const label = look ? look.label : cell.score === null ? "—" : (cell.score * 100).toFixed(0);
+  const tone = look
+    ? look.tone
     : cell.score === null
       ? "text-faint"
       : cell.score >= 0.8
@@ -39,6 +53,9 @@ function ScoreChip({ cell, active, onClick }: { cell: ExampleCell; active: boole
         : cell.score < 0.4
           ? "text-err"
           : "text-ink";
+  const why = look
+    ? cell.status === "failed" || cell.status === "timed_out" ? ` — ${cell.error ?? cell.status}` : ` — ${look.label}`
+    : cell.score === null ? ` — ${cell.scoreError ?? "unscored"}` : "";
   return (
     <Chip
       onClick={onClick}
@@ -49,8 +66,8 @@ function ScoreChip({ cell, active, onClick }: { cell: ExampleCell; active: boole
       // refuses the argument in as many words, and the alignment was always `tabular-nums` doing
       // the work rather than the face.
       tone="muted"
-      title={`${cell.model}${failed ? ` — ${cell.error ?? cell.status}` : cell.score === null ? ` — ${cell.scoreError ?? "unscored"}` : ""}`}
-      figure={<span className={tone}>{label}</span>}
+      title={`${cell.model}${why}`}
+      figure={<span className={`${tone}${look?.struck ? " line-through" : ""}`}>{label}</span>}
     >
       <Truncate className="max-w-[110px]">{cell.model}</Truncate>
     </Chip>
@@ -137,7 +154,7 @@ export function CellDetail({
           />
         </span>
         <span className="text-ink">{cell.model}</span>
-        <span className={cell.status === "succeeded" ? "text-muted" : "text-err"}>{cell.status}</span>
+        <span className={cellLook(cell.status)?.tone ?? "text-muted"}>{cellLook(cell.status)?.label ?? cell.status}</span>
         {/* The floor marker, where the number is. `cost_complete` has ridden the per-leg rollup
             since the dashboard was written and never reached the cell — so a cost that was an
             undercount rendered, and exported, as a clean measurement. A "≥" is the smallest
