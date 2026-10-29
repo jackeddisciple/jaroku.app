@@ -5,7 +5,8 @@
 // the results tell you what's missing. The mode auto-follows the work: starting an eval
 // switches to Results, and an agent with no dataset yet lands on Dataset.
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { compareEvals } from "../lib/evalCompare.ts";
 import { useBuildStore } from "../store/buildStore.ts";
 import { datasetsOf, evalListKey, liveEvalOf, useEvalStore } from "../store/evalStore.ts";
 import { useTraceStore } from "../store/traceStore.ts";
@@ -15,7 +16,7 @@ import { useCanRun } from "../lib/useCapability.ts";
 import { useUiStore } from "../store/uiStore.ts";
 import { DatasetBuilder } from "./DatasetBuilder.tsx";
 import { ComparisonTable, EXPORTS, saveExport } from "./EvalDashboard.tsx";
-import { ExampleDrillDown } from "./EvalDrillDown.tsx";
+import { CriterionBreakdown, ExampleDrillDown } from "./EvalDrillDown.tsx";
 import { EvalRunBar } from "./EvalRunBar.tsx";
 import { EvalUndoToast } from "./EvalUndoToast.tsx";
 import { EvalCompare } from "./EvalCompare.tsx";
@@ -514,6 +515,13 @@ export function EvalsPanel() {
   // WHAT CHANGED SINCE: the eval the shown one is compared with, when one is chosen.
   const compareWith = useEvalStore((s) => (activeAgentId ? (s.compareWithByAgent[activeAgentId] ?? null) : null));
   const comparing = compareWith && compareWith !== shownEvalId ? resultsByEval[compareWith] : undefined;
+  // The cases whose outcome moved between the two, for the case list's Changed facet — the same
+  // diff the comparison draws, laid out older first as it is.
+  const changedIds = useMemo(() => {
+    if (!results || !comparing) return undefined;
+    const [older, newer] = Date.parse(comparing.startedAt) <= Date.parse(results.startedAt) ? [comparing, results] : [results, comparing];
+    return new Set(compareEvals(older, newer).changes.map((c) => c.exampleId));
+  }, [results, comparing]);
   // The pickers name models as the run bar does — "Haiku 4.5" — with the id where the catalogue has none.
   const providerModels = useProviderStore((s) => s.models);
   const running = progress !== null && (progress.status === undefined || progress.scoring === true);
@@ -563,6 +571,18 @@ export function EvalsPanel() {
   const counts = { dataset: caseCount, results: evalCount };
   const shownSummary = evals.find((e) => e.id === shownEvalId);
   const verdictOf = (r: EvalResults): string | null => verdict(r.providers, (m) => modelName(providerModels, m));
+  /**
+   * A changed case, opened from the comparison: every case listed, its answer for that model open,
+   * and scrolled to — the cell is this eval's own, whichever of the two the change was read from.
+   */
+  const pickCase = (exampleId: string, model: string): void => {
+    if (!results) return;
+    const store = useEvalStore.getState();
+    store.setCaseFacet(results.evalId, "all");
+    const cell = results.rows.find((r) => r.exampleId === exampleId)?.cells.find((c) => c.model === model);
+    if (cell) store.setOpenCell(results.evalId, cell.jobId);
+    requestAnimationFrame(() => document.querySelector(`[data-example-id="${exampleId}"]`)?.scrollIntoView({ block: "nearest" }));
+  };
   const modelsOf = (e: EvalRunSummary): string =>
     e.targets.map((t) => `${modelName(providerModels, t.model)}${t.effort ? ` (${t.effort})` : ""}`).join(" · ");
   const showOlder = (): void => {
@@ -733,11 +753,12 @@ export function EvalsPanel() {
               {comparing && activeAgentId && (
                 // Older first, whichever was picked: "before → after" reads in time order.
                 Date.parse(comparing.startedAt) <= Date.parse(results.startedAt)
-                  ? <EvalCompare before={comparing} after={results} against={comparing} onClose={() => useEvalStore.getState().setCompareWith(activeAgentId, null)} />
-                  : <EvalCompare before={results} after={comparing} against={comparing} onClose={() => useEvalStore.getState().setCompareWith(activeAgentId, null)} />
+                  ? <EvalCompare before={comparing} after={results} against={comparing} onPickCase={pickCase} onClose={() => useEvalStore.getState().setCompareWith(activeAgentId, null)} />
+                  : <EvalCompare before={results} after={comparing} against={comparing} onPickCase={pickCase} onClose={() => useEvalStore.getState().setCompareWith(activeAgentId, null)} />
               )}
               <ComparisonTable results={results} />
-              <ExampleDrillDown results={results} />
+              <CriterionBreakdown results={results} />
+              <ExampleDrillDown results={results} changed={changedIds} />
             </>
           ) : (
             <EmptyState

@@ -6,6 +6,7 @@ import { compareEvals, type ModelDelta } from "../lib/evalCompare.ts";
 import { fmtCost, fmtLatency, fmtPercent, relTime } from "../lib/format.ts";
 import { TYPE } from "../lib/tokens.ts";
 import { useNarrowerThan } from "../lib/useNarrower.ts";
+import { modelName, useProviderStore } from "../store/providerStore.ts";
 import type { EvalResults, ProviderMetrics } from "../types.ts";
 
 /** One figure, then and now. */
@@ -36,9 +37,10 @@ function figures(m: ModelDelta): [string, ReactNode][] {
 }
 
 function ModelName({ m }: { m: ModelDelta }) {
+  const providerModels = useProviderStore((s) => s.models);
   return (
     <>
-      {m.model}
+      {modelName(providerModels, m.model)}
       {!m.before && <span className="ml-1 text-tiny text-faint">new</span>}
       {!m.after && <span className="ml-1 text-tiny text-faint">not in this eval</span>}
     </>
@@ -80,6 +82,7 @@ export function EvalCompare({
   after,
   against = before,
   onClose,
+  onPickCase,
 }: {
   before: EvalResults;
   after: EvalResults;
@@ -90,9 +93,15 @@ export function EvalCompare({
    */
   against?: EvalResults;
   onClose: () => void;
+  /**
+   * Open a changed case's answer in the cases below. "case 3" WAS A LABEL: the regression it named
+   * was a scroll and a search away, in a list that did not say which of its cases had moved.
+   */
+  onPickCase?: (exampleId: string, model: string) => void;
 }) {
   const diff = useMemo(() => compareEvals(before, after), [before, after]);
   const [box, narrow] = useNarrowerThan<HTMLElement>(STACK_BELOW_PX);
+  const providerModels = useProviderStore((s) => s.models);
   return (
     <section ref={box} className="mb-4 rounded-card border border-hair bg-panel px-3 py-2.5" aria-label="Compared with an earlier eval">
       <div className="flex items-baseline gap-2 pb-2">
@@ -101,7 +110,13 @@ export function EvalCompare({
         <span className="text-tiny text-muted">
           the eval {relTime(against.startedAt)} on {against.datasetName ?? "a deleted dataset"}
         </span>
-        <button onClick={onClose} className="ml-auto text-tiny text-faint transition-colors hover:text-ink">Stop comparing</button>
+        <button
+          type="button"
+          onClick={onClose}
+          className="ml-auto rounded-control px-2 py-1 text-tiny text-muted transition-colors hover:bg-active hover:text-ink focus-visible:outline-none focus-visible:shadow-focusring"
+        >
+          Stop comparing
+        </button>
       </div>
       {/* A CAVEAT IS A CAUTION, said in the info blue — amber is spent only on what is running. */}
       {diff.caveats.map((c) => (
@@ -140,11 +155,19 @@ export function EvalCompare({
         ) : (
           <ul className="space-y-0.5 text-tiny">
             {diff.changes.map((c) => (
-              <li key={`${c.exampleId}-${c.model}`} className="flex min-w-0 gap-2">
-                <span className="shrink-0 tabular-nums text-faint">case {c.index}</span>
-                <span className="shrink-0 text-muted">{c.model}</span>
-                <span className={c.better === null ? "text-muted" : c.better ? "text-ok" : "text-err"}>{c.what}</span>
-                <span className="min-w-0 truncate text-faint" title={c.input}>{c.input.split("\n")[0]}</span>
+              <li key={`${c.exampleId}-${c.model}`}>
+                <button
+                  type="button"
+                  onClick={() => onPickCase?.(c.exampleId, c.model)}
+                  disabled={!onPickCase}
+                  title={onPickCase ? "Open this case's answer in the cases below" : undefined}
+                  className="-mx-1 flex w-[calc(100%+0.5rem)] min-w-0 gap-2 rounded-control px-1 py-0.5 text-left transition-colors hover:bg-active focus-visible:outline-none focus-visible:shadow-focusring disabled:cursor-default disabled:hover:bg-transparent"
+                >
+                  <span className="shrink-0 tabular-nums text-faint">case {c.index}</span>
+                  <span className="shrink-0 text-muted">{modelName(providerModels, c.model)}</span>
+                  <span className={c.better === null ? "text-muted" : c.better ? "text-ok" : "text-err"}>{c.what}</span>
+                  <span className="min-w-0 truncate text-faint" title={c.input}>{c.input.split("\n")[0]}</span>
+                </button>
               </li>
             ))}
           </ul>

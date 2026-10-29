@@ -9,16 +9,22 @@
 // is the whole reason eval jobs were built on the normal execution path — the debugger the
 // user already knows is the drill-down.
 
-import { useState, type CSSProperties } from "react";
+import { Fragment, useState, type CSSProperties } from "react";
 import { sendLoadRun } from "../lib/socket.ts";
 import { useTraceStore } from "../store/traceStore.ts";
 import { useUiStore } from "../store/uiStore.ts";
 import { useEvalStore } from "../store/evalStore.ts";
+import { modelName, useProviderStore } from "../store/providerStore.ts";
 import { fmtCost, fmtLatency } from "../lib/format.ts";
+import { CASE_FACETS, criterionLabel, criterionTable, facetCounts, rowIs, type CaseFacet } from "../lib/evalView.ts";
+import { useNarrowerThan } from "../lib/useNarrower.ts";
 import { ICON } from "../lib/tokens.ts";
 import { Truncate } from "./Truncate.tsx";
 import { TYPE } from "../lib/tokens.ts";
 import { Chip } from "./Chip.tsx";
+import { SectionHeader } from "./SectionHeader.tsx";
+import { Segmented, type SegmentOption } from "./Segmented.tsx";
+import { secondaryBtn } from "./buttons.ts";
 import type { EvalResults, ExampleCell } from "../types.ts";
 import { Icon } from "../lib/icons/registry.ts";
 import { IconButton } from "./IconButton.tsx";
@@ -54,7 +60,7 @@ export function unscoredLook(cell: Pick<ExampleCell, "matches">): { label: strin
 }
 
 /** Compact score chip. A score, unscored, or the job's state — see `cellLook`. */
-function ScoreChip({ cell, active, onClick }: { cell: ExampleCell; active: boolean; onClick: () => void }) {
+function ScoreChip({ cell, name, active, onClick }: { cell: ExampleCell; name: string; active: boolean; onClick: () => void }) {
   const look = cellLook(cell.status);
   const unscored = cell.score === null ? unscoredLook(cell) : null;
   const label = look ? look.label : unscored ? unscored.label : (cell.score! * 100).toFixed(0);
@@ -83,7 +89,8 @@ function ScoreChip({ cell, active, onClick }: { cell: ExampleCell; active: boole
       title={`${cell.model}${why}`}
       figure={<span className={`${tone}${look?.struck ? " line-through" : ""}`}>{label}</span>}
     >
-      <Truncate className="max-w-[110px]">{cell.model}</Truncate>
+      {/* BY THE NAME THE RUN BAR USES — "Haiku 4.5" — with the id kept in the tooltip. */}
+      <Truncate className="max-w-[110px]">{name}</Truncate>
     </Chip>
   );
 }
@@ -117,6 +124,20 @@ export function ClampedText({ text, lines = 3, className = "" }: { text: string;
   );
 }
 
+/** A criterion's 0–4 score as four steps — the judge's anchored scale, which is four steps up from 0. */
+function Steps({ value }: { value: number }) {
+  return (
+    <span aria-hidden className="inline-flex gap-0.5">
+      {[1, 2, 3, 4].map((i) => (
+        <span key={i} className={`h-1.5 w-2.5 rounded-full ${value >= i ? "bg-muted" : "bg-active"}`} />
+      ))}
+    </span>
+  );
+}
+
+/** Wider than this, a cell's answer and what its case expected sit side by side. */
+const SIDE_BY_SIDE_PX = 460;
+
 /** Everything known about one (example, provider) pair. */
 export function CellDetail({
   cell,
@@ -124,6 +145,7 @@ export function CellDetail({
   criteria,
   onStep,
   responses = 2,
+  labelOf = (id) => id,
 }: {
   cell: ExampleCell;
   /** What the case expected, to read beside what was answered. */
@@ -140,9 +162,16 @@ export function CellDetail({
   onStep: (delta: -1 | 1) => void;
   /** How many responses this case has. With one there is nothing to step to. */
   responses?: number;
+  /**
+   * A criterion's name as the rubric gives it. The breakdown printed the ids verdicts are recorded
+   * under — `correctness 3/4` — while the eval carried the labels somebody had written for them.
+   */
+  labelOf?: (id: string) => string;
 }) {
   const setRightTab = useUiStore((s) => s.setRightTab);
   const selectRun = useTraceStore((s) => s.selectRun);
+  const providerModels = useProviderStore((s) => s.models);
+  const [box, narrow] = useNarrowerThan<HTMLDivElement>(SIDE_BY_SIDE_PX);
 
   const openTrace = () => {
     if (!cell.runId) return;
@@ -154,8 +183,10 @@ export function CellDetail({
   };
 
   return (
-    <div className="mt-2 ml-6 space-y-2 border-l border-hair pl-3">
-      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-tiny">
+    // UNDER A HAIRLINE IN ITS CASE, as the trace opens a section's body — not a rule down the left
+    // edge that indented the answer away from the case it answers.
+    <div ref={box} className="mt-2.5 space-y-3 border-t border-hair pt-2.5">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-tiny">
         <span className="flex items-center" role="group" aria-label="Step through this example's responses">
           <IconButton
             icon={Icon.evals.prevResponse}
@@ -173,7 +204,7 @@ export function CellDetail({
             onClick={() => onStep(1)}
           />
         </span>
-        <span className="text-ink">{cell.model}</span>
+        <span className="text-label text-ink" title={`${cell.provider} · ${cell.model}`}>{modelName(providerModels, cell.model)}</span>
         <span className={cellLook(cell.status)?.tone ?? "text-muted"}>{cellLook(cell.status)?.label ?? cell.status}</span>
         {/* The floor marker, where the number is. `cost_complete` has ridden the per-leg rollup
             since the dashboard was written and never reached the cell — so a cost that was an
@@ -192,10 +223,8 @@ export function CellDetail({
           </span>
         )}
         {cell.runId && (
-          <button
-            onClick={openTrace}
-            className="ml-auto inline-flex items-center gap-1 text-faint transition-colors duration-fast hover:text-ink"
-          >
+          // A WAY TO LOOK AT SOMETHING, so the secondary weight — the one `buttons.ts` gives exactly that.
+          <button type="button" onClick={openTrace} className={`${secondaryBtn} ml-auto`}>
             Open trace
             <Icon.cockpitWork.openTrace size={ICON.xs} />
           </button>
@@ -204,38 +233,47 @@ export function CellDetail({
 
       {cell.error && <div className="text-tiny text-err whitespace-pre-wrap break-words">{cell.error}</div>}
 
-      {/* WHAT IT ANSWERED, beside what was expected. This panel's header promises "what each one actually
-          answered", and it showed a status, a cost and a latency — the answer was only in the trace. */}
+      {/* WHAT IT ANSWERED, beside what was expected — side by side where there is room, so the reading
+          this view exists for is one glance across rather than one scroll down. */}
       {cell.status === "succeeded" && (
-        <div className="space-y-1.5 text-tiny">
-          <div>
-            <div className="text-faint">Answer</div>
+        <div className={expected && !narrow ? "grid grid-cols-2 gap-4" : "space-y-2.5"}>
+          <div className="min-w-0">
+            <div className={`mb-1 ${TYPE.sectionLabel}`}>Answer</div>
             {cell.output
-              ? <ClampedText text={cell.output} lines={6} className="text-ink" />
-              : <div className="text-faint italic">no answer was kept for this run — Open trace has the whole of it</div>}
+              ? <ClampedText text={cell.output} lines={6} className={TYPE.body} />
+              : <div className="text-tiny text-faint italic">no answer was kept for this run — Open trace has the whole of it</div>}
           </div>
           {expected && (
-            <div>
-              <div className="text-faint">
+            <div className="min-w-0">
+              <div className={`mb-1 flex items-center gap-2 ${TYPE.sectionLabel}`}>
                 Expected
-                {cell.matches === true && <span className="ml-2 text-ok">matches</span>}
-                {cell.matches === false && <span className="ml-2 text-err">does not match</span>}
+                {cell.matches === true && <span className="normal-case tracking-normal text-ok">matches</span>}
+                {cell.matches === false && <span className="normal-case tracking-normal text-err">does not match</span>}
               </div>
-              <ClampedText text={expected} lines={3} className="text-muted" />
+              <ClampedText text={expected} lines={3} className="text-caption text-muted" />
             </div>
           )}
         </div>
       )}
 
-      {/* Per-criterion breakdown: what the overall score is actually made of. */}
-      {cell.perCriterion && (
-        <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-tiny">
-          {criteria.map((id) => (
-            <span key={id} className="text-muted">
-              {id} <span className="text-ink tabular-nums">{cell.perCriterion?.[id] ?? "—"}</span>
-              <span className="text-faint">/4</span>
-            </span>
-          ))}
+      {/* WHAT THE SCORE IS MADE OF, each criterion by its name and as the four steps it is scored on. */}
+      {cell.perCriterion && criteria.length > 0 && (
+        <div>
+          <div className={`mb-1 ${TYPE.sectionLabel}`}>Judge</div>
+          <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-x-3 gap-y-1 text-tiny">
+            {criteria.map((id) => {
+              const value = cell.perCriterion?.[id];
+              return (
+                <Fragment key={id}>
+                  <span className="min-w-0 truncate text-muted" title={id}>{labelOf(id)}</span>
+                  {typeof value === "number" ? <Steps value={value} /> : <span />}
+                  <span className="text-right tabular-nums text-ink">
+                    {typeof value === "number" ? value : "—"}<span className="text-faint">/4</span>
+                  </span>
+                </Fragment>
+              );
+            })}
+          </div>
         </div>
       )}
 
@@ -253,10 +291,104 @@ export function CellDetail({
   );
 }
 
-export function ExampleDrillDown({ results }: { results: EvalResults }) {
-  // KEPT PER EVAL in the store, so the cell whose trace was opened is still open on the way back.
+/** A criterion's average for one model, as a short bar and the figure — for the breakdown. */
+function CriterionMeter({ value, n, lead }: { value: number | null; n: number; lead: boolean }) {
+  if (value === null) return <span className="text-faint" title="nothing scored on this criterion">—</span>;
+  return (
+    <span className="inline-flex items-center justify-end gap-2" title={`the mean of ${n} score${n === 1 ? "" : "s"}`}>
+      <span aria-hidden className="h-1.5 w-10 shrink-0 overflow-hidden rounded-full bg-active">
+        <span className={`block h-full rounded-full ${lead ? "bg-ink" : "bg-muted"}`} style={{ width: `${(value / 4) * 100}%` }} />
+      </span>
+      <span className={`tabular-nums ${lead ? "text-ink" : "text-muted"}`}>{value.toFixed(1)}</span>
+    </span>
+  );
+}
+
+/**
+ * Each criterion, each model's average on it — where two models' overall scores come apart.
+ *
+ * THE VERDICTS ALWAYS CARRIED THIS AND NOTHING SUMMED IT. A 74 against a 69 says one model is better;
+ * it does not say whether that is correctness or grounding, which is the thing somebody choosing
+ * between them needs. A criterion's weight is said as its share of the overall score, since weights
+ * are normalised and their raw values add up to nothing in particular.
+ */
+export function CriterionBreakdown({ results }: { results: EvalResults }) {
+  const providerModels = useProviderStore((s) => s.models);
+  const rows = criterionTable(results);
+  if (!rows.length) return null;
+  const totalWeight = rows.reduce((sum, r) => sum + (r.weight ?? 0), 0);
+  const cell = (first: boolean): string => `py-2 ${first ? "" : "border-t border-hair"}`;
+  return (
+    <section className="mt-5" aria-label="By criterion">
+      <div className="mb-1.5 flex min-h-8 items-center gap-2">
+        <span className={TYPE.sectionLabel}>By criterion</span>
+        <span className="text-tiny text-faint">each model's average, 0–4</span>
+      </div>
+      <div className="overflow-x-auto rounded-card border border-hair bg-panel">
+        <table className="w-full border-separate border-spacing-0 text-caption">
+          <thead>
+            <tr className={TYPE.sectionLabel}>
+              <th className="pb-1.5 pl-3 pr-3 pt-2.5 text-left font-normal">Criterion</th>
+              {results.providers.map((p, i) => (
+                <th
+                  key={`${p.provider} ${p.model}`}
+                  className={`whitespace-nowrap pb-1.5 pt-2.5 text-right font-normal ${i === results.providers.length - 1 ? "pl-2 pr-3" : "px-2"}`}
+                  title={`${p.provider} · ${p.model}`}
+                >
+                  {modelName(providerModels, p.model)}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r, i) => {
+              const values = r.scores.map((s) => s.avg).filter((v): v is number => v !== null);
+              const top = values.length > 1 && Math.max(...values) > Math.min(...values) ? Math.max(...values) : null;
+              return (
+                <tr key={r.id} title={r.description ?? undefined}>
+                  <td className={`${cell(i === 0)} pl-3 pr-3`}>
+                    <span className="text-ink">{r.label}</span>
+                    {r.weight !== null && totalWeight > 0 && (
+                      <span className="ml-1.5 text-tiny tabular-nums text-faint" title="This criterion's share of the overall score">
+                        {Math.round((r.weight / totalWeight) * 100)}%
+                      </span>
+                    )}
+                  </td>
+                  {r.scores.map((s, j) => (
+                    <td key={`${s.provider} ${s.model}`} className={`${cell(i === 0)} text-right ${j === r.scores.length - 1 ? "pl-2 pr-3" : "px-2"}`}>
+                      <CriterionMeter value={s.avg} n={s.n} lead={top !== null && s.avg === top} />
+                    </td>
+                  ))}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
+/** Each facet as the case list's filter says it, and what choosing it shows. */
+const FACET_TEXT: Record<CaseFacet, { text: string; noun: string }> = {
+  all: { text: "All", noun: "every case" },
+  failed: { text: "Failed", noun: "the cases a model failed" },
+  disagree: { text: "Disagree", noun: "the cases the models answered differently" },
+  unscored: { text: "Unscored", noun: "the cases with an answer the judge did not score" },
+  changed: { text: "Changed", noun: "the cases whose outcome moved since the eval this is compared with" },
+};
+
+export function ExampleDrillDown({ results, changed }: {
+  results: EvalResults;
+  /** The cases whose outcome moved against the eval this one is compared with, while comparing. */
+  changed?: ReadonlySet<string>;
+}) {
+  // KEPT PER EVAL in the store, so the cell whose trace was opened is still open on the way back —
+  // and so is the facet it was found under.
   const openCell = useEvalStore((s) => s.openCellByEval[results.evalId] ?? null);
   const setOpenCell = (jobId: string | null): void => useEvalStore.getState().setOpenCell(results.evalId, jobId);
+  const chosen = useEvalStore((s) => s.caseFacetByEval[results.evalId] ?? "all");
+  const providerModels = useProviderStore((s) => s.models);
 
   // Criterion ids, taken from whichever cell has a breakdown — the rubric is the same for
   // the whole eval, so any scored cell names them all.
@@ -266,60 +398,102 @@ export function ExampleDrillDown({ results }: { results: EvalResults }) {
 
   if (!results.rows.length) return null;
 
+  // THE QUESTIONS SOMEBODY OPENS THE CASES TO ASK, as the trace's step filters are drawn: how many
+  // each holds, Failed in red the moment there is one, and an empty one greyed in place rather than
+  // gone — a filter whose options come and go is a row whose buttons move under the pointer.
+  // Unscored is offered only when the judge scored something, since with it off every case is;
+  // Changed only while there is an eval to have changed against.
+  const counts = facetCounts(results.rows, changed);
+  const anyScored = results.rows.some((r) => r.cells.some((c) => c.score !== null));
+  const offered = CASE_FACETS.filter((f) => (f === "changed" ? changed !== undefined : f === "unscored" ? anyScored : true));
+  const facet: CaseFacet = offered.includes(chosen) ? chosen : "all";
+  const options: SegmentOption<CaseFacet>[] = offered.map((f) => ({
+    value: f,
+    text: FACET_TEXT[f].text,
+    count: counts[f],
+    countTone: f === "failed" ? "danger" : undefined,
+    alert: f === "failed" && counts.failed > 0,
+    // Never disable the one that is chosen: it must stay pressable to read as chosen.
+    disabled: counts[f] === 0 && f !== facet,
+    label: counts[f] === 0 ? `Show ${FACET_TEXT[f].noun} — this eval has none` : `Show ${FACET_TEXT[f].noun}`,
+  }));
+  // THE NUMBERS STAY EACH CASE'S OWN, so "case 7" is case 7 under any facet.
+  const shown = results.rows.map((row, i) => ({ row, i })).filter(({ row }) => rowIs(row, facet, changed));
+
   return (
-    <div className="mt-5">
-      <div className={`pb-1.5 ${TYPE.sectionLabel}`}>By example</div>
-      <div className="space-y-1">
-        {results.rows.map((row, i) => {
-          const open = row.cells.find((c) => c.jobId === openCell);
-          return (
-            <div key={row.exampleId} className="py-1.5">
-              <div className="flex items-start gap-3">
-                <span className="text-faint text-tiny tabular-nums w-5 shrink-0 text-right select-none pt-1">
-                  {i + 1}
-                </span>
-                <div className="min-w-0 flex-1">
-                  {/* LINE BREAKS KEPT, LONG CASES FOLDED. The input was one run-on paragraph with every
-                      newline collapsed, so a Liven case's `---` between the job and the résumé ran
-                      into the text — and a whole case filled the panel. */}
-                  <ClampedText text={row.input} lines={3} className="text-caption text-ink" />
-                  {row.expected && (
-                    <div className="mt-0.5 flex gap-1 text-tiny text-faint">
-                      <span className="shrink-0">expected:</span>
-                      <ClampedText text={row.expected} lines={2} className="min-w-0" />
+    <section className="mt-5" aria-label="Cases">
+      <SectionHeader name="Cases" count={results.rows.length} className="mb-1.5 min-h-8 flex-wrap">
+        {offered.length > 1 && (
+          <div className="ml-auto max-w-full overflow-x-auto">
+            <Segmented
+              options={options}
+              value={facet}
+              onChange={(f) => useEvalStore.getState().setCaseFacet(results.evalId, f)}
+              ariaLabel="Show cases"
+              round
+            />
+          </div>
+        )}
+      </SectionHeader>
+      {shown.length === 0 ? (
+        <div className="rounded-card border border-hair bg-panel px-3 py-3 text-tiny text-faint">
+          No case is in this view.
+        </div>
+      ) : (
+        <div className="divide-y divide-hair rounded-card border border-hair bg-panel">
+          {shown.map(({ row, i }) => {
+            const open = row.cells.find((c) => c.jobId === openCell);
+            return (
+              <div key={row.exampleId} data-example-id={row.exampleId} className="px-3 py-2.5">
+                <div className="flex items-start gap-3">
+                  <span className="text-faint text-tiny tabular-nums w-5 shrink-0 text-right select-none pt-0.5">
+                    {i + 1}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    {/* LINE BREAKS KEPT, LONG CASES FOLDED. The input was one run-on paragraph with every
+                        newline collapsed, so a Liven case's `---` between the job and the résumé ran
+                        into the text — and a whole case filled the panel. */}
+                    <ClampedText text={row.input} lines={3} className="text-caption text-ink" />
+                    {row.expected && (
+                      <div className="mt-0.5 flex gap-1 text-tiny text-faint">
+                        <span className="shrink-0">expected:</span>
+                        <ClampedText text={row.expected} lines={2} className="min-w-0" />
+                      </div>
+                    )}
+                    <div className="mt-1.5 flex flex-wrap gap-1">
+                      {row.cells.map((c) => (
+                        <ScoreChip
+                          key={c.jobId}
+                          cell={c}
+                          name={modelName(providerModels, c.model)}
+                          active={c.jobId === openCell}
+                          onClick={() => setOpenCell(c.jobId === openCell ? null : c.jobId)}
+                        />
+                      ))}
                     </div>
-                  )}
-                  <div className="flex flex-wrap gap-1 mt-1">
-                    {row.cells.map((c) => (
-                      <ScoreChip
-                        key={c.jobId}
-                        cell={c}
-                        active={c.jobId === openCell}
-                        onClick={() => setOpenCell(c.jobId === openCell ? null : c.jobId)}
+                    {open && (
+                      <CellDetail
+                        cell={open}
+                        expected={row.expected}
+                        criteria={criteria}
+                        labelOf={(id) => criterionLabel(results, id)}
+                        responses={row.cells.length}
+                        onStep={(delta) => {
+                          // WRAPS, because a row is a ring of two to four answers to one question
+                          // and stopping at the end would make the last one a dead end.
+                          const at = row.cells.findIndex((c) => c.jobId === open.jobId);
+                          const next = row.cells[(at + delta + row.cells.length) % row.cells.length];
+                          if (next) setOpenCell(next.jobId);
+                        }}
                       />
-                    ))}
+                    )}
                   </div>
-                  {open && (
-                    <CellDetail
-                      cell={open}
-                      expected={row.expected}
-                      criteria={criteria}
-                      responses={row.cells.length}
-                      onStep={(delta) => {
-                        // WRAPS, because a row is a ring of two to four answers to one question
-                        // and stopping at the end would make the last one a dead end.
-                        const at = row.cells.findIndex((c) => c.jobId === open.jobId);
-                        const next = row.cells[(at + delta + row.cells.length) % row.cells.length];
-                        if (next) setOpenCell(next.jobId);
-                      }}
-                    />
-                  )}
                 </div>
               </div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
+            );
+          })}
+        </div>
+      )}
+    </section>
   );
 }

@@ -90,6 +90,16 @@ console.log("\nnothing listed yet is one value, so a selector reading it settles
     examplesOf({}, "d-pending") === examplesOf({}, "d-pending") && examplesOf({}, null) === examplesOf({}, null));
 }
 
+console.log("\nthe facet a case list was narrowed to is kept per eval, for the trip to a trace and back");
+{
+  useEvalStore.getState().setCaseFacet("e1", "failed");
+  useEvalStore.getState().setCaseFacet("e2", "disagree");
+  const st = useEvalStore.getState();
+  check("each eval keeps its own", st.caseFacetByEval["e1"] === "failed" && st.caseFacetByEval["e2"] === "disagree");
+  check("and the store starts with none, so a workspace switch's reset clears them",
+    Object.keys(useEvalStore.getInitialState().caseFacetByEval).length === 0);
+}
+
 console.log(fail === 0 ? "\nALL CORRECT" : `\n${fail} FAILURES`);
 // `globalThis.process` rather than `process`: the client tsconfig has no node types.
 (globalThis as { process?: { exit(code: number): void } }).process?.exit(fail === 0 ? 0 : 1);

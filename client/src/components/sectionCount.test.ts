@@ -88,6 +88,8 @@ console.log("\nevery count is a total");
     ["components/AccessPeople.tsx", "rows.length"],
     ["components/AccessInvites.tsx", "invites.length"],
     ["components/DatasetBuilder.tsx", "datasets.length"],
+    // An eval's rows arrive whole — `loadEvalResults` has no cursor — so the length is a total.
+    ["components/EvalDrillDown.tsx", "results.rows.length"],
     ["components/GitHubPanel.tsx", "view.unpushed.length"],
   ];
   // THE SIDEBAR STATES NO RUN COUNT AT ALL NOW, WHICH IS THE STRONGEST FORM OF THIS RULE. The count

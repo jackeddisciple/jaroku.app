@@ -18,6 +18,7 @@
 
 import { create } from "zustand";
 import type { Dataset, DatasetExample, EvalEstimate, EvalJudgeState, EvalResults, EvalRunSummary, EvalTarget, Rubric } from "../types.ts";
+import type { CaseFacet } from "../lib/evalView.ts";
 
 /** Live counters while an eval drains. Counts only — no step traffic on this channel. */
 export interface EvalProgress {
@@ -114,6 +115,9 @@ interface EvalState {
   setMode: (agentId: string, mode: "dataset" | "results") => void;
   openCellByEval: Record<string, string | null>;
   setOpenCell: (evalId: string, jobId: string | null) => void;
+  /** eval -> which of its cases are listed — failed, disagreeing… — kept for the same round trip. */
+  caseFacetByEval: Record<string, CaseFacet>;
+  setCaseFacet: (evalId: string, facet: CaseFacet) => void;
   /** An agent whose run bar should open its estimate — Run again's hand-off. Consumed by the bar. */
   estimateRequest: string | null;
   requestEstimate: (agentId: string | null) => void;
@@ -219,6 +223,8 @@ export const useEvalStore = create<EvalState>((set) => ({
   setMode: (agentId, mode) => set((s) => ({ modeByAgent: { ...s.modeByAgent, [agentId]: mode } })),
   openCellByEval: {},
   setOpenCell: (evalId, jobId) => set((s) => ({ openCellByEval: { ...s.openCellByEval, [evalId]: jobId } })),
+  caseFacetByEval: {},
+  setCaseFacet: (evalId, facet) => set((s) => ({ caseFacetByEval: { ...s.caseFacetByEval, [evalId]: facet } })),
   estimateRequest: null,
   requestEstimate: (estimateRequest) => set({ estimateRequest }),
   compareWithByAgent: {},

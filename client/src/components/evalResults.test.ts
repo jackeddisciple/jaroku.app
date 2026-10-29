@@ -128,6 +128,59 @@ console.log("\na case keeps its line breaks, and one response has nothing to ste
   check(prev !== "" && !/\sdisabled=""/.test(prev), "and enabled with two", prev);
 }
 
+console.log("\nthe cases can be narrowed as the trace's steps are, and a criterion is read by its name");
+{
+  const { ExampleDrillDown, CellDetail, CriterionBreakdown } = await import("./EvalDrillDown.tsx");
+  const { useEvalStore } = await import("../store/evalStore.ts");
+  type Cell = import("../types.ts").ExampleCell;
+  const mk = (over: Partial<Cell> = {}): Cell => ({
+    jobId: Math.random().toString(36), provider: "anthropic", model: "claude-haiku-4-5", status: "succeeded", runId: "r",
+    costUsd: 0.001, costComplete: true, latencyMs: 900, attempt: 0, error: null, output: "4 words.", matches: null,
+    score: 0.75, scoreError: null, perCriterion: { correctness: 3, grounding: 4 }, rationale: null, ...over,
+  });
+  const leg = (model: string) => ({
+    provider: "anthropic", model, total: 3, succeeded: 3, failed: 0, cancelled: 0, pending: 0, successRate: 1, comparisonCostUsd: 0.003,
+    costPerRunUsd: 0.001, spentUsd: 0.003, tokens: 30, latencyP50Ms: 900, latencyP95Ms: 1000, costUnknown: false, costIncomplete: false,
+    qualityScore: 0.7, scored: 3, unscored: 0,
+  });
+  const rubric = [
+    { id: "correctness", label: "Correctness", description: "Does it answer the question?", weight: 3 },
+    { id: "grounding", label: "Grounding", description: "Is every claim supported?", weight: 1 },
+  ];
+  const rows = [
+    { exampleId: "a", input: "Count the words", expected: null, cells: [mk(), mk({ model: "claude-sonnet-5", score: 0.8 })] },
+    { exampleId: "b", input: "What time is it", expected: null, cells: [mk({ status: "failed", score: null, perCriterion: null, error: "boom" }), mk({ model: "claude-sonnet-5" })] },
+    { exampleId: "c", input: "Sydney evening?", expected: null, cells: [
+      mk({ score: 0.25, perCriterion: { correctness: 1, grounding: 2 } }),
+      mk({ model: "claude-sonnet-5", score: 1, perCriterion: { correctness: 4, grounding: 4 } }),
+    ] },
+  ];
+  const r = results({ evalId: "eF", rows, rubric, providers: [leg("claude-haiku-4-5"), leg("claude-sonnet-5")] });
+  let html = markup(createElement(ExampleDrillDown, { results: r }));
+  check(/role="radiogroup" aria-label="Show cases"/.test(html), "the cases have the trace's filter over them");
+  check(/>Failed<span class="ml-1 text-err">1<\/span>/.test(html), "Failed counts its one case, in red");
+  check(/>Disagree<span class="ml-1 text-faint">2<\/span>/.test(html), "and the two where the models answered differently");
+  check(/>Cases<\/span><span class="text-tiny tabular-nums text-faint">3</.test(html), "the header counts every case");
+  check(!/>Changed</.test(html), "with nothing compared, there is no Changed");
+  seed(useEvalStore, { caseFacetByEval: { eF: "failed" } } as never);
+  html = markup(createElement(ExampleDrillDown, { results: r }));
+  const words = text(html);
+  check(words.includes("What time is it") && !words.includes("Count the words"), "under Failed only the failed case is listed", words.slice(0, 200));
+  check(/select-none pt-0\.5">2<\/span>/.test(html), "and it keeps its own number");
+
+  const detail = markup(createElement(CellDetail, {
+    cell: mk(), expected: null, criteria: ["correctness", "grounding"], onStep: () => {},
+    labelOf: (id: string) => (id === "correctness" ? "Correctness" : "Grounding"),
+  }));
+  check(text(detail).includes("Correctness") && />3<span class="text-faint">\/4<\/span>/.test(detail) && !/>correctness</.test(detail),
+    "a cell's criterion is read by its name, out of the four steps it is scored on");
+
+  const breakdown = text(markup(createElement(CriterionBreakdown, { results: r })));
+  check(breakdown.includes("By criterion") && breakdown.includes("Correctness 75%") && breakdown.includes("Grounding 25%"),
+    "the breakdown names each criterion with its share of the score", breakdown);
+  check(breakdown.includes("2.0") && breakdown.includes("3.3") && breakdown.includes("4.0"), "and each model's average on it, over what was scored", breakdown);
+}
+
 console.log("\nthe table compares only what can be compared");
 {
   const { ComparisonTable } = await import("./EvalDashboard.tsx");

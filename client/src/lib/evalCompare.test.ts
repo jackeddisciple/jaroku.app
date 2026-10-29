@@ -75,6 +75,10 @@ console.log("\nthe comparison, rendered");
   const after = evalOf({ evalId: "new", rows: [{ exampleId: "x1", input: "Role: QA", expected: "decline", cells: [cell({ matches: false })] }] });
   const words = markup(createElement(EvalCompare, { before, after, onClose: () => {} })).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
   check(words.includes("What changed") && words.includes("matched → did not match") && words.includes("case 1"), "it lists the case that changed", words);
+  const pickable = markup(createElement(EvalCompare, { before, after, onClose: () => {}, onPickCase: () => {} }));
+  const row = (pickable.match(/<button[^>]*>(?:(?!<\/button>).)*case 1(?:(?!<\/button>).)*<\/button>/s) ?? [""])[0];
+  check(row !== "" && /title="Open this case(?:'|&#x27;)s answer in the cases below"/.test(row) && !/\sdisabled=""/.test(row),
+    "and each change is a way to that case's answer, not only its number", row.slice(0, 200));
   const same = markup(createElement(EvalCompare, { before, after: before, onClose: () => {} })).replace(/<[^>]+>/g, " ");
   check(same.includes("No case changed its outcome"), "and says so when nothing did");
   // WHICH EVAL, not only when — two from the same afternoon both read "4d ago".
