@@ -187,7 +187,7 @@ export function CellDetail({
         </span>
         <span className="text-muted tabular-nums">{fmtLatency(cell.latencyMs)}</span>
         {cell.attempt > 0 && (
-          <span className="text-run" title="this job was retried after a transient failure">
+          <span className="text-muted" title="this job was retried after a transient failure">
             attempt {cell.attempt + 1}
           </span>
         )}

@@ -14,12 +14,13 @@ import { parseCeiling, suggestedCeiling } from "./EvalRunBar.tsx";
 import { useCanRun } from "../lib/useCapability.ts";
 import { useUiStore } from "../store/uiStore.ts";
 import { DatasetBuilder } from "./DatasetBuilder.tsx";
-import { ComparisonTable } from "./EvalDashboard.tsx";
+import { ComparisonTable, EXPORTS, saveExport } from "./EvalDashboard.tsx";
 import { ExampleDrillDown } from "./EvalDrillDown.tsx";
 import { EvalRunBar } from "./EvalRunBar.tsx";
 import { EvalUndoToast } from "./EvalUndoToast.tsx";
 import { EvalCompare } from "./EvalCompare.tsx";
-import { relTime } from "../lib/format.ts";
+import { absTime, relTime } from "../lib/format.ts";
+import { evalDuration, verdict } from "../lib/evalView.ts";
 import { EmptyState } from "./EmptyState.tsx";
 import { ChevronDownIcon, DatabaseIcon } from "./panelIcons.tsx";
 import { Segmented, type SegmentOption } from "./Segmented.tsx";
@@ -34,7 +35,7 @@ import {
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu.tsx";
 import { modelName, useProviderStore } from "../store/providerStore.ts";
-import { factChip, secondaryBtn, tabBtn } from "./buttons.ts";
+import { factChip, iconBtn, markBtn, primaryBtnSm, secondaryBtn, tabBtn } from "./buttons.ts";
 import { Tip } from "./ui/tooltip.tsx";
 import { ICON, TYPE } from "../lib/tokens.ts";
 import { Icon, type IconComponent } from "../lib/icons/registry.ts";
@@ -42,7 +43,6 @@ import { EVAL_PHASE } from "../lib/domainPhase.ts";
 import { StatusGlyph } from "./StatusGlyph.tsx";
 import type { EvalResults, EvalRunStatus, EvalRunSummary } from "../types.ts";
 import type { EvalProgress } from "../store/evalStore.ts";
-import { fmtBudget, fmtCost } from "../lib/format.ts";
 
 /**
  * This panel's word for each eval status, beside the phase's shape.
@@ -69,61 +69,95 @@ const EVAL_WORD: Record<EvalRunStatus, string> = {
  * stop reason the server records ("stopped after $0.0048 of a $0.0010 budget", a workspace ceiling,
  * a restart) was on the row and nowhere else.
  */
-export function ResultsHeader({ results, live }: { results: EvalResults; live: EvalProgress | null }) {
+export function ResultsHeader({ results, live, actions }: {
+  results: EvalResults;
+  live: EvalProgress | null;
+  /** The eval's own actions, beside its outcome — as the trace's run actions sit beside its pill. */
+  actions?: React.ReactNode;
+}) {
   const agentName = useBuildStore((s) => s.agents.find((a) => a.agent_id === results.agentId)?.name ?? results.agentId);
-  const status = (live && live.evalId === results.evalId && live.status === undefined ? "running" : results.status) as EvalRunStatus;
-  const word = EVAL_WORD[status] ?? status;
-  // Each with its effort when it had one, so two comparisons at different levels are told apart.
-  const models = (results.targets ?? results.providers).map((t) => ("effort" in t && t.effort ? `${t.model} (${t.effort})` : t.model));
-  const { totals } = results;
+  const providerModels = useProviderStore((s) => s.models);
+  const liveHere = live !== null && live.evalId === results.evalId && live.status === undefined;
+  const status = (liveHere ? "running" : results.status) as EvalRunStatus;
+  // Each by the name the run bar uses, with its effort when it had one, so two comparisons at
+  // different levels are told apart.
+  const models = (results.targets ?? results.providers).map((t) => {
+    const name = modelName(providerModels, t.model);
+    return "effort" in t && t.effort ? `${name} (${t.effort})` : name;
+  });
+  const duration = evalDuration(results);
+  // HEADED AS A RUN IS IN THE TRACE: what this is and its outcome on the first line, the facts that
+  // identify it as round chips on the second. It was two lines of 11px text with a glyph in them, and
+  // the outcome was a word the same weight as the date beside it.
   return (
-    <div className="space-y-1 pb-3">
-      <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5 text-caption">
-        <span className="text-ink">{agentName}</span>
-        {results.agentVersion != null && <span className="text-tiny text-faint">v{results.agentVersion}</span>}
-        <span className="text-faint">·</span>
-        <span className="min-w-0 truncate text-muted" title={results.datasetName ?? undefined}>
+    <div className="pb-3">
+      <div className="flex min-h-6 flex-wrap items-center gap-x-3 gap-y-1.5">
+        <span className="min-w-0 flex-1 truncate text-label text-ink" title={results.datasetName ?? undefined}>
           {results.datasetName ?? "a deleted dataset"}
         </span>
+        <span className="flex shrink-0 items-center gap-2">
+          <EvalOutcomePill status={status} detail={liveHere ? `${live.done} of ${live.total}` : null} />
+          {actions}
+        </span>
       </div>
-      <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-tiny text-muted">
-        <span className="inline-flex items-center gap-1 text-ink">
-          <StatusGlyph phase={EVAL_PHASE[status] ?? "pending"} size={ICON.xs} title={word} />
-          {word}
-        </span>
-        <span title={results.startedAt}>{relTime(results.startedAt)}</span>
-        <span className="tabular-nums">
-          {fmtCost(totals.trueSpendUsd)} spent{totals.budgetUsd !== null ? ` of ${fmtBudget(totals.budgetUsd)}` : ""}
-        </span>
+      <div className="mt-1 flex min-w-0 flex-wrap items-center gap-1.5 text-tiny text-muted">
+        <Tip label="The agent, and the version of it this eval ran against">
+          <span className={`${factChip} shrink-0 cursor-default`} tabIndex={0}>
+            {agentName}{results.agentVersion != null ? ` v${results.agentVersion}` : ""}
+          </span>
+        </Tip>
+        <Tip label={absTime(results.startedAt)}>
+          <span className={`${factChip} shrink-0 cursor-default`} tabIndex={0}>{relTime(results.startedAt)}</span>
+        </Tip>
+        {duration && (
+          <Tip label="How long the eval took, from its first run to its last">
+            <span className={`${factChip} shrink-0 cursor-default tabular-nums`} tabIndex={0}>{duration}</span>
+          </Tip>
+        )}
         <span className="min-w-0 truncate" title={models.join(", ")}>{models.join(" · ")}</span>
       </div>
       {results.stopReason && status !== "completed" && status !== "running" && (
-        <div className="text-tiny text-muted">{results.stopReason}</div>
+        <div className="mt-1.5 text-tiny text-muted">{results.stopReason}</div>
       )}
     </div>
   );
 }
 
 /**
- * Whether Quality will be filled in, and the one control that fills it.
+ * What can be done with an eval: export it, run its unfinished cells again, or run it all again.
  *
- * A "—" IN EVERY QUALITY CELL, WITH NOTHING TO DO ABOUT IT. Production has no platform judge key, so
- * every eval came back unscored, and nothing on the panel led anywhere that could change that. The
- * workspace's own Anthropic key can judge, if somebody allowed to decide whose key pays says so.
- */
-/**
- * What can be done with a finished eval: run its unfinished cells again, or run the whole thing again.
- *
- * NEITHER EXISTED. A budget stop that cancelled thirteen cells could only be followed by a new eval
- * of all fifteen, and repeating an eval meant choosing its models and ceiling again by hand.
+ * RETRY AND RUN AGAIN DID NOT EXIST. A budget stop that cancelled thirteen cells could only be
+ * followed by a new eval of all fifteen, and repeating an eval meant choosing its models and
+ * ceiling again by hand. They sit beside the outcome now, drawn as the trace's run actions are: the
+ * next thing to do as the one filled button, the rest as marks on a grey ground. Export lived at the
+ * foot of the table as a word; it is a mark here, and it is there while an eval is still running.
  */
 export function EvalActions({ results }: { results: EvalResults }) {
   const [retrying, setRetrying] = useState(false);
   const [ceiling, setCeiling] = useState("");
   const live = useEvalStore((s) => s.progressByEval[results.evalId]);
   const datasets = useEvalStore((s) => datasetsOf(s.datasetsByAgent, results.agentId));
+  const agentName = useBuildStore((s) => s.agents.find((a) => a.agent_id === results.agentId)?.name);
   const finished = !["running", "queued"].includes(results.status) && !(live && (live.status === undefined || live.scoring));
-  if (!finished) return null;
+  // Every caveat survives the trip — unknown cost is an empty cell with a cost_known flag beside it,
+  // never a 0 a spreadsheet would happily sum — and the download says where it went.
+  const exportMenu = (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button type="button" className={markBtn} aria-label="Export these results" title="Export these results">
+          <Icon.evals.exportCsv size={ICON.sm} />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        {EXPORTS.map((x) => (
+          <DropdownMenuItem key={x.label} onSelect={() => saveExport(results, x, agentName)}>
+            {x.label}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+  if (!finished) return <span className="flex items-center gap-1" role="group" aria-label="Eval actions">{exportMenu}</span>;
   const cells = results.rows.flatMap((r) => r.cells);
   // A case that is gone cannot run again, so it is not offered: retried, it only failed at once.
   const again = results.rows.filter((r) => !r.caseGone).flatMap((r) => r.cells)
@@ -145,13 +179,15 @@ export function EvalActions({ results }: { results: EvalResults }) {
   };
 
   return (
-    <div className="flex flex-wrap items-center gap-2 pb-3 text-tiny">
+    <span className="flex flex-wrap items-center gap-1 text-tiny" role="group" aria-label="Eval actions">
       {again > 0 && !retrying && (
         <button
+          type="button"
           onClick={() => (spentOut ? setRetrying(true) : sendRetryEval(results.evalId, results.agentId, totals.budgetUsd))}
-          className={secondaryBtn}
+          className={`${primaryBtnSm} focus-visible:outline-none focus-visible:shadow-focusring`}
           title="Run the failed, timed-out and cancelled cells again, inside this eval"
         >
+          <Icon.graph.retry size={ICON.sm} />
           Retry {again} cell{again === 1 ? "" : "s"}
         </button>
       )}
@@ -166,28 +202,43 @@ export function EvalActions({ results }: { results: EvalResults }) {
             className="w-16 rounded-input border border-edge bg-elevated px-1.5 py-0.5 tabular-nums text-ink outline-none focus:shadow-focusring"
           />
           <button
+            type="button"
             disabled={"error" in parsed}
             title={"error" in parsed ? parsed.error : undefined}
             onClick={() => { if ("usd" in parsed) sendRetryEval(results.evalId, results.agentId, parsed.usd); setRetrying(false); }}
-            className={secondaryBtn}
+            className={primaryBtnSm}
           >
             Retry
           </button>
-          <button onClick={() => setRetrying(false)} className="text-faint hover:text-ink">Cancel</button>
+          <button type="button" onClick={() => setRetrying(false)} className={TEXT_ACTION}>Cancel</button>
         </span>
       )}
       {datasetHere && (
         <button
+          type="button"
           onClick={runAgain}
-          className={secondaryBtn}
-          title="Choose the same models and open the estimate for a new eval of this dataset as it is now"
+          className={markBtn}
+          aria-label="Run again"
+          title="Run again — the same models, and the estimate for a new eval of this dataset as it is now"
         >
-          Run again
+          <Icon.cockpit.refresh size={ICON.sm} />
         </button>
       )}
-    </div>
+      {exportMenu}
+    </span>
   );
 }
+
+/** A small text action, as the trace draws one — a word with a hit area that shows on approach. */
+const TEXT_ACTION =
+  "rounded-control px-2 py-1 text-tiny text-muted transition-colors hover:bg-active hover:text-ink focus-visible:outline-none focus-visible:shadow-focusring";
+
+/**
+ * A notice on Results — a refusal, the judge's state — as one construction: a card in the trace's
+ * surface, its sentence, and what can be done about it. They were three differently spaced lines of
+ * small text, one of them red, stacked over the table.
+ */
+const NOTICE = "mb-3 flex flex-wrap items-center gap-2 rounded-card border border-hair bg-panel px-3 py-2 text-tiny";
 
 /**
  * What the server refused, on Results as well as on Dataset.
@@ -201,14 +252,9 @@ export function EvalRefusal() {
   const setError = useEvalStore((s) => s.setError);
   if (!error) return null;
   return (
-    <div className="flex items-start gap-2 pb-3 text-tiny" role="alert">
-      <span className="text-err">{error}</span>
-      <button
-        onClick={() => setError(null)}
-        title="Dismiss"
-        aria-label="Dismiss"
-        className="ml-auto shrink-0 text-faint transition-colors duration-fast hover:text-ink"
-      >
+    <div className={NOTICE} role="alert">
+      <span className="min-w-0 flex-1 text-err">{error}</span>
+      <button type="button" onClick={() => setError(null)} title="Dismiss" aria-label="Dismiss" className={`${iconBtn} shrink-0`}>
         <Icon.global.dismissNotice size={ICON.xs} />
       </button>
     </div>
@@ -230,6 +276,13 @@ export function evalDatasetLabel(
   return e.dataset_gone ? "a deleted dataset" : null;
 }
 
+/**
+ * Whether Quality will be filled in, and the one control that fills it.
+ *
+ * A "—" IN EVERY QUALITY CELL, WITH NOTHING TO DO ABOUT IT. Production has no platform judge key, so
+ * every eval came back unscored, and nothing on the panel led anywhere that could change that. The
+ * workspace's own Anthropic key can judge, if somebody allowed to decide whose key pays says so.
+ */
 export function JudgeLine() {
   const judge = useEvalStore((s) => s.judge);
   const canSwitch = useCanRun("setJudgeOwnKey");
@@ -237,10 +290,10 @@ export function JudgeLine() {
   if (judge.enabled) {
     if (judge.source !== "own-key" || !judge.ownKey) return null;
     return (
-      <div className="flex flex-wrap items-center gap-2 pb-3 text-tiny text-faint">
-        <span>Quality is judged on this workspace's Anthropic key.</span>
+      <div className={NOTICE}>
+        <span className="min-w-0 flex-1 text-muted">Quality is judged on this workspace's Anthropic key.</span>
         {canSwitch && (
-          <button onClick={() => sendSetJudgeOwnKey(false)} className="text-muted underline underline-offset-2 transition-colors hover:text-ink">
+          <button type="button" onClick={() => sendSetJudgeOwnKey(false)} className={TEXT_ACTION}>
             Turn off
           </button>
         )}
@@ -248,20 +301,22 @@ export function JudgeLine() {
     );
   }
   return (
-    <div className="flex flex-wrap items-center gap-2 pb-3 text-tiny" role="status">
-      <span className="text-muted">Quality isn't scored — the judge is off.</span>
+    <div className={NOTICE} role="status">
+      <span className="min-w-0 flex-1 text-muted">Quality isn't scored — the judge is off.</span>
       {!judge.keyPresent ? (
         <button
+          type="button"
           onClick={() => useUiStore.getState().openSecretsForProvider("anthropic")}
-          className="text-ink underline underline-offset-2"
+          className={secondaryBtn}
         >
           Add an Anthropic key in Secrets →
         </button>
       ) : canSwitch ? (
         <button
+          type="button"
           onClick={() => sendSetJudgeOwnKey(true)}
           title="Score answers with this workspace's Anthropic key. It is used for the judge and nothing else."
-          className="text-ink underline underline-offset-2"
+          className={secondaryBtn}
         >
           Judge with my Anthropic key
         </button>
@@ -507,6 +562,7 @@ export function EvalsPanel() {
   const openDataset = agentDatasets.find((d) => d.id === selectedDatasetId);
   const counts = { dataset: caseCount, results: evalCount };
   const shownSummary = evals.find((e) => e.id === shownEvalId);
+  const verdictOf = (r: EvalResults): string | null => verdict(r.providers, (m) => modelName(providerModels, m));
   const modelsOf = (e: EvalRunSummary): string =>
     e.targets.map((t) => `${modelName(providerModels, t.model)}${t.effort ? ` (${t.effort})` : ""}`).join(" · ");
   const showOlder = (): void => {
@@ -669,8 +725,10 @@ export function EvalsPanel() {
 
           {results ? (
             <>
-              <ResultsHeader results={results} live={progress} />
-              <EvalActions results={results} />
+              <ResultsHeader results={results} live={progress} actions={<EvalActions results={results} />} />
+              {/* THE ANSWER, IN A SENTENCE, before the figures it is drawn from — who leads, on what, by
+                  how much. Left out when there is nothing to compare or nothing it could honestly say. */}
+              {verdictOf(results) && <p className={`${TYPE.body} pb-3`}>{verdictOf(results)}</p>}
               <JudgeLine />
               {comparing && activeAgentId && (
                 // Older first, whichever was picked: "before → after" reads in time order.

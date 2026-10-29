@@ -22,6 +22,7 @@ import { Icon, type IconComponent } from "../lib/icons/registry.ts";
 import { ICON } from "../lib/tokens.ts";
 import { orderedSteps, useTraceStore } from "../store/traceStore.ts";
 import type { RunSummary, Step } from "../types.ts";
+import { FIGURE_STRIP, MetricFigure, type MetricFigureProps } from "./MetricFigure.tsx";
 
 const plural = (n: number, word: string): string => `${n} ${word}${n === 1 ? "" : "s"}`;
 
@@ -37,53 +38,10 @@ export function Metric({ label, value, title, tone = "text-ink", Mark }: { label
   );
 }
 
-/**
- * One of the strip's figures: its mark and its word, then the number, large — the number is what
- * somebody opens a trace to read (the product owner's call on 2026-10-12, "richer metrics").
- *
- * EACH SAYS HOW IT COMPARES WITH THE LAST RUN ON THE SAME INPUT (2026-10-15): the change beside the
- * number, and under it what it is against — "vs last run on this input", which opens that run — so
- * the arrow is never a number without a subject. Lower is green, higher red; Duration's is the
- * steps' working time (`runFigures`).
- * The sparklines over an agent's recent runs that stood beside the other runs' words came out the
- * same day — the product owner read them as decoration.
- */
-interface FigureProps {
-  Mark: IconComponent;
-  label: string;
-  value: string;
-  title: string;
-  tone?: string;
-  delta?: React.ReactNode;
-  /** What the delta is against, said under the number — and, pressed, that run opened. */
-  note?: string;
-  onNote?: () => void;
-}
-
-function Figure({ Mark, label, value, title, tone = "text-ink", delta, note, onNote }: FigureProps) {
-  return (
-    <div className="min-w-0 px-3 py-2.5" title={title}>
-      <div className="flex min-w-0 items-center gap-1.5 text-tiny text-faint">
-        <span aria-hidden className="shrink-0"><Mark size={ICON.xs} /></span>
-        <span className="min-w-0 flex-1 truncate">{label}</span>
-      </div>
-      <div className="mt-0.5 flex min-w-0 items-baseline gap-1.5">
-        <span className={`truncate text-section tabular-nums ${tone}`}>{value}</span>
-        {delta && <span className="shrink-0 text-tiny tabular-nums">{delta}</span>}
-      </div>
-      {note && (onNote ? (
-        <button
-          type="button"
-          onClick={onNote}
-          title="Open the run this is compared with"
-          className="block max-w-full truncate rounded-xs text-left text-tiny text-faint underline decoration-transparent underline-offset-2 transition-colors hover:text-muted hover:decoration-current focus-visible:outline-none focus-visible:shadow-focusring"
-        >
-          {note}
-        </button>
-      ) : <div className="truncate text-tiny text-faint">{note}</div>)}
-    </div>
-  );
-}
+// One figure of the strip — its mark and word, then the number, large — is `MetricFigure`, which the
+// Evals panel's strip draws too.
+const Figure = MetricFigure;
+type FigureProps = MetricFigureProps;
 
 /**
  * THE STRIP KEEPS ALL FIVE FIGURES ONLY WHILE EACH ONE FITS WHOLE. Five cells came in at 460px, and at
@@ -246,7 +204,7 @@ export function TraceMetrics({ run, steps }: { run: RunSummary; steps: readonly 
         {figures.map((f) => <Figure key={f.label} {...f} onNote={undefined} />)}
       </div>
       <div
-        className="grid divide-x divide-hair rounded-card border border-hair bg-panel"
+        className={FIGURE_STRIP}
         style={{ gridTemplateColumns: `repeat(${shown.length}, minmax(0, 1fr))` }}
       >
         {shown.map((f) => <Figure key={f.label} {...f} />)}

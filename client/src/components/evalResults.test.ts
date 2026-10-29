@@ -29,7 +29,10 @@ g["window"] = { location: { search: "", href: "http://localhost/", origin: "http
 const { markup, seed } = await import("../lib/testRender.ts");
 const { useBuildStore } = await import("../store/buildStore.ts");
 const { ResultsHeader } = await import("./EvalsPanel.tsx");
+const { TooltipProvider: Tips } = await import("./ui/tooltip.tsx");
 type Results = import("../types.ts").EvalResults;
+/** Inside the tooltip provider the app always renders in — the header's facts carry tooltips. */
+const tipped = (el: ReturnType<typeof createElement>) => createElement(Tips, null, el);
 
 /** Tags gone and whitespace folded, so a check reads the words a person reads. */
 const text = (html: string): string =>
@@ -56,7 +59,7 @@ seed(useBuildStore, { agents: [{ agent_id: "liven", name: "Liven" }] } as never)
 
 console.log("\nthe header says whose eval this is, and how it ended");
 {
-  const words = text(markup(createElement(ResultsHeader, { results: results(), live: null })));
+  const words = text(markup(tipped(createElement(ResultsHeader, { results: results(), live: null }))));
   check(words.includes("Liven"), "it names the agent", words);
   check(words.includes("Screening cases"), "and the dataset", words);
   check(words.includes("v3"), "and the agent version it ran against", words);
@@ -68,7 +71,7 @@ console.log("\nthe header says whose eval this is, and how it ended");
 console.log("\na running eval says it is running, and gives no stop reason");
 {
   const live = { evalId: "e1", total: 12, done: 2, running: 2, queued: 8, failed: 0 };
-  const words = text(markup(createElement(ResultsHeader, { results: results({ status: "running", stopReason: null }), live })));
+  const words = text(markup(tipped(createElement(ResultsHeader, { results: results({ status: "running", stopReason: null }), live }))));
   check(words.includes("running"), "it reads running", words);
   check(!words.includes("stopped after"), "and has no reason to stop", words);
 }
@@ -144,6 +147,9 @@ console.log("\nthe table compares only what can be compared");
   check(words.includes("0/6") && words.includes("0%"), "and the percentage shows when nothing failed too", words);
   check(!/title="(cheapest per run|fastest)"/.test(html), "no lead mark where only one model has the figure", html.match(/title="[^"]*"/g)?.join(" ") ?? "");
   check(words.includes("of $0.001 budget"), "the budget reads as typed", words);
+  check(words.indexOf("Spent") < words.indexOf("Models") && words.includes("Judge") && words.includes("not scored"),
+    "the eval's own figures lead the table, and judging that never ran is not scored rather than $0.00", words.slice(0, 220));
+  check(!/text-run/.test(html), "nothing on a stopped eval's table is amber — amber is for what is running");
   check(fmtBudget(0.2) === "$0.20" && fmtBudget(0.05) === "$0.05" && fmtBudget(1.5) === "$1.50" && fmtBudget(0.001) === "$0.001",
     `a budget is $0.20, not $0.2000 (${fmtBudget(0.2)}, ${fmtBudget(0.001)})`);
 }
@@ -243,11 +249,12 @@ console.log("\na finished eval can retry its unfinished cells, or run again");
   });
   const words = text(markup(createElement(EvalActions, { results: stopped })));
   check(words.includes("Retry 13 cells"), "it offers to retry the thirteen cancelled cells", words);
-  check(words.includes("Run again"), "and to run the eval again", words);
+  check(/aria-label="Run again"/.test(markup(createElement(EvalActions, { results: stopped }))), "and to run the eval again, as the trace's mark beside its pill", words);
   const done = results({ status: "completed", stopReason: null, rows: [{ exampleId: "x1", input: "a", expected: null, cells: [cell("succeeded")] }] });
   check(!text(markup(createElement(EvalActions, { results: done }))).includes("Retry"), "a complete eval has nothing to retry");
   const running = results({ status: "running" });
   check(text(markup(createElement(EvalActions, { results: running }))) === "", "and a running one offers neither");
+  check(/aria-label="Export these results"/.test(markup(createElement(EvalActions, { results: running }))), "though it can be exported while it runs");
   // A case deleted before evals kept a copy cannot run again — retried, it only failed at once.
   const orphaned = results({
     datasetName: null,
@@ -259,7 +266,7 @@ console.log("\na finished eval can retry its unfinished cells, or run again");
   check(text(markup(createElement(EvalActions, { results: orphaned }))).includes("Retry 1 cell"), "Retry counts only the cells that still have a case");
   const allGone = results({ rows: [{ exampleId: "x1", input: "(gone)", expected: null, caseGone: true, cells: [cell("cancelled")] }] });
   check(!text(markup(createElement(EvalActions, { results: allGone }))).includes("Retry"), "and is not offered when none do");
-  check(text(markup(createElement(ResultsHeader, { results: orphaned, live: null }))).includes("a deleted dataset"),
+  check(text(markup(tipped(createElement(ResultsHeader, { results: orphaned, live: null })))).includes("a deleted dataset"),
     "a dataset with no name left reads as deleted, not as the word \"dataset\"");
 }
 
@@ -401,6 +408,34 @@ console.log("\nan eval in flight is the trace's pill, and a bar of what it is ma
   check(/bg-warn\/10 text-warn/.test(pill("aborted_over_budget")) && text(pill("aborted_over_budget")) === "over budget", "one that stopped at its ceiling is the trace's stopped blue, in its own words");
   check(/bg-warn\/10/.test(pill("cancelled")) && /bg-err\/10 text-err/.test(pill("error")), "cancelled is stopped too, and only a broken one is red");
   check(text(pill("running", { word: "scoring" })) === "scoring", "and the judge's turn is said as scoring");
+}
+
+console.log("\nResults leads with what the eval found, in a sentence, under the trace's pill");
+{
+  const { EvalsPanel } = await import("./EvalsPanel.tsx");
+  const { useEvalStore, evalListKey } = await import("../store/evalStore.ts");
+  const leg = (over: Partial<import("../types.ts").ProviderMetrics>): import("../types.ts").ProviderMetrics => ({
+    provider: "anthropic", model: "claude-haiku-4-5", total: 6, succeeded: 6, failed: 0, cancelled: 0, pending: 0, successRate: 1,
+    comparisonCostUsd: 0.0114, costPerRunUsd: 0.0019, spentUsd: 0.0116, tokens: 9000, latencyP50Ms: 1200, latencyP95Ms: 1500,
+    costUnknown: false, costIncomplete: false, qualityScore: 0.69, scored: 6, unscored: 0, ...over,
+  });
+  const done = results({
+    status: "completed", stopReason: null, endedAt: new Date().toISOString(),
+    providers: [leg({}), leg({ model: "claude-sonnet-5", qualityScore: 0.74, costPerRunUsd: 0.0044, comparisonCostUsd: 0.0264, latencyP50Ms: 1900 })],
+    totals: { trueSpendUsd: 0.05, judgeCostUsd: 0.017, agentSpendUsd: 0.033, budgetUsd: 1 },
+  });
+  seed(useEvalStore, {
+    modeByAgent: { liven: "results" },
+    selectedEvalByAgent: { liven: "e1" },
+    resultsByEval: { e1: done },
+    compareWithByAgent: {},
+    evalLists: { [evalListKey("liven", "d1")]: { evals: [], complete: true, window: 50 } },
+  } as never);
+  const html = markup(createElement(Tips, null, createElement(EvalsPanel)));
+  const words = text(html);
+  check(words.includes("claude-sonnet-5 leads quality (74 vs 69); claude-haiku-4-5 is 2.3× cheaper per run and fastest."), "the verdict says who won and at what price", words.slice(0, 400));
+  check(/bg-ok\/10 text-ok/.test(html) && words.includes("completed"), "a finished eval wears the trace's green pill");
+  check(words.includes("12 of 12 answers scored") && words.includes("of $1.00 budget"), "and its figures say what was scored and what the ceiling was");
 }
 
 console.log("\na refused Retry says why on Results, where it was pressed");

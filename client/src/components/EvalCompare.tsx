@@ -94,7 +94,7 @@ export function EvalCompare({
   const diff = useMemo(() => compareEvals(before, after), [before, after]);
   const [box, narrow] = useNarrowerThan<HTMLElement>(STACK_BELOW_PX);
   return (
-    <section ref={box} className="mb-4 rounded-card border border-hair px-3 py-2.5" aria-label="Compared with an earlier eval">
+    <section ref={box} className="mb-4 rounded-card border border-hair bg-panel px-3 py-2.5" aria-label="Compared with an earlier eval">
       <div className="flex items-baseline gap-2 pb-2">
         <span className={TYPE.sectionLabel}>Compared with</span>
         {/* WHICH EVAL, not only when: two from the same afternoon both read "4d ago". */}
@@ -103,8 +103,9 @@ export function EvalCompare({
         </span>
         <button onClick={onClose} className="ml-auto text-tiny text-faint transition-colors hover:text-ink">Stop comparing</button>
       </div>
+      {/* A CAVEAT IS A CAUTION, said in the info blue — amber is spent only on what is running. */}
       {diff.caveats.map((c) => (
-        <div key={c} className="pb-1 text-tiny text-run">· {c}</div>
+        <div key={c} className="pb-1 text-tiny text-warn">· {c}</div>
       ))}
       {narrow ? <CompareCards models={diff.models} /> : (
       <div className="overflow-x-auto">
