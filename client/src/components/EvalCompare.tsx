@@ -1,10 +1,11 @@
 // Two evals side by side: each model's figures then and now, and each case whose outcome moved.
 // See lib/evalCompare.ts for what counts as a change.
 
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useMemo, type ReactNode } from "react";
 import { compareEvals, type ModelDelta } from "../lib/evalCompare.ts";
 import { fmtCost, fmtLatency, fmtPercent, relTime } from "../lib/format.ts";
 import { TYPE } from "../lib/tokens.ts";
+import { useNarrowerThan } from "../lib/useNarrower.ts";
 import type { EvalResults, ProviderMetrics } from "../types.ts";
 
 /** One figure, then and now. */
@@ -91,15 +92,7 @@ export function EvalCompare({
   onClose: () => void;
 }) {
   const diff = useMemo(() => compareEvals(before, after), [before, after]);
-  const box = useRef<HTMLElement>(null);
-  const [narrow, setNarrow] = useState(false);
-  useEffect(() => {
-    const el = box.current;
-    if (!el || typeof ResizeObserver === "undefined") return;
-    const ro = new ResizeObserver(([entry]) => setNarrow((entry?.contentRect.width ?? Infinity) < STACK_BELOW_PX));
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
+  const [box, narrow] = useNarrowerThan<HTMLElement>(STACK_BELOW_PX);
   return (
     <section ref={box} className="mb-4 rounded-card border border-hair px-3 py-2.5" aria-label="Compared with an earlier eval">
       <div className="flex items-baseline gap-2 pb-2">

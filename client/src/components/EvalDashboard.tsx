@@ -11,8 +11,9 @@
 //   * The comparison cost and the true spend are shown as separate things, because they
 //     answer different questions: "which is cheaper per run" and "what did this cost me".
 
-import { useEffect, useRef, useState } from "react";
 import { fmtBudget, fmtCost, fmtLatency, fmtPercent } from "../lib/format.ts";
+import { leaders } from "../lib/evalView.ts";
+import { useNarrowerThan } from "../lib/useNarrower.ts";
 import {
   download,
   exportStem,
@@ -88,29 +89,8 @@ function QualityCell({ p }: { p: ProviderMetrics }) {
   );
 }
 
-/**
- * The best (lowest cost / highest quality / fastest) leg, for a subtle lead marker.
- *
- * ONLY WHERE THERE IS A COMPARISON. With one model holding a figure, "cheapest" and "fastest" were
- * drawn beside it anyway — a lead over nobody.
- */
-export function leaders(providers: ProviderMetrics[]) {
-  const priced = providers.filter((p) => !p.costUnknown && p.comparisonCostUsd !== null && p.succeeded > 0);
-  const scored = providers.filter((p) => p.qualityScore !== null);
-  const timed = providers.filter((p) => p.latencyP50Ms !== null);
-  return {
-    // Cheapest is per-run, not total: totals differ if some legs had more failures.
-    cheapest: priced.length > 1
-      ? priced.reduce((a, b) => ((a.costPerRunUsd ?? Infinity) <= (b.costPerRunUsd ?? Infinity) ? a : b)).model
-      : null,
-    best: scored.length > 1
-      ? scored.reduce((a, b) => ((a.qualityScore ?? 0) >= (b.qualityScore ?? 0) ? a : b)).model
-      : null,
-    fastest: timed.length > 1
-      ? timed.reduce((a, b) => ((a.latencyP50Ms ?? Infinity) <= (b.latencyP50Ms ?? Infinity) ? a : b)).model
-      : null,
-  };
-}
+// The lead markers' rule lives with the verdict it shares a judgement with — see lib/evalView.ts.
+export { leaders };
 
 /**
  * "Ran OK": how many of the jobs that RAN finished without failing, with what did not run said apart.
@@ -207,15 +187,7 @@ export function ComparisonTable({
   const { totals } = results;
   const overBudget = totals.budgetUsd !== null && totals.trueSpendUsd >= totals.budgetUsd;
   // HOW WIDE THE PANEL ACTUALLY IS. Below about 600px the columns were clipped with nothing to say so.
-  const box = useRef<HTMLDivElement>(null);
-  const [narrow, setNarrow] = useState(false);
-  useEffect(() => {
-    const el = box.current;
-    if (!el || typeof ResizeObserver === "undefined") return;
-    const ro = new ResizeObserver(([entry]) => setNarrow((entry?.contentRect.width ?? Infinity) < STACK_BELOW_PX));
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
+  const [box, narrow] = useNarrowerThan<HTMLDivElement>(STACK_BELOW_PX);
 
   return (
     <div className="space-y-3" ref={box}>

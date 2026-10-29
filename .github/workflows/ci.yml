@@ -1328,6 +1328,7 @@ jobs:
           npm run test:dataset-builder
           npm run test:eval-run-bar
           npm run test:eval-compare
+          npm run test:eval-view
           # No hook below a component's early return: React throws #310 and the window goes blank.
           npm run test:hook-order
           npm run test:secrets-store
