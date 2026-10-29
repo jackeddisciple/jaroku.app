@@ -5,7 +5,7 @@
 // strings. Two copies is how "Apply" and "Generate" end up a pixel apart after somebody adjusts one
 // of them, which is the sort of difference nobody can name and everybody notices.
 //
-// Six weights, because the app has six kinds of control:
+// Eight weights, because the app has eight kinds of control:
 //
 //   primary    the decision the card exists to ask — Generate, Apply
 //   outline    a real action that is not *the* action — the second button in a pair
@@ -13,6 +13,8 @@
 //   secondary  not a decision at all: a way back, or a thing to look at — Undo, the version picker
 //   icon       a glyph on its own, sized to the glyph rather than to a word
 //   tab        one of a set of destinations, where the set is the control
+//   mark       a surface's own action as a glyph on a grey ground — the trace's, the eval's
+//   fact       a pressable fact on a header's metadata line
 //
 // The last two were the gap. This file opened saying it covered three weights and the app had
 // five more spellings of them scattered across components — a tab recipe in RightPanel, a second
@@ -116,3 +118,21 @@ export const tabBtn = (active: boolean, size: "sm" | "md" = "md"): string =>
       ? "text-accent after:absolute after:inset-x-2 after:-bottom-px after:h-0.5 after:rounded-full after:bg-accent"
       : "text-muted hover:bg-active/40 hover:text-ink",
   ].join(" ");
+
+/**
+ * A surface's own action as a mark on a grey ground, 32px square — copy the run's id, run it again.
+ *
+ * THE TRACE HEADER'S, MOVED HERE when the Evals panel took its header from it: two panels spelling
+ * one button is how they end up a pixel apart. It fades with its ground when it cannot be pressed,
+ * so a disabled mark still reads as the same button rather than as a lighter one.
+ */
+export const markBtn =
+  "inline-flex h-8 w-8 items-center justify-center rounded-control bg-active text-muted transition-colors hover:bg-chrome hover:text-ink focus-visible:outline-none focus-visible:shadow-focusring disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-active disabled:hover:text-muted";
+
+/**
+ * A fact on a header's metadata line, as a round pill in the darker grey, darker still on hover — a
+ * run's id, when it started, the eval it belongs to. Square, faint chips read as background (the
+ * product owner's call, 2026-10-14). Moved here from the trace header with `markBtn`.
+ */
+export const factChip =
+  "rounded-full bg-chrome px-2 py-px text-tiny text-muted transition-colors hover:bg-edge hover:text-ink focus-visible:outline-none focus-visible:shadow-focusring";

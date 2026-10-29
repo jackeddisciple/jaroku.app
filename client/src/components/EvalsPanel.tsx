@@ -22,9 +22,11 @@ import { EvalCompare } from "./EvalCompare.tsx";
 import { relTime } from "../lib/format.ts";
 import { Chip } from "./Chip.tsx";
 import { EmptyState } from "./EmptyState.tsx";
-import { ActivityIcon, DatabaseIcon } from "./panelIcons.tsx";
-import { ICON } from "../lib/tokens.ts";
-import { Icon } from "../lib/icons/registry.ts";
+import { DatabaseIcon } from "./panelIcons.tsx";
+import { factChip, secondaryBtn, tabBtn } from "./buttons.ts";
+import { Tip } from "./ui/tooltip.tsx";
+import { ICON, TYPE } from "../lib/tokens.ts";
+import { Icon, type IconComponent } from "../lib/icons/registry.ts";
 import { EVAL_PHASE } from "../lib/domainPhase.ts";
 import { StatusGlyph } from "./StatusGlyph.tsx";
 import type { EvalResults, EvalRunStatus } from "../types.ts";
@@ -136,7 +138,7 @@ export function EvalActions({ results }: { results: EvalResults }) {
       {again > 0 && !retrying && (
         <button
           onClick={() => (spentOut ? setRetrying(true) : sendRetryEval(results.evalId, results.agentId, totals.budgetUsd))}
-          className="rounded-control bg-active px-2 py-1 text-ink transition-opacity hover:opacity-80"
+          className={secondaryBtn}
           title="Run the failed, timed-out and cancelled cells again, inside this eval"
         >
           Retry {again} cell{again === 1 ? "" : "s"}
@@ -156,7 +158,7 @@ export function EvalActions({ results }: { results: EvalResults }) {
             disabled={"error" in parsed}
             title={"error" in parsed ? parsed.error : undefined}
             onClick={() => { if ("usd" in parsed) sendRetryEval(results.evalId, results.agentId, parsed.usd); setRetrying(false); }}
-            className="rounded-control bg-active px-2 py-1 text-ink disabled:opacity-30"
+            className={secondaryBtn}
           >
             Retry
           </button>
@@ -166,7 +168,7 @@ export function EvalActions({ results }: { results: EvalResults }) {
       {datasetHere && (
         <button
           onClick={runAgain}
-          className="rounded-control px-2 py-1 text-muted transition-colors hover:bg-active hover:text-ink"
+          className={secondaryBtn}
           title="Choose the same models and open the estimate for a new eval of this dataset as it is now"
         >
           Run again
@@ -259,10 +261,109 @@ export function JudgeLine() {
   );
 }
 
+/**
+ * An eval's outcome as a pill — the trace header's, tone for tone and mark for mark, so the two
+ * panels answer "how did it go" in one visual language.
+ *
+ * Green finished, amber (with a pulsing dot) while it is moving, red when it broke. AN EVAL THAT
+ * STOPPED — cancelled, or stopped itself at its ceiling — is the trace's info blue: not a success and
+ * not a fault, which is the distinction `EVAL_WORD` exists to keep. The word stays this panel's own.
+ */
+const PILL: Record<"done" | "live" | "stopped" | "failed", { tone: string; Mark: IconComponent }> = {
+  done: { tone: "bg-ok/10 text-ok", Mark: Icon.trace.finished },
+  live: { tone: "bg-run/10 text-run", Mark: Icon.trace.running },
+  stopped: { tone: "bg-warn/10 text-warn", Mark: Icon.trace.stopped },
+  failed: { tone: "bg-err/10 text-err", Mark: Icon.trace.failed },
+};
+const PILL_OF: Record<EvalRunStatus, keyof typeof PILL> = {
+  queued: "live",
+  running: "live",
+  completed: "done",
+  aborted_over_budget: "stopped",
+  cancelled: "stopped",
+  error: "failed",
+};
+
+export function EvalOutcomePill({ status, word, detail }: {
+  status: EvalRunStatus;
+  /** Said instead of the status's own word — "scoring", once the runs are done and the judge is not. */
+  word?: string;
+  /** Beside the word, unbolded: "7 of 12". */
+  detail?: string | null;
+}) {
+  const kind = PILL_OF[status] ?? "failed";
+  const { tone, Mark } = PILL[kind];
+  return (
+    <span className={`flex h-6 shrink-0 items-center gap-1.5 rounded-pill px-2 text-tiny font-medium ${tone}`}>
+      {kind === "live" ? (
+        <span aria-hidden className="h-1.5 w-1.5 shrink-0 animate-stream-pulse rounded-full bg-run motion-reduce:animate-none" />
+      ) : (
+        <Mark size={ICON.xs} />
+      )}
+      {word ?? EVAL_WORD[status] ?? status}
+      {detail && <span className="font-normal tabular-nums">· {detail}</span>}
+    </span>
+  );
+}
+
+/**
+ * What this agent's running eval is made of, as one bar under the tabs — in either half.
+ *
+ * IT WAS A WORD, "running 2/12", and a second line under the history on Results only, so building the
+ * next dataset while an eval ran showed a count and nothing about what the count was made of. The
+ * bar is built as the step details' token split is: segments on a rounded track. Each kind of
+ * finished job has its own colour — answered, failed, cancelled — and what is in flight is amber,
+ * the one thing here that moves. Queued work is the empty track. How far along it is lives in the
+ * header's pill; this says what the rest is.
+ */
+export function EvalProgressBar({ progress }: { progress: EvalProgress }) {
+  const { total, done, running, queued, failed } = progress;
+  const cancelled = progress.cancelled ?? 0;
+  const succeeded = progress.succeeded ?? Math.max(0, done - failed - cancelled);
+  const scoring = progress.status !== undefined && progress.scoring === true;
+  const share = (n: number): string => `${total > 0 ? (Math.max(0, n) / total) * 100 : 0}%`;
+  const caption = scoring
+    ? "every run finished · scoring the answers"
+    : [
+        running > 0 ? `${running} in flight` : null,
+        queued > 0 ? `${queued} queued` : null,
+        failed > 0 ? `${failed} failed` : null,
+        cancelled > 0 ? `${cancelled} cancelled` : null,
+      ].filter(Boolean).join(" · ");
+  return (
+    <div className="flex shrink-0 items-center gap-3 px-6 pt-3">
+      <div
+        role="progressbar"
+        aria-label="Eval progress"
+        aria-valuemin={0}
+        aria-valuemax={total}
+        aria-valuenow={done}
+        aria-valuetext={scoring ? "every run finished, scoring the answers" : `${done} of ${total} runs finished`}
+        className="flex h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-active"
+      >
+        <span className="h-full bg-muted" style={{ width: share(succeeded) }} />
+        <span className="h-full bg-err" style={{ width: share(failed) }} />
+        <span className="h-full bg-faint" style={{ width: share(cancelled) }} />
+        {!scoring && (
+          <span className="h-full bg-run animate-stream-pulse motion-reduce:animate-none" style={{ width: share(running) }} />
+        )}
+      </div>
+      {caption && <span className="shrink-0 whitespace-nowrap text-tiny tabular-nums text-muted">{caption}</span>}
+    </div>
+  );
+}
+
+/** The panel's two views, as the trace's run views are drawn. */
+const VIEWS: { id: "dataset" | "results"; label: string; title: string }[] = [
+  { id: "dataset", label: "Dataset", title: "The cases, and how answers are scored" },
+  { id: "results", label: "Results", title: "What each eval found" },
+];
+
 type Mode = "dataset" | "results";
 
 export function EvalsPanel() {
   const activeAgentId = useBuildStore((s) => s.activeAgentId);
+  const agentName = useBuildStore((s) => s.agents.find((a) => a.agent_id === s.activeAgentId)?.name ?? s.activeAgentId);
   const connected = useTraceStore((s) => s.connection === "open");
   // EVERYTHING BELOW IS THIS AGENT'S. These were single values for the whole tab, so another agent's
   // running eval — its table, its cases, its `running 2/12` — was what this agent's Results showed.
@@ -290,6 +391,15 @@ export function EvalsPanel() {
   const scopeDataset = allDatasets || !selectedDatasetId ? null : selectedDatasetId;
   const list = useEvalStore((s) => (activeAgentId ? s.evalLists[evalListKey(activeAgentId, scopeDataset)] : undefined));
   const evals = list?.evals ?? [];
+  /**
+   * What each half of the switch holds — as a total, or not at all. The open dataset's cases arrive
+   * whole; the eval list is a growing window, so it is counted only once the server says it has sent
+   * every one. Until either has arrived there is no figure, because unknown is not zero.
+   */
+  const cases = useEvalStore((s) => (selectedDatasetId ? s.examplesByDataset[selectedDatasetId] : undefined));
+  const pendingDelete = useEvalStore((s) => s.pendingDelete);
+  const caseCount = cases?.filter((e) => !(pendingDelete?.kind === "case" && pendingDelete.id === e.id)).length;
+  const evalCount = list?.complete ? evals.length : undefined;
   /**
    * How many past evals the strip is showing.
    *
@@ -347,38 +457,60 @@ export function EvalsPanel() {
     );
   }
 
-  // A TWO-SEGMENT ICON TOGGLE, NOT A SECOND ROW OF TEXT TABS.
-  //
-  // This used to be `Dataset` / `Results` as words on their own row, directly beneath the right
-  // panel's own ten-word tab strip — two stacked tab strips in two different visual languages,
-  // which was the densest chrome in the product. The strip above is a glyph rail now, and this is
-  // two glyphs: a database for what goes in, a chart for what came out.
-  const tab = (m: Mode, label: string, Icon: (p: { size?: number }) => React.ReactElement) => (
-    <button
-      onClick={() => setMode(m)}
-      title={label}
-      aria-label={label}
-      aria-pressed={mode === m}
-      className={`flex h-7 w-7 items-center justify-center rounded-control transition-colors duration-fast focus-visible:outline-none focus-visible:shadow-focusring ${
-        mode === m ? "bg-active text-accent" : "text-muted hover:bg-active/40 hover:text-ink"
-      }`}
-    >
-      <Icon size={ICON.sm} />
-    </button>
-  );
+  const scoring = progress?.status !== undefined && progress?.scoring === true;
+  const openDataset = agentDatasets.find((d) => d.id === selectedDatasetId);
+  const counts = { dataset: caseCount, results: evalCount };
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex h-full flex-col bg-bg">
       <EvalUndoToast />
-      <div className="flex shrink-0 items-center gap-1 border-b border-hair px-4 pb-2 pt-1">
-        {tab("dataset", "Dataset", DatabaseIcon)}
-        {tab("results", "Results", ActivityIcon)}
-        {running && (
-          <span className="ml-2 text-tiny text-run animate-stream-pulse motion-reduce:animate-none">
-            {progress.scoring && progress.status ? "scoring…" : `running ${progress.done}/${progress.total}`}
-          </span>
-        )}
+      {/* HEADED AS THE TRACE IS (`TraceHeader`): the panel's name and, while an eval runs, its pill on
+          the first line; whose evals these are, and on which dataset, on the second. It was a row of
+          two glyphs with a word beside them, the only panel on the rail that did not say what it was. */}
+      <div className="shrink-0 px-6 pt-3">
+        <div className="flex min-h-6 items-center gap-3">
+          <span className={`min-w-0 truncate ${TYPE.panelLabel}`}>Evals</span>
+          {running && (
+            <span className="ml-auto flex shrink-0 items-center gap-3">
+              <EvalOutcomePill
+                status="running"
+                word={scoring ? "scoring" : undefined}
+                detail={scoring ? null : `${progress.done} of ${progress.total}`}
+              />
+            </span>
+          )}
+        </div>
+        <div className="mt-1 flex min-w-0 items-center gap-1.5 text-tiny text-muted">
+          <span className="min-w-0 shrink truncate text-label text-ink" title={agentName ?? undefined}>{agentName}</span>
+          {openDataset && (
+            <Tip label="The dataset open in this tab">
+              <span className={`${factChip} min-w-[1.75rem] shrink-[1000] cursor-default truncate`} tabIndex={0}>
+                {openDataset.name}
+              </span>
+            </Tip>
+          )}
+        </div>
       </div>
+      {/* THE TWO VIEWS AS THE TRACE'S RUN VIEWS ARE DRAWN — a tab strip, each with how many things it
+          holds when that is a total. It was a pair of glyphs, a database and a chart, that only a
+          tooltip named. */}
+      <div role="tablist" aria-label="Eval views" className="mt-2 flex shrink-0 items-center gap-0.5 border-b border-hair px-5">
+        {VIEWS.map((v) => (
+          <button
+            key={v.id}
+            type="button"
+            role="tab"
+            aria-selected={mode === v.id}
+            onClick={() => setMode(v.id)}
+            title={v.title}
+            className={tabBtn(mode === v.id, "sm")}
+          >
+            {v.label}
+            {counts[v.id] !== undefined && <span className="tabular-nums text-faint">{counts[v.id]}</span>}
+          </button>
+        ))}
+      </div>
+      {running && <EvalProgressBar progress={progress} />}
 
       {mode === "dataset" ? (
         <div className="flex-1 min-h-0 flex flex-col">
@@ -386,7 +518,7 @@ export function EvalsPanel() {
           <EvalRunBar />
         </div>
       ) : (
-        <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-4">
+        <div className="flex-1 min-h-0 overflow-y-auto px-6 pb-4 pt-3">
           <EvalRefusal />
           {/* Past evals — a comparison keeps its value after the run that produced it. Shown with a
               single eval too: the scope switch is the only way to a deleted dataset's evals, and
@@ -469,14 +601,6 @@ export function EvalsPanel() {
                 </Chip>
               ))}
               <button onClick={() => setPicking(false)} className="text-faint hover:text-ink">Cancel</button>
-            </div>
-          )}
-
-          {progress && !progress.status && progress.evalId === shownEvalId && (
-            <div className="text-tiny text-muted pb-3">
-              {progress.done}/{progress.total} runs done · {progress.running} in flight
-              {progress.queued > 0 && ` · ${progress.queued} queued`}
-              {progress.failed > 0 && <span className="text-err"> · {progress.failed} failed</span>}
             </div>
           )}
 

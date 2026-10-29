@@ -219,7 +219,7 @@ export function EvalRunBar() {
   };
 
   return (
-    <div className="px-4 py-3 shrink-0 space-y-2">
+    <div className="px-6 py-3 shrink-0 space-y-2">
       {/* provider selection — GROUPED BY PROVIDER, and only the ones that can run spelled out. Three
           rows of greyed chips for providers with no key said nothing a single link could not, and
           pushed everything else down; a leg already chosen stays, so it can always be taken off. */}

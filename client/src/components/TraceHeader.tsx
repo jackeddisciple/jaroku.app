@@ -24,7 +24,7 @@ import { openEvalResults } from "../lib/evalNav.ts";
 import { useUiStore } from "../store/uiStore.ts";
 import type { RunSummary } from "../types.ts";
 import { PauseResumeControls } from "./PauseResumeControls.tsx";
-import { primaryBtnSm } from "./buttons.ts";
+import { factChip, markBtn, primaryBtnSm } from "./buttons.ts";
 import { Tip } from "./ui/tooltip.tsx";
 
 /** The first segment of a uuid — enough to tell two runs apart. */
@@ -69,14 +69,11 @@ function OutcomePill({ run }: { run: RunSummary }) {
   );
 }
 
-/**
- * A pressable fact on the metadata line: a round pill in a darker grey (the product owner's call,
- * 2026-10-14 — the square, faint chips read as background), darker still on hover.
- */
-const CHIP = "rounded-full bg-chrome px-2 py-px text-tiny text-muted transition-colors hover:bg-edge hover:text-ink focus-visible:outline-none focus-visible:shadow-focusring";
+/** A pressable fact on the metadata line — see `factChip`, which the Evals panel's header shares. */
+const CHIP = factChip;
 
-/** One of the run's mark buttons: the mark on a grey ground, faded with it when it cannot be pressed. */
-const GREY_MARK = "inline-flex h-8 w-8 items-center justify-center rounded-control bg-active text-muted transition-colors hover:bg-chrome hover:text-ink focus-visible:outline-none focus-visible:shadow-focusring disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-active disabled:hover:text-muted";
+/** One of the run's mark buttons — see `markBtn`, which the Evals panel shares. */
+const GREY_MARK = markBtn;
 
 async function copyRunId(id: string): Promise<void> {
   try {

@@ -283,7 +283,7 @@ function RubricEditor({ datasetId }: { datasetId: string }) {
   };
 
   return (
-    <div className="shrink-0 border-b border-hair px-4 pb-2">
+    <div className="shrink-0 border-b border-hair px-6 pb-2">
       <button
         className="flex w-full items-center gap-2 py-1.5 text-left"
         onClick={() => setOpen((v) => !v)}
@@ -438,7 +438,7 @@ function CheckRow({ dataset }: { dataset: Dataset }) {
   const connected = useTraceStore((s) => s.connection === "open");
   const current = dataset.check_mode ?? null;
   return (
-    <div className="flex shrink-0 flex-wrap items-center gap-1 px-4 pb-2 text-tiny" role="group" aria-label="Check answers against expected">
+    <div className="flex shrink-0 flex-wrap items-center gap-1 px-6 pb-2 text-tiny" role="group" aria-label="Check answers against expected">
       <span className="mr-1 text-faint">Check answers against expected</span>
       {CHECKS.map((c) => (
         <Chip
@@ -549,7 +549,7 @@ export function DatasetBuilder() {
   return (
     <div className="flex h-full flex-col">
       {/* datasets */}
-      <div className="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-hair px-4 pb-2 pt-2">
+      <div className="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-hair px-6 pb-2 pt-2">
         {/* IN THE STRIP, for the reason the MCP panel's is: this is a wrapping row of chips rather
             than a list with a heading over it. `listDatasets` answers with all of an agent's, so
             the length is a total. */}
@@ -586,7 +586,7 @@ export function DatasetBuilder() {
             one strip — Rename, Import CSV, Delete dataset, plus Revert and Add nearby — read as a
             form toolbar rather than as the actions on a dataset. Every mark here already existed
             in the icon set; the words are the tooltips. */
-        <div className="flex shrink-0 items-center gap-1 px-4 pb-2">
+        <div className="flex shrink-0 items-center gap-1 px-6 pb-2">
           {renaming !== null ? (
             <form
               className="flex min-w-0 flex-1 items-center gap-2"
@@ -696,7 +696,7 @@ export function DatasetBuilder() {
       {selected && <RubricEditor key={selected.id} datasetId={selected.id} />}
 
       {(error || importNote) && (
-        <div className="px-4 pb-2 shrink-0 flex items-center gap-2 text-tiny">
+        <div className="px-6 pb-2 shrink-0 flex items-center gap-2 text-tiny">
           <span className={error ? "text-err" : "text-muted"}>{error ?? importNote}</span>
           <button
             onClick={() => { setError(null); setImportNote(null); }}
@@ -710,7 +710,7 @@ export function DatasetBuilder() {
       )}
 
       {/* examples */}
-      <div className="flex-1 min-h-0 overflow-y-auto px-4">
+      <div className="flex-1 min-h-0 overflow-y-auto px-6">
         {!selected ? (
           <EmptyState
             icon={DatabaseIcon}
@@ -751,7 +751,7 @@ export function DatasetBuilder() {
 
       {/* add */}
       {selected && (
-        <div className="px-4 py-3 shrink-0 flex items-end gap-2">
+        <div className="px-6 py-3 shrink-0 flex items-end gap-2">
           {/* A BOX, NOT A LINE, and nothing in it is "corrected". A one-line input with the system's
               autocorrect turned `---` into an em dash and straight quotes into curly ones — and for an
               agent that splits a job description from a résumé on `---`, a hand-typed case silently

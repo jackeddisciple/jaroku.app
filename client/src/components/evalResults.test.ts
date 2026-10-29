@@ -324,6 +324,55 @@ console.log("\na dataset with one eval still offers the agent's evals on every d
     "the switch to every dataset is there with only one eval", text(html).slice(0, 200));
 }
 
+console.log("\nthe panel is headed as the trace is, and its two views are tabs that count only totals");
+{
+  const { EvalsPanel } = await import("./EvalsPanel.tsx");
+  const { useEvalStore, evalListKey } = await import("../store/evalStore.ts");
+  const { TooltipProvider } = await import("./ui/tooltip.tsx");
+  const summary = {
+    id: "e1", dataset_id: "d1", agent_id: "liven", rubric_id: "r", status: "completed", targets: [], budget_usd: 0.2,
+    judge_cost_usd: 0, started_at: new Date().toISOString(), ended_at: null, error: null, dataset_name: "Screening cases", dataset_gone: false,
+  };
+  const example = (id: string) => ({ id, dataset_id: "d1", input: `case ${id}`, expected: null, notes: null, position: 0, created_at: "" });
+  seed(useBuildStore, { activeAgentId: "liven", agents: [{ agent_id: "liven", name: "Liven" }] } as never);
+  seed(useEvalStore, {
+    datasetsByAgent: { liven: [{ id: "d1", agent_id: "liven", name: "Screening cases", created_at: "", updated_at: "" }] },
+    selectedDatasetByAgent: { liven: "d1" },
+    modeByAgent: { liven: "dataset" },
+    examplesByDataset: { d1: [example("x1"), example("x2"), example("x3")] },
+    evalLists: { [evalListKey("liven", "d1")]: { evals: [summary], complete: false, window: 50 } },
+  } as never);
+  const panel = (): string => markup(createElement(TooltipProvider, null, createElement(EvalsPanel)));
+  const html = panel();
+  check(text(html).startsWith("Evals Liven Screening cases"), "it names itself, the agent and the open dataset first", text(html).slice(0, 80));
+  check(/role="tablist" aria-label="Eval views"/.test(html), "the two views are a tab strip", html.slice(0, 200));
+  check(/role="tab" aria-selected="true"[^>]*>Dataset<span class="tabular-nums text-faint">3<\/span>/.test(html), "Dataset is open and counts its three cases");
+  check(/role="tab" aria-selected="false"[^>]*>Results<\/button>/.test(html), "and Results, whose list is still a window, carries no count");
+  seed(useEvalStore, { evalLists: { [evalListKey("liven", "d1")]: { evals: [summary], complete: true, window: 50 } } } as never);
+  check(/>Results<span class="tabular-nums text-faint">1<\/span>/.test(panel()), "once the list is whole, it is counted");
+  check(!/role="progressbar"/.test(html) && !/bg-run\/10/.test(html), "with nothing running there is no bar and no pill");
+}
+
+console.log("\nan eval in flight is the trace's pill, and a bar of what it is made of");
+{
+  const { EvalProgressBar, EvalOutcomePill } = await import("./EvalsPanel.tsx");
+  const p = { evalId: "e1", total: 12, done: 7, running: 2, queued: 3, failed: 1, succeeded: 6, cancelled: 0 };
+  const html = markup(createElement(EvalProgressBar, { progress: p }));
+  check(/role="progressbar"[^>]*aria-valuemax="12"[^>]*aria-valuenow="7"/.test(html), "a progress bar, seven of twelve", html.slice(0, 300));
+  check(text(html) === "2 in flight · 3 queued · 1 failed", "and its caption says what the rest are", text(html));
+  check(/bg-run/.test(html) && !/text-run/.test(html), "amber is spent on the jobs in flight, not on the words");
+  const scoring = markup(createElement(EvalProgressBar, { progress: { ...p, done: 12, running: 0, queued: 0, status: "completed", scoring: true } }));
+  check(text(scoring) === "every run finished · scoring the answers" && !/bg-run/.test(scoring), "once the runs are done it says the judge is scoring, with nothing in flight", text(scoring));
+
+  const pill = (status: string, extra: Record<string, unknown> = {}) => markup(createElement(EvalOutcomePill, { status, ...extra } as never));
+  const live = pill("running", { detail: "7 of 12" });
+  check(/bg-run\/10 text-run/.test(live) && /animate-stream-pulse/.test(live) && text(live) === "running · 7 of 12", "running is the trace's amber pill, alive", text(live));
+  check(/bg-ok\/10 text-ok/.test(pill("completed")) && text(pill("completed")) === "completed", "a finished eval is green");
+  check(/bg-warn\/10 text-warn/.test(pill("aborted_over_budget")) && text(pill("aborted_over_budget")) === "over budget", "one that stopped at its ceiling is the trace's stopped blue, in its own words");
+  check(/bg-warn\/10/.test(pill("cancelled")) && /bg-err\/10 text-err/.test(pill("error")), "cancelled is stopped too, and only a broken one is red");
+  check(text(pill("running", { word: "scoring" })) === "scoring", "and the judge's turn is said as scoring");
+}
+
 console.log("\na refused Retry says why on Results, where it was pressed");
 {
   const { EvalRefusal } = await import("./EvalsPanel.tsx");
