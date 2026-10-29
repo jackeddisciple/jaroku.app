@@ -9,6 +9,10 @@
 //   rule 3 (no stdout)         -> stdout IS the event transport (schema/events.md)
 //   rule 5 (must terminate)    -> a non-terminating graph burns the recursion limit and money
 //   rule 6 (templates verbatim)-> a reviewed connector must not be silently rewritten
+//   rule 14 (reply via .text)  -> a thinking model's `content` is a list of blocks, so code
+//                                 that treats it as a string passes every dry run (the fake
+//                                 model answers in a plain string) and crashes on the first
+//                                 real provider
 //
 // Rule 3 is additionally enforced at runtime by jaroku_runner.guard — the prompt asks, the
 // runner guarantees. Prompts are requests, not invariants.
@@ -187,7 +191,13 @@ const HARD_RULES = `HARD RULES:
 13. Give every node function and every routing function a one-line docstring in plain
    English saying what it does ("Split the job description into must-haves and
    nice-to-haves."). The Graph view shows that line on the node's card, and a routing
-   function's line is the rule it shows at the fork.`;
+   function's line is the rule it shows at the fork.
+14. Read a model reply's text as \`response.text\`, NEVER as \`response.content\`. The host may
+   run the model with thinking on, and then \`content\` is a LIST of blocks — thinking first,
+   then text — so \`response.content.strip()\`, \`json.loads(response.content)\` or an f-string
+   of it raises or garbles on a real provider while passing every dry run. \`.text\` joins the
+   text blocks, skips the thinking, and is a plain str either way. A ToolMessage's \`.content\`
+   is the tool's own string and is fine to read.`;
 
 function renderConnectorReference(connectors: Connector[]): string {
   return connectors
