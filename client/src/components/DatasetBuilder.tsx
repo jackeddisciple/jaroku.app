@@ -30,14 +30,18 @@ import { csvToExamples } from "../lib/csv.ts";
 import { deleteWithUndo } from "../lib/evalUndo.ts";
 import { download, examplesToCsv } from "../lib/evalExport.ts";
 import { useUiStore } from "../store/uiStore.ts";
-import { ICON } from "../lib/tokens.ts";
+import { ICON, TYPE } from "../lib/tokens.ts";
 import { Chip } from "./Chip.tsx";
 import { Truncate } from "./Truncate.tsx";
 import { EmptyState } from "./EmptyState.tsx";
 import { SectionHeader } from "./SectionHeader.tsx";
-import { ChevronDownIcon, ChevronRightIcon, DatabaseIcon, XIcon } from "./panelIcons.tsx";
+import { DatabaseIcon, XIcon } from "./panelIcons.tsx";
+import { iconBtn, markBtn, primaryBtnSm, textBtn } from "./buttons.ts";
 import type { Dataset, DatasetExample, RubricCriterion } from "../types.ts";
 import { Icon } from "../lib/icons/registry.ts";
+
+/** The trace's grey mark, for the one action on a dataset that removes it: red on approach. */
+const DANGER_MARK = markBtn.replace("hover:text-ink", "hover:text-err");
 
 /** An input/expected pair, editable in place. Commits on blur; Escape reverts. */
 function ExampleRow({
@@ -123,6 +127,11 @@ function ExampleRow({
         title="Click to edit"
         className={`block w-full text-left text-caption rounded-control px-2 py-1 -mx-2 hover:bg-active/50 transition-colors whitespace-pre-wrap break-words ${
           text ? (which === "input" ? "text-ink" : "text-muted") : "text-faint italic"
+        }${
+          // THE TWO INVITATIONS WAIT FOR THE CASE TO BE REACHED FOR. "+ expected output" and "+ note"
+          // under every case made a list of fifty cases three lines of grey per case; they show on
+          // the row's hover and on keyboard focus, and stay in the page for both.
+          !text && which !== "input" ? " opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100" : ""
         }`}
       >
         {/* FOLDED WHEN LONG. Unfolded, one case filled the panel and the others were a scroll away. */}
@@ -130,13 +139,17 @@ function ExampleRow({
           className={which === "input" && long && !unfolded ? "clamp-lines" : "block"}
           style={which === "input" && long && !unfolded ? ({ "--clamp": 4 } as CSSProperties) : undefined}
         >
+          {/* WHAT A SECOND LINE IS, said — an expected output and a note were the same grey text. */}
+          {text && which !== "input" && (
+            <span className={`mr-1.5 not-italic ${TYPE.sectionLabel}`}>{which === "expected" ? "Expected" : "Note"}</span>
+          )}
           {text || placeholder}
         </span>
       </button>
     );
 
   return (
-    <div className="group flex gap-3 py-2">
+    <div className="group flex gap-3 px-3 py-2.5">
       <span className="text-faint text-tiny tabular-nums pt-1 w-6 shrink-0 text-right select-none">
         {index + 1}
       </span>
@@ -283,23 +296,26 @@ function RubricEditor({ datasetId }: { datasetId: string }) {
   };
 
   return (
-    <div className="shrink-0 border-b border-hair px-6 pb-2">
+    <div className="border-t border-hair px-3 pb-2">
+      {/* FOLDED AS THE TRACE FOLDS A SECTION: the chevron, the section's word, and one line saying what
+          is in it — so the rubric reads as part of the dataset rather than as a strip of chrome. */}
       <button
-        className="flex w-full items-center gap-2 py-1.5 text-left"
+        type="button"
+        className="flex min-h-9 w-full min-w-0 items-center gap-2 rounded-control py-1.5 text-left focus-visible:outline-none focus-visible:shadow-focusring"
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
       >
-        {/* THE DISCLOSURE IS THE EDIT — opening this is how a rubric gets changed, so the mark
-            goes here rather than on a second control that would do the same thing. */}
-        <Icon.evals.editRubric size={ICON.xs} className="shrink-0 text-faint" />
-        <span className="text-tiny uppercase tracking-wider text-faint">Judge rubric</span>
-        <span className="text-tiny text-muted">
+        <span aria-hidden className={`shrink-0 text-faint transition-transform duration-fast ${open ? "" : "-rotate-90"}`}>
+          <Icon.trace.fold size={ICON.xs} />
+        </span>
+        <span className={`${TYPE.sectionLabel} shrink-0`}>Judge rubric</span>
+        <span className="min-w-0 flex-1 truncate text-caption text-ink">
           {!loaded ? "loading…" : `${isDefault ? "Built-in" : "Custom"} · ${(rubric?.criteria ?? []).length} criteria`}
           {dirty && " · unsaved changes"}
         </span>
-        <span className="ml-auto text-faint">
-          {open ? <ChevronDownIcon size={ICON.xs} /> : <ChevronRightIcon size={ICON.xs} />}
-        </span>
+        {/* THE DISCLOSURE IS THE EDIT — opening this is how a rubric gets changed, so the mark
+            goes here rather than on a second control that would do the same thing. */}
+        <Icon.evals.editRubric size={ICON.xs} className="shrink-0 text-faint" />
       </button>
 
       {open && (
@@ -368,7 +384,8 @@ function RubricEditor({ datasetId }: { datasetId: string }) {
 
           <div className="flex flex-wrap items-center gap-2">
             <button
-              className="rounded-control px-2 py-1 text-tiny text-muted transition-colors hover:text-ink"
+              type="button"
+              className={textBtn}
               onClick={() =>
                 setDraft([
                   ...criteria,
@@ -386,28 +403,32 @@ function RubricEditor({ datasetId }: { datasetId: string }) {
                 keep the criteria they were scored on, so this changes the next eval only. */}
             {!isDefault && !dirty && (
               <button
+                type="button"
                 onClick={() => sendResetRubric(datasetId)}
                 disabled={!connected}
                 title="Score this dataset against the built-in rubric again. Past evals keep theirs."
-                className="rounded-control px-2 py-1 text-tiny text-muted transition-colors hover:text-ink disabled:opacity-30"
+                className={textBtn}
               >
                 Reset to built-in
               </button>
             )}
+            {/* SAVING IS THE DECISION THE EDITOR EXISTS TO ASK, so it is the one filled button. */}
             <button
+              type="button"
               onClick={save}
               disabled={!connected || !dirty || problem !== null}
               title={!connected ? "Not connected" : problem ?? (dirty ? "Save this rubric for this dataset" : "Nothing to save")}
-              className="ml-auto rounded-control bg-active px-2.5 py-1 text-tiny text-ink transition-opacity disabled:opacity-30"
+              className={`${primaryBtnSm} ml-auto`}
             >
               {dirty ? "Save rubric" : "Saved"}
             </button>
             {dirty && (
               <button
+                type="button"
                 onClick={() => setDraft(null)}
                 title="Revert to the saved rubric"
                 aria-label="Revert to the saved rubric"
-                className="rounded-control p-1 text-faint transition-colors hover:bg-active active:bg-chrome hover:text-ink"
+                className={iconBtn}
               >
                 <Icon.evals.revertRubric size={ICON.xs} />
               </button>
@@ -438,8 +459,8 @@ function CheckRow({ dataset }: { dataset: Dataset }) {
   const connected = useTraceStore((s) => s.connection === "open");
   const current = dataset.check_mode ?? null;
   return (
-    <div className="flex shrink-0 flex-wrap items-center gap-1 px-6 pb-2 text-tiny" role="group" aria-label="Check answers against expected">
-      <span className="mr-1 text-faint">Check answers against expected</span>
+    <div className="flex flex-wrap items-center gap-1 px-3 py-2 text-tiny" role="group" aria-label="Check answers against expected">
+      <span className="mr-1 text-muted">Check answers against expected</span>
       {CHECKS.map((c) => (
         <Chip
           key={c.label}
@@ -473,6 +494,8 @@ export function DatasetBuilder() {
   const setError = useEvalStore((s) => s.setError);
 
   const [newInput, setNewInput] = useState("");
+  /** The new case's expected output while it is being typed, or null when its field is not open. */
+  const [newExpected, setNewExpected] = useState<string | null>(null);
   /** What the case list is narrowed to. Cases are long, and there can be many. */
   const [query, setQuery] = useState("");
   const [importNote, setImportNote] = useState<string | null>(null);
@@ -519,8 +542,9 @@ export function DatasetBuilder() {
   const addExample = () => {
     const input = newInput.trim();
     if (!input || !selectedDatasetId) return;
-    sendAddExample(selectedDatasetId, input);
+    sendAddExample(selectedDatasetId, input, newExpected?.trim() || null);
     setNewInput("");
+    setNewExpected(null);
   };
 
   const importCsv = async (file: File) => {
@@ -573,9 +597,10 @@ export function DatasetBuilder() {
           // NO NAME: the server picks one this agent does not have. Numbering from the count here gave
           // two "Test set 3"s after a delete. Agent names are not used — they are generated from prompts
           // and run long, and the agent is already established by the sidebar.
+          type="button"
           onClick={() => sendCreateDataset(activeAgentId)}
           disabled={!connected}
-          className="rounded-control px-2.5 py-1 text-caption text-faint hover:text-ink transition-colors disabled:opacity-40 shrink-0"
+          className={`${textBtn} shrink-0`}
         >
           + New dataset
         </button>
@@ -585,8 +610,9 @@ export function DatasetBuilder() {
         /* THE DENSEST TEXT-BUTTON CLUSTER IN THE APP, as a glyph row. Five words-as-buttons in
             one strip — Rename, Import CSV, Delete dataset, plus Revert and Add nearby — read as a
             form toolbar rather than as the actions on a dataset. Every mark here already existed
-            in the icon set; the words are the tooltips. */
-        <div className="flex shrink-0 items-center gap-1 px-6 pb-2">
+            in the icon set; the words are the tooltips. DRAWN AS THE TRACE'S RUN ACTIONS ARE — marks
+            on a grey ground (`markBtn`) — with Delete set apart at the row's end. */
+        <div className="flex shrink-0 items-center gap-1 px-6 py-2">
           {renaming !== null ? (
             <form
               className="flex min-w-0 flex-1 items-center gap-2"
@@ -614,11 +640,11 @@ export function DatasetBuilder() {
                 aria-label="Dataset name"
                 className="min-w-0 flex-1 rounded-input border border-edge bg-elevated px-2 py-0.5 text-caption text-ink outline-none focus-visible:shadow-focusring"
               />
-              <button type="submit" className="shrink-0 text-tiny font-medium text-ink underline underline-offset-2">Rename</button>
+              <button type="submit" className={`${primaryBtnSm} shrink-0`}>Rename</button>
               <button
                 type="button"
                 onClick={() => { setRenaming(null); setRenameError(null); }}
-                className="shrink-0 text-tiny font-medium text-muted underline underline-offset-2"
+                className={`${textBtn} shrink-0`}
               >
                 Cancel
               </button>
@@ -626,21 +652,23 @@ export function DatasetBuilder() {
             </form>
           ) : (
           <button
+            type="button"
             onClick={() => setRenaming(selected.name)}
             title="Rename this dataset"
             aria-label="Rename this dataset"
-            className="rounded-control p-1 text-faint transition-colors hover:bg-active active:bg-chrome hover:text-ink"
+            className={markBtn}
           >
-            <Icon.evals.renameDataset size={ICON.xs} />
+            <Icon.evals.renameDataset size={ICON.sm} />
           </button>
           )}
           <button
+            type="button"
             onClick={() => fileRef.current?.click()}
             title="Import examples from a CSV"
             aria-label="Import examples from a CSV"
-            className="rounded-control p-1 text-faint transition-colors hover:bg-active active:bg-chrome hover:text-ink"
+            className={markBtn}
           >
-            <Icon.evals.importCsv size={ICON.xs} />
+            <Icon.evals.importCsv size={ICON.sm} />
           </button>
           <input
             ref={fileRef}
@@ -654,6 +682,7 @@ export function DatasetBuilder() {
             }}
           />
           <button
+            type="button"
             onClick={() => {
               const filename = `${selected.name.replace(/[^\w.-]+/g, "-").replace(/^-|-$/g, "") || "dataset"}.csv`;
               download(filename, examplesToCsv(examples), "text/csv");
@@ -662,20 +691,22 @@ export function DatasetBuilder() {
             disabled={!examples.length}
             title={examples.length ? "Export these cases as a CSV you can import again" : "Nothing to export yet"}
             aria-label="Export these cases as a CSV"
-            className="rounded-control p-1 text-faint transition-colors hover:bg-active active:bg-chrome hover:text-ink disabled:opacity-30"
+            className={markBtn}
           >
-            <Icon.evals.exportCsv size={ICON.xs} />
+            <Icon.evals.exportCsv size={ICON.sm} />
           </button>
           <button
+            type="button"
             onClick={() => sendDuplicateDataset(selected.id)}
             disabled={!connected}
             title="Duplicate this dataset — its cases, check and rubric"
             aria-label="Duplicate this dataset"
-            className="rounded-control p-1 text-faint transition-colors hover:bg-active active:bg-chrome hover:text-ink disabled:opacity-30"
+            className={markBtn}
           >
-            <Icon.evals.duplicateDataset size={ICON.xs} />
+            <Icon.evals.duplicateDataset size={ICON.sm} />
           </button>
           <button
+            type="button"
             // UNDOABLE FOR FIVE SECONDS rather than gone in one click — see lib/evalUndo.ts.
             onClick={() => deleteWithUndo({
               kind: "dataset", id: selected.id, datasetId: selected.id, agentId: activeAgentId,
@@ -683,26 +714,32 @@ export function DatasetBuilder() {
             })}
             title="Delete this dataset"
             aria-label="Delete this dataset"
-            className="ml-auto rounded-control p-1 text-faint transition-colors hover:bg-active active:bg-chrome hover:text-err"
+            className={`${DANGER_MARK} ml-auto`}
           >
-            <Icon.evals.deleteDataset size={ICON.xs} />
+            <Icon.evals.deleteDataset size={ICON.sm} />
           </button>
         </div>
       )}
 
-      {/* The judge's rubric for THIS dataset. Under the dataset actions and above the examples,
-          because it is the standard those examples will be scored against. */}
-      {selected && <CheckRow dataset={selected} />}
-      {selected && <RubricEditor key={selected.id} datasetId={selected.id} />}
+      {/* HOW THIS DATASET'S ANSWERS ARE SCORED — the check and the judge's rubric — as one surface, in
+          the trace's card. Under the dataset actions and above the examples, because it is the
+          standard those examples will be scored against. */}
+      {selected && (
+        <section aria-label="Scoring" className="mx-6 mb-2 shrink-0 rounded-card border border-hair bg-panel">
+          <CheckRow dataset={selected} />
+          <RubricEditor key={selected.id} datasetId={selected.id} />
+        </section>
+      )}
 
       {(error || importNote) && (
-        <div className="px-6 pb-2 shrink-0 flex items-center gap-2 text-tiny">
-          <span className={error ? "text-err" : "text-muted"}>{error ?? importNote}</span>
+        <div className="mx-6 mb-2 flex shrink-0 items-center gap-2 rounded-card border border-hair bg-panel px-3 py-2 text-tiny">
+          <span className={`min-w-0 flex-1 ${error ? "text-err" : "text-muted"}`}>{error ?? importNote}</span>
           <button
+            type="button"
             onClick={() => { setError(null); setImportNote(null); }}
             title="Dismiss"
             aria-label="Dismiss"
-            className="shrink-0 text-faint transition-colors duration-fast hover:text-ink"
+            className={`${iconBtn} shrink-0`}
           >
             <Icon.global.dismissNotice size={ICON.xs} />
           </button>
@@ -727,10 +764,10 @@ export function DatasetBuilder() {
           <>
             {/* §4.2's case list. A dataset's examples arrive with the dataset — `examplesOf` reads
                 what the payload carried, and there is no cursor — so the length is a total. */}
-            <SectionHeader name="Cases" count={examples.length} className="pb-1" />
+            <SectionHeader name="Cases" count={examples.length} className="min-h-8 pb-1" />
             {/* SEARCH, for a list of long cases. The numbers stay each case's own, so "case 7" is case 7. */}
             {examples.length > 5 && (
-              <div className="flex items-center gap-2 pb-1">
+              <div className="flex items-center gap-2 pb-2">
                 <input
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
@@ -742,43 +779,75 @@ export function DatasetBuilder() {
                 {query.trim() && <span className="shrink-0 text-tiny text-faint">{shownCases.length} of {examples.length}</span>}
               </div>
             )}
-            {shownCases.map(({ e, i }) => (
-              <ExampleRow key={e.id} example={e} index={i} datasetId={selected.id} agentId={activeAgentId} />
-            ))}
+            {/* THE CASES AS ONE LIST IN THE TRACE'S CARD, a hairline between each — they were rows of
+                text on the page with nothing to say where one case ended and the next began. */}
+            {shownCases.length > 0 && (
+              <div className="mb-3 divide-y divide-hair rounded-card border border-hair bg-panel">
+                {shownCases.map(({ e, i }) => (
+                  <ExampleRow key={e.id} example={e} index={i} datasetId={selected.id} agentId={activeAgentId} />
+                ))}
+              </div>
+            )}
           </>
         )}
       </div>
 
       {/* add */}
       {selected && (
-        <div className="px-6 py-3 shrink-0 flex items-end gap-2">
-          {/* A BOX, NOT A LINE, and nothing in it is "corrected". A one-line input with the system's
-              autocorrect turned `---` into an em dash and straight quotes into curly ones — and for an
-              agent that splits a job description from a résumé on `---`, a hand-typed case silently
-              became one blob, and an exact-match expectation stopped matching. Enter adds the case;
-              Shift+Enter is a new line, as in the case editor above. */}
-          <textarea
-            value={newInput}
-            onChange={(e) => setNewInput(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); addExample(); } }}
-            disabled={!connected}
-            rows={Math.min(6, Math.max(1, newInput.split("\n").length))}
-            spellCheck={false}
-            autoCorrect="off"
-            autoCapitalize="off"
-            aria-label="New case input"
-            placeholder="an input the agent should handle — Shift+Enter for a new line"
-            className="flex-1 resize-none bg-elevated text-ink placeholder:text-faint rounded-input border border-edge px-2.5 py-1.5 text-caption outline-none focus:shadow-focusring disabled:opacity-50"
-          />
-          <button
-            onClick={addExample}
-            disabled={!connected || !newInput.trim()}
-            title={!connected ? "Not connected" : !newInput.trim() ? "Type an input first" : "Add this case"}
-            aria-label="Add this example"
-            className="rounded-control bg-active p-1.5 text-ink transition-opacity disabled:opacity-30"
-          >
-            <Icon.evals.addExample size={ICON.sm} />
-          </button>
+        <div className="shrink-0 space-y-2 border-t border-hair px-6 py-3">
+          <div className="flex items-end gap-2">
+            {/* A BOX, NOT A LINE, and nothing in it is "corrected". A one-line input with the system's
+                autocorrect turned `---` into an em dash and straight quotes into curly ones — and for an
+                agent that splits a job description from a résumé on `---`, a hand-typed case silently
+                became one blob, and an exact-match expectation stopped matching. Enter adds the case;
+                Shift+Enter is a new line, as in the case editor above. */}
+            <textarea
+              value={newInput}
+              onChange={(e) => setNewInput(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); addExample(); } }}
+              disabled={!connected}
+              rows={Math.min(6, Math.max(1, newInput.split("\n").length))}
+              spellCheck={false}
+              autoCorrect="off"
+              autoCapitalize="off"
+              aria-label="New case input"
+              placeholder="an input the agent should handle — Shift+Enter for a new line"
+              className="flex-1 resize-none bg-elevated text-ink placeholder:text-faint rounded-input border border-edge px-2.5 py-1.5 text-caption outline-none focus:shadow-focusring disabled:opacity-50"
+            />
+            {/* THE BAR'S ONE DECISION, so the one filled button — with its word. It was a mark on the
+                same grey as everything around it. */}
+            <button
+              type="button"
+              onClick={addExample}
+              disabled={!connected || !newInput.trim()}
+              title={!connected ? "Not connected" : !newInput.trim() ? "Type an input first" : "Add this case"}
+              className={`${primaryBtnSm} shrink-0`}
+            >
+              <Icon.evals.addExample size={ICON.sm} />
+              Add case
+            </button>
+          </div>
+          {/* THE EXPECTED OUTPUT, AT THE TIME THE CASE IS WRITTEN. It could only be added afterwards, by
+              finding the new case in the list and opening its second line. */}
+          {newExpected === null ? (
+            <button type="button" onClick={() => setNewExpected("")} disabled={!connected} className={`${textBtn} -ml-2`}>
+              + expected output
+            </button>
+          ) : (
+            <textarea
+              value={newExpected}
+              onChange={(e) => setNewExpected(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); addExample(); } }}
+              disabled={!connected}
+              rows={Math.min(4, Math.max(1, newExpected.split("\n").length))}
+              spellCheck={false}
+              autoCorrect="off"
+              autoCapitalize="off"
+              aria-label="Expected output for the new case"
+              placeholder="what a good answer gives — optional"
+              className="w-full resize-none bg-elevated text-ink placeholder:text-faint rounded-input border border-edge px-2.5 py-1.5 text-caption outline-none focus:shadow-focusring disabled:opacity-50"
+            />
+          )}
         </div>
       )}
     </div>

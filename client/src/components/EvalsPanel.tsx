@@ -36,7 +36,7 @@ import {
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu.tsx";
 import { modelName, useProviderStore } from "../store/providerStore.ts";
-import { factChip, iconBtn, markBtn, primaryBtnSm, secondaryBtn, tabBtn } from "./buttons.ts";
+import { factChip, iconBtn, markBtn, primaryBtnSm, secondaryBtn, tabBtn, textBtn } from "./buttons.ts";
 import { Tip } from "./ui/tooltip.tsx";
 import { ICON, TYPE } from "../lib/tokens.ts";
 import { Icon, type IconComponent } from "../lib/icons/registry.ts";
@@ -230,9 +230,8 @@ export function EvalActions({ results }: { results: EvalResults }) {
   );
 }
 
-/** A small text action, as the trace draws one — a word with a hit area that shows on approach. */
-const TEXT_ACTION =
-  "rounded-control px-2 py-1 text-tiny text-muted transition-colors hover:bg-active hover:text-ink focus-visible:outline-none focus-visible:shadow-focusring";
+/** A small text action, as the trace draws one — `textBtn`. */
+const TEXT_ACTION = textBtn;
 
 /**
  * A notice on Results — a refusal, the judge's state — as one construction: a card in the trace's

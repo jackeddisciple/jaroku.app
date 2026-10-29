@@ -23,9 +23,10 @@ import { sendCancelEval, sendEstimateEval, sendStartEval } from "../lib/socket.t
 import { fmtCost } from "../lib/format.ts";
 import { effortName, effortStops } from "../lib/effortLevels.ts";
 import { Chip } from "./Chip.tsx";
-import { primaryBtn } from "./buttons.ts";
+import { primaryBtnSm, textBtn } from "./buttons.ts";
 import type { EvalEstimate, EvalTarget } from "../types.ts";
 import { Icon } from "../lib/icons/registry.ts";
+import { ICON } from "../lib/tokens.ts";
 import { IconButton } from "./IconButton.tsx";
 
 const key = (t: EvalTarget) => `${t.provider}/${t.model}`;
@@ -208,6 +209,13 @@ export function EvalRunBar() {
   };
 
   const parsedCeiling = parseCeiling(ceiling);
+  /** Why the estimate cannot be asked for yet, in the words its tooltip uses — or null when it can. */
+  const estimateBlocked =
+    !connected ? "Not connected"
+      : unbuilt ? unbuilt
+      : !examples.length ? "Add an example first"
+      : !targets.length ? "Choose a model to run against"
+      : null;
   const refusal = refusalOf(estimate);
   const warning = estimate && "usd" in parsedCeiling ? ceilingWarning(parsedCeiling.usd, estimate) : null;
 
@@ -219,7 +227,9 @@ export function EvalRunBar() {
   };
 
   return (
-    <div className="px-6 py-3 shrink-0 space-y-2">
+    // THE RUN AS THE TAB'S FOOTER: its own surface under a hairline, so what will run and what it
+    // will cost read as one place rather than as more rows of the dataset above them.
+    <div className="shrink-0 space-y-2 border-t border-hair bg-panel px-6 py-3">
       {/* provider selection — GROUPED BY PROVIDER, and only the ones that can run spelled out. Three
           rows of greyed chips for providers with no key said nothing a single link could not, and
           pushed everything else down; a leg already chosen stays, so it can always be taken off. */}
@@ -230,7 +240,9 @@ export function EvalRunBar() {
           if (!shown.length) return null;
           return (
             <div key={p.id} className="flex flex-wrap items-center gap-1.5">
-              <span className="w-full text-tiny text-faint">{p.label}</span>
+              {/* THE PROVIDER AT THE START OF ITS OWN ROW, not on a line of its own above it — a line
+                  per provider that held one word. */}
+              <span className="mr-0.5 text-tiny text-faint">{p.label}</span>
               {shown.map((m) => {
                 const t: EvalTarget = { provider: p.id, model: m };
                 const on = targets.some((x) => key(x) === key(t));
@@ -262,9 +274,10 @@ export function EvalRunBar() {
           if (!count) return null;
           return (
             <button
+              type="button"
               onClick={() => useUiStore.getState().openSecretsForProvider(missing[0]!.id)}
               title={`Add a key for ${missing.map((p) => p.label).join(", ")} in Secrets to compare on these models`}
-              className="text-tiny text-faint transition-colors hover:text-ink"
+              className={`${textBtn} -ml-2`}
             >
               +{count} model{count === 1 ? "" : "s"} need an API key →
             </button>
@@ -302,7 +315,7 @@ export function EvalRunBar() {
 
       {/* the estimate — shown only when money is involved, and always as a range */}
       {confirming && (
-        <div className="rounded-card border border-edge bg-panel px-3 py-2 space-y-1.5">
+        <div className="rounded-card border border-hair bg-elevated px-3 py-2.5 space-y-1.5">
           {!estimate ? (
             // A refusal in place of the estimate, rather than "estimating…" for ever.
             error ? <div className="text-tiny text-err" role="alert">{error}</div> : <div className="text-tiny text-muted">estimating…</div>
@@ -314,8 +327,9 @@ export function EvalRunBar() {
                   {estimate.targets} provider{estimate.targets === 1 ? "" : "s"} ={" "}
                   {estimate.totalRuns} run{estimate.totalRuns === 1 ? "" : "s"}
                 </span>
-                {/* A RANGE, never a point value — this is a projection, not a quote. */}
-                <span className="text-run">
+                {/* A RANGE, never a point value — this is a projection, not a quote. The figure the box
+                    is opened for, so it is the one in label weight; it was amber, which means running. */}
+                <span className="text-label tabular-nums text-ink">
                   roughly {fmtCost(estimate.totalLowUsd)}–{fmtCost(estimate.totalHighUsd)}
                 </span>
                 {estimate.judgeHighUsd > 0 && (
@@ -344,22 +358,26 @@ export function EvalRunBar() {
                   }`}
                 />
                 <button
+                  type="button"
                   onClick={() => { setConfirming(false); setEstimate(null); }}
-                  className="ml-auto text-tiny text-faint hover:text-ink transition-colors"
+                  className={`${textBtn} ml-auto`}
                 >
                   Cancel
                 </button>
                 <button
+                  type="button"
                   onClick={confirmRun}
                   disabled={"error" in parsedCeiling || refusal !== null}
                   title={refusal ?? ("error" in parsedCeiling ? parsedCeiling.error : undefined)}
-                  className={`${primaryBtn} whitespace-nowrap`}
+                  className={`${primaryBtnSm} whitespace-nowrap`}
                 >
+                  <Icon.evals.run size={ICON.sm} />
                   Run for real
                 </button>
               </div>
               {"error" in parsedCeiling && <div className="text-tiny text-err" role="alert">{parsedCeiling.error}</div>}
-              {warning && <div className="text-tiny text-run" role="status">{warning}</div>}
+              {/* A CAUTION, in the info blue: amber is spent only on what is running. */}
+              {warning && <div className="text-tiny text-warn" role="status">{warning}</div>}
               {/* Says what the ceiling actually does. It is checked against real spend
                   before anything is DISPATCHED, so runs already in flight finish and pay
                   out — with providers running two at a time, a small eval can dispatch
@@ -384,7 +402,8 @@ export function EvalRunBar() {
           {unbuilt ? (
             <span className="min-w-0 text-tiny text-muted">{unbuilt}</span>
           ) : targets.length > 0 && (
-            <span className="text-run text-tiny whitespace-nowrap">billed per token</span>
+            // A FACT ABOUT THE BILL, NOT SOMETHING RUNNING — it was amber, the colour of in flight.
+            <span className="text-muted text-tiny whitespace-nowrap">billed per token</span>
           )}
           <span className="ml-auto" />
           {running ? (
@@ -397,21 +416,21 @@ export function EvalRunBar() {
               onClick={() => progress && sendCancelEval(progress.evalId)}
             />
           ) : (
-            <IconButton
-              icon={Icon.evals.run}
-              // §8: A GATE'S LABEL NAMES WHAT THE PRESS DOES. Every eval sits behind a spend
-              // ceiling, so this opens the estimate rather than dispatching, and "Run eval" would
-              // promise money moving that the next screen has not asked about yet.
-              label="Estimate the cost of this eval"
-              disabledReason={
-                !connected ? "Not connected"
-                  : unbuilt ? unbuilt
-                  : !examples.length ? "Add an example first"
-                  : !targets.length ? "Choose a model to run against"
-                  : null
-              }
+            // THE TAB'S PRIMARY ACTION, AS THE ONE FILLED BUTTON WITH ITS WORD — the trace's own
+            // construction for the next thing to do. It was a play mark in the corner, the same grey as
+            // the marks around it. §8: A GATE'S LABEL NAMES WHAT THE PRESS DOES. Every eval sits behind
+            // a spend ceiling, so this opens the estimate rather than dispatching, and "Run eval" would
+            // promise money moving that the next screen has not asked about yet.
+            <button
+              type="button"
               onClick={beginRun}
-            />
+              disabled={estimateBlocked !== null}
+              title={estimateBlocked ? `Estimate the cost of this eval — ${estimateBlocked}` : "Estimate the cost of this eval"}
+              className={`${primaryBtnSm} shrink-0 focus-visible:outline-none focus-visible:shadow-focusring`}
+            >
+              <Icon.evals.run size={ICON.sm} />
+              Estimate cost
+            </button>
           )}
         </div>
       )}

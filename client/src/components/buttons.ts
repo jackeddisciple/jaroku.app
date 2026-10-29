@@ -5,7 +5,7 @@
 // strings. Two copies is how "Apply" and "Generate" end up a pixel apart after somebody adjusts one
 // of them, which is the sort of difference nobody can name and everybody notices.
 //
-// Eight weights, because the app has eight kinds of control:
+// Nine weights, because the app has nine kinds of control:
 //
 //   primary    the decision the card exists to ask — Generate, Apply
 //   outline    a real action that is not *the* action — the second button in a pair
@@ -14,6 +14,7 @@
 //   icon       a glyph on its own, sized to the glyph rather than to a word
 //   tab        one of a set of destinations, where the set is the control
 //   mark       a surface's own action as a glyph on a grey ground — the trace's, the eval's
+//   text       a word that acts, small — Stop comparing, Cancel beside a field
 //   fact       a pressable fact on a header's metadata line
 //
 // The last two were the gap. This file opened saying it covered three weights and the app had
@@ -128,6 +129,14 @@ export const tabBtn = (active: boolean, size: "sm" | "md" = "md"): string =>
  */
 export const markBtn =
   "inline-flex h-8 w-8 items-center justify-center rounded-control bg-active text-muted transition-colors hover:bg-chrome hover:text-ink focus-visible:outline-none focus-visible:shadow-focusring disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-active disabled:hover:text-muted";
+
+/**
+ * A word that acts, small — Stop comparing, Cancel beside a field, + Criterion. The trace's own
+ * spelling of it (its result card's Show more), with the hit area shown on approach so it reads as a
+ * button rather than as a word somebody happened to make clickable.
+ */
+export const textBtn =
+  "rounded-control px-2 py-1 text-tiny text-muted transition-colors hover:bg-active hover:text-ink focus-visible:outline-none focus-visible:shadow-focusring disabled:opacity-40 disabled:cursor-not-allowed";
 
 /**
  * A fact on a header's metadata line, as a round pill in the darker grey, darker still on hover — a

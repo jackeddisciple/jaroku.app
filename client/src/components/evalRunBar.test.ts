@@ -93,6 +93,10 @@ console.log("\nthe model chips, rendered");
   check(!words.includes("GPT-5.6 Luna") && !words.includes("Muse Spark"), "models with no key are not drawn as greyed chips", words);
   check(words.includes("+2 models need an API key"), "they are one link to Secrets instead", words);
   check(words.includes("1 × 1 = 1 run"), "the models chosen for this agent are the ones counted, from the store", words);
+  const idle = markup(createElement(EvalRunBar));
+  check(/<button[^>]*title="Estimate the cost of this eval[^"]*"[^>]*>(?:(?!<\/button>).)*Estimate cost<\/button>/s.test(idle),
+    "the tab's primary action is the filled button, saying what it does");
+  check(!/text-run/.test(idle), "and nothing on an idle run bar is amber — amber is for what is running");
 
   seed(useEvalStore, {
     progressByEval: { e1: { evalId: "e1", total: 1, done: 0, running: 1, queued: 0, failed: 0, agentId: "liven", startedHere: true } },

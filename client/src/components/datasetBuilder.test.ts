@@ -76,6 +76,10 @@ console.log("\nthe builder, rendered");
   const words = html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
   check(words.includes("Check answers against expected") && words.includes("Word") && words.includes("Pattern"),
     "a dataset says how its answers are checked against expected", words.slice(0, 300));
+  check(/<section aria-label="Scoring"/.test(html) && words.includes("Judge rubric"), "the check and the judge's rubric are one scoring card");
+  check(/opacity-0 group-hover:opacity-100 group-focus-within:opacity-100/.test(html) && words.includes("+ expected output (optional)"),
+    "a case's empty lines wait to be reached for, and stay in the page for a keyboard");
+  check(words.includes("Add case") && words.includes("+ expected output"), "a case is added by name, and can be given its expected output as it is written");
 }
 
 console.log("\na dataset can leave the tab, be found in, and keep its notes");

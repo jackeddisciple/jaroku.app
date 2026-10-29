@@ -7,6 +7,7 @@ import { fmtCost, fmtLatency, fmtPercent, relTime } from "../lib/format.ts";
 import { TYPE } from "../lib/tokens.ts";
 import { useNarrowerThan } from "../lib/useNarrower.ts";
 import { modelName, useProviderStore } from "../store/providerStore.ts";
+import { textBtn } from "./buttons.ts";
 import type { EvalResults, ProviderMetrics } from "../types.ts";
 
 /** One figure, then and now. */
@@ -110,11 +111,7 @@ export function EvalCompare({
         <span className="text-tiny text-muted">
           the eval {relTime(against.startedAt)} on {against.datasetName ?? "a deleted dataset"}
         </span>
-        <button
-          type="button"
-          onClick={onClose}
-          className="ml-auto rounded-control px-2 py-1 text-tiny text-muted transition-colors hover:bg-active hover:text-ink focus-visible:outline-none focus-visible:shadow-focusring"
-        >
+        <button type="button" onClick={onClose} className={`${textBtn} ml-auto`}>
           Stop comparing
         </button>
       </div>
