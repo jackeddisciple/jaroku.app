@@ -76,7 +76,7 @@ export function CompareCards({ models }: { models: ModelDelta[] }) {
 }
 
 /** Narrower than this, the six columns are clipped; the models become cards — as in EvalDashboard. */
-const STACK_BELOW_PX = 560;
+const STACK_BELOW_PX = 640;
 
 export function EvalCompare({
   before,

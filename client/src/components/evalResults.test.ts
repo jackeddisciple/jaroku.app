@@ -488,7 +488,8 @@ console.log("\nResults leads with what the eval found, in a sentence, under the 
   const words = text(html);
   check(words.includes("claude-sonnet-5 leads quality (74 vs 69); claude-haiku-4-5 is 2.3× cheaper per run and fastest."), "the verdict says who won and at what price", words.slice(0, 400));
   check(/bg-ok\/10 text-ok/.test(html) && words.includes("completed"), "a finished eval wears the trace's green pill");
-  check(words.includes("12 of 12 answers scored") && words.includes("of $1.00 budget"), "and its figures say what was scored and what the ceiling was");
+  check(words.includes("12 of 12 scored") && words.includes("of $1.00 budget"), "and its figures say what was scored and what the ceiling was");
+  check(!/>anthropic</.test(html), "with one provider, its name is not repeated on every row");
 }
 
 console.log("\na refused Retry says why on Results, where it was pressed");

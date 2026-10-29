@@ -142,7 +142,7 @@ function MatchCell({ p }: { p: ProviderMetrics }) {
 }
 
 /** The table's row as a card, for a panel too narrow for seven columns. */
-function ProviderCard({ p, lead, name }: { p: ProviderMetrics; lead: ReturnType<typeof leaders>; name: string }) {
+function ProviderCard({ p, lead, name, showProvider }: { p: ProviderMetrics; lead: ReturnType<typeof leaders>; name: string; showProvider: boolean }) {
   const fact = (label: string, value: React.ReactNode) => (
     <div className="flex items-baseline justify-between gap-2">
       <span className="text-faint">{label}</span>
@@ -153,7 +153,7 @@ function ProviderCard({ p, lead, name }: { p: ProviderMetrics; lead: ReturnType<
     <div className="rounded-card border border-hair bg-panel px-3 py-2.5 text-caption">
       <div className="pb-1.5" title={`${p.provider} · ${p.model}`}>
         <span className="text-label text-ink">{name}</span>
-        <span className="text-faint ml-1.5 text-tiny">{p.provider}</span>
+        {showProvider && <span className="text-faint ml-1.5 text-tiny">{p.provider}</span>}
       </div>
       <div className="space-y-0.5 text-tiny">
         {fact("Quality", <><QualityCell p={p} lead={lead.best === p.model} />{lead.best === p.model && <LeadMark title="highest quality" />}</>)}
@@ -214,7 +214,7 @@ export function EvalFigures({ results }: { results: EvalResults }) {
       Mark: Icon.trace.metricCalls,
       label: "Judge",
       value: scored > 0 ? fmtCost(totals.judgeCostUsd) : "—",
-      note: scored > 0 ? `${scored} of ${ok} answers scored` : "not scored",
+      note: scored > 0 ? `${scored} of ${ok} scored` : "not scored",
       title: "What scoring the answers cost. It is the same model for every leg, so it is kept out of each model's figures.",
     },
     {
@@ -232,8 +232,12 @@ export function EvalFigures({ results }: { results: EvalResults }) {
   );
 }
 
-/** Narrower than this, the table's seven columns are clipped; the rows become cards. */
-const STACK_BELOW_PX = 560;
+/**
+ * Narrower than this, the table's columns are clipped; the rows become cards. 640 since quality is a
+ * bar and models go by their names: at 560 the table cut "Ran OK" in half at the panel's default
+ * width, with nothing to say so but a sideways scroll macOS does not draw.
+ */
+const STACK_BELOW_PX = 640;
 
 /** The three files an eval exports, each with what it holds. Offered from the eval's actions. */
 export const EXPORTS = [
@@ -263,6 +267,9 @@ export function ComparisonTable({
   // The models by the names the run bar uses — "Haiku 4.5" — with the id where the catalogue has none.
   const providerModels = useProviderStore((s) => s.models);
   const name = (model: string): string => modelName(providerModels, model);
+  // THE PROVIDER ONLY WHERE IT TELLS THE ROWS APART — an eval across Anthropic and OpenAI. With one
+  // provider it was the same word on every row, in the column the table could least spare.
+  const mixed = new Set(results.providers.map((p) => p.provider)).size > 1;
   // HOW WIDE THE PANEL ACTUALLY IS. Below about 600px the columns were clipped with nothing to say so.
   const [box, narrow] = useNarrowerThan<HTMLDivElement>(STACK_BELOW_PX);
   const cell = (first: boolean): string => `py-2 ${first ? "" : "border-t border-hair"}`;
@@ -278,7 +285,7 @@ export function ComparisonTable({
         </div>
         {narrow ? (
           <div className="space-y-2">
-            {results.providers.map((p) => <ProviderCard key={`${p.provider} ${p.model}`} p={p} lead={lead} name={name(p.model)} />)}
+            {results.providers.map((p) => <ProviderCard key={`${p.provider} ${p.model}`} p={p} lead={lead} name={name(p.model)} showProvider={mixed} />)}
           </div>
         ) : (
         <div className="overflow-x-auto rounded-card border border-hair bg-panel">
@@ -312,7 +319,7 @@ export function ComparisonTable({
                       text in a comparison table that should be guessable. */}
                   <td className={`${cell(i === 0)} pl-3 pr-3`}>
                     <span className="whitespace-nowrap text-label text-ink">{name(p.model)}</span>
-                    <span className="text-faint ml-1.5 text-tiny">{p.provider}</span>
+                    {mixed && <span className="text-faint ml-1.5 text-tiny">{p.provider}</span>}
                   </td>
                   <td className={`${cell(i === 0)} px-2 text-right whitespace-nowrap`}>
                     <QualityCell p={p} lead={lead.best === p.model} />

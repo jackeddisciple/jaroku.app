@@ -73,6 +73,7 @@ console.log("\nthe cases can be narrowed to the ones that matter");
   check(!rowDisagrees(agree), "two scores inside the judge's noise agree");
   check(rowDisagrees(scoreGap) && rowDisagrees(oneFailed) && rowDisagrees(matchSplit), "a score gap, a failure beside a success and a split match all disagree");
   check(!rowDisagrees(waiting), "work that has not run cannot disagree");
+  check(rowDisagrees(row([cell({ score: 0.7 }), sonnetCell({ score: 0.45 })])), "70 against 45 is a gap of the step, though 0.70 − 0.45 is 0.2499… in floating point");
   check(cellFailed({ status: "timed_out" }) && !cellFailed({ status: "cancelled" }) && !cellFailed({ status: "queued" }), "a timeout is a failure; a cancelled or waiting cell is not");
 
   const counts = facetCounts(rows, new Set(["gap"]));

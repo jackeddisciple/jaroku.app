@@ -138,8 +138,10 @@ export function rowDisagrees(row: Pick<ExampleRow, "cells">): boolean {
   if (ok.length > 0 && ok.length < ran.length) return true;
   const verdicts = ok.map((c) => c.matches).filter((m): m is boolean => m != null);
   if (new Set(verdicts).size > 1) return true;
-  const scores = ok.map((c) => c.score).filter((s): s is number => s != null);
-  return scores.length > 1 && Math.max(...scores) - Math.min(...scores) >= SCORE_STEP;
+  // IN WHOLE POINTS, as the chips show them: 0.70 − 0.45 is 0.2499… in floating point, so a gap of
+  // exactly the step read as no disagreement while the two chips beside each other said 70 and 45.
+  const scores = ok.map((c) => c.score).filter((s): s is number => s != null).map((s) => Math.round(s * 100));
+  return scores.length > 1 && Math.max(...scores) - Math.min(...scores) >= Math.round(SCORE_STEP * 100);
 }
 
 /** Whether a case belongs under a facet. `changed` is the comparison's own list of moved cases. */

@@ -74,7 +74,10 @@ export function compareEvals(before: EvalResults, after: EvalResults): EvalCompa
         changes.push({ ...at, what: `${word(was)} → ${word(c)}`, better: ranOk(c) });
       } else if (was.matches != null && c.matches != null && was.matches !== c.matches) {
         changes.push({ ...at, what: c.matches ? "did not match → matched" : "matched → did not match", better: c.matches });
-      } else if (was.score !== null && c.score !== null && Math.abs(c.score - was.score) >= SCORE_STEP) {
+      } else if (was.score !== null && c.score !== null
+        // IN WHOLE POINTS, as the sentence says them: 0.70 − 0.45 is 0.2499… in floating point, so
+        // "score 70 → 45" — a move of exactly the step — was left out of the list.
+        && Math.abs(Math.round(c.score * 100) - Math.round(was.score * 100)) >= Math.round(SCORE_STEP * 100)) {
         changes.push({ ...at, what: `score ${Math.round(was.score * 100)} → ${Math.round(c.score * 100)}`, better: c.score > was.score });
       }
     }

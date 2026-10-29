@@ -64,6 +64,11 @@ console.log("\nwhat changed between two evals of one dataset");
   check(whats.includes("2:failed → succeeded"), "so is one that now runs", whats.join(" | "));
   check(whats.includes("3:score 90 → 40"), "and one whose score fell", whats.join(" | "));
   check(diff.changes[0]?.better === false && diff.changes.at(-1)?.better === true, "regressions first", whats.join(" | "));
+  const edge = compareEvals(
+    evalOf({ evalId: "a", rows: [{ exampleId: "x1", input: "q", expected: null, cells: [cell({ matches: null, score: 0.7 })] }] }),
+    evalOf({ evalId: "b", rows: [{ exampleId: "x1", input: "q", expected: null, cells: [cell({ matches: null, score: 0.45 })] }] }),
+  );
+  check(edge.changes[0]?.what === "score 70 → 45", "a move of exactly the step is listed, though 0.70 − 0.45 is 0.2499… in floating point", edge.changes.map((c) => c.what).join(" | "));
 }
 
 console.log("\nthe comparison, rendered");

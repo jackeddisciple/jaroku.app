@@ -129,9 +129,10 @@ function ExampleRow({
           text ? (which === "input" ? "text-ink" : "text-muted") : "text-faint italic"
         }${
           // THE TWO INVITATIONS WAIT FOR THE CASE TO BE REACHED FOR. "+ expected output" and "+ note"
-          // under every case made a list of fifty cases three lines of grey per case; they show on
-          // the row's hover and on keyboard focus, and stay in the page for both.
-          !text && which !== "input" ? " opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100" : ""
+          // under every case made a list of fifty cases three lines of grey per case. They leave the
+          // layout until the row is hovered or anything in it has focus — Tab onto the case and they
+          // are there, next in order — rather than keeping an invisible line's height under every case.
+          !text && which !== "input" ? " hidden group-hover:block group-focus-within:block" : ""
         }`}
       >
         {/* FOLDED WHEN LONG. Unfolded, one case filled the panel and the others were a scroll away. */}
