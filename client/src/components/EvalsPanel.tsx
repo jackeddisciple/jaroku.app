@@ -20,16 +20,27 @@ import { EvalRunBar } from "./EvalRunBar.tsx";
 import { EvalUndoToast } from "./EvalUndoToast.tsx";
 import { EvalCompare } from "./EvalCompare.tsx";
 import { relTime } from "../lib/format.ts";
-import { Chip } from "./Chip.tsx";
 import { EmptyState } from "./EmptyState.tsx";
-import { DatabaseIcon } from "./panelIcons.tsx";
+import { ChevronDownIcon, DatabaseIcon } from "./panelIcons.tsx";
+import { Segmented, type SegmentOption } from "./Segmented.tsx";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "./ui/dropdown-menu.tsx";
+import { modelName, useProviderStore } from "../store/providerStore.ts";
 import { factChip, secondaryBtn, tabBtn } from "./buttons.ts";
 import { Tip } from "./ui/tooltip.tsx";
 import { ICON, TYPE } from "../lib/tokens.ts";
 import { Icon, type IconComponent } from "../lib/icons/registry.ts";
 import { EVAL_PHASE } from "../lib/domainPhase.ts";
 import { StatusGlyph } from "./StatusGlyph.tsx";
-import type { EvalResults, EvalRunStatus } from "../types.ts";
+import type { EvalResults, EvalRunStatus, EvalRunSummary } from "../types.ts";
 import type { EvalProgress } from "../store/evalStore.ts";
 import { fmtBudget, fmtCost } from "../lib/format.ts";
 
@@ -353,6 +364,39 @@ export function EvalProgressBar({ progress }: { progress: EvalProgress }) {
   );
 }
 
+/**
+ * One past eval as both pickers list it: its state and when on the first line, what it ran on and
+ * against which models under it.
+ *
+ * IT WAS A CHIP READING "4d ago". Two evals from one afternoon on two datasets were two identical
+ * chips, and the models — the thing a comparison is OF — were only in a tooltip.
+ */
+export function EvalFace({ e, dataset, models }: { e: EvalRunSummary; dataset: string | null; models: string }) {
+  return (
+    <span className="flex min-w-0 flex-1 items-start gap-2">
+      <span className="pt-0.5">
+        <StatusGlyph phase={EVAL_PHASE[e.status]} size={ICON.xs} title={EVAL_WORD[e.status]} />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="flex min-w-0 items-baseline gap-2 text-caption">
+          <span className="shrink-0 text-ink">{relTime(e.started_at)}</span>
+          {dataset && <span className="min-w-0 truncate text-muted">{dataset}</span>}
+        </span>
+        <span className="block truncate text-tiny text-faint">
+          {models || "no models"}
+          {e.status !== "completed" && ` · ${EVAL_WORD[e.status]}`}
+        </span>
+      </span>
+    </span>
+  );
+}
+
+/** Which evals the picker lists. "Every dataset" is how a deleted dataset's evals are reached. */
+const SCOPES: SegmentOption<"dataset" | "all">[] = [
+  { value: "dataset", label: "Show only this dataset's evals", text: "This dataset" },
+  { value: "all", label: "Show this agent's evals on every dataset, including deleted ones", text: "Every dataset" },
+];
+
 /** The panel's two views, as the trace's run views are drawn. */
 const VIEWS: { id: "dataset" | "results"; label: string; title: string }[] = [
   { id: "dataset", label: "Dataset", title: "The cases, and how answers are scored" },
@@ -401,20 +445,22 @@ export function EvalsPanel() {
   const caseCount = cases?.filter((e) => !(pendingDelete?.kind === "case" && pendingDelete.id === e.id)).length;
   const evalCount = list?.complete ? evals.length : undefined;
   /**
-   * How many past evals the strip is showing.
+   * How many past evals the picker is listing.
    *
    * TWO CEILINGS USED TO SIT ON TOP OF EACH OTHER HERE, and both were unreachable: the server read
-   * the newest fifty with no way to ask past it, and this strip then rendered the first SIX of those
+   * the newest fifty with no way to ask past it, and the strip then rendered the first SIX of those
    * — so the seventh-newest comparison could not be selected at all, in the panel whose entire job is
-   * comparing. This is the local half; the window below is the server's.
+   * comparing. This is the local half; the window below is the server's. A menu scrolls, so it opens
+   * on twelve rather than six.
    */
-  const [shown, setShown] = useState(6);
+  const [shown, setShown] = useState(12);
   const shownEvalId = selectedEvalId ?? evals[0]?.id ?? null;
   const results = shownEvalId ? resultsByEval[shownEvalId] : undefined;
   // WHAT CHANGED SINCE: the eval the shown one is compared with, when one is chosen.
   const compareWith = useEvalStore((s) => (activeAgentId ? (s.compareWithByAgent[activeAgentId] ?? null) : null));
-  const [picking, setPicking] = useState(false);
   const comparing = compareWith && compareWith !== shownEvalId ? resultsByEval[compareWith] : undefined;
+  // The pickers name models as the run bar does — "Haiku 4.5" — with the id where the catalogue has none.
+  const providerModels = useProviderStore((s) => s.models);
   const running = progress !== null && (progress.status === undefined || progress.scoring === true);
 
   // Whether Quality will be scored here — asked once the socket is up.
@@ -460,6 +506,13 @@ export function EvalsPanel() {
   const scoring = progress?.status !== undefined && progress?.scoring === true;
   const openDataset = agentDatasets.find((d) => d.id === selectedDatasetId);
   const counts = { dataset: caseCount, results: evalCount };
+  const shownSummary = evals.find((e) => e.id === shownEvalId);
+  const modelsOf = (e: EvalRunSummary): string =>
+    e.targets.map((t) => `${modelName(providerModels, t.model)}${t.effort ? ` (${t.effort})` : ""}`).join(" · ");
+  const showOlder = (): void => {
+    if (shown < evals.length) setShown(shown + 12);
+    else sendListEvals(activeAgentId, scopeDataset, Math.min((list?.window ?? 50) * 2, 500));
+  };
 
   return (
     <div className="flex h-full flex-col bg-bg">
@@ -520,87 +573,97 @@ export function EvalsPanel() {
       ) : (
         <div className="flex-1 min-h-0 overflow-y-auto px-6 pb-4 pt-3">
           <EvalRefusal />
-          {/* Past evals — a comparison keeps its value after the run that produced it. Shown with a
-              single eval too: the scope switch is the only way to a deleted dataset's evals, and
-              hiding it until this dataset had two left them out of reach. */}
+          {/* WHICH EVAL, AND AGAINST WHICH — two menus and the scope, in one row. This was three rows
+              of near-identical chips: a strip of timestamps, a second strip to pick a comparison from,
+              and `older…`. Shown with a single eval too: the scope switch is the only way to a deleted
+              dataset's evals, and hiding it until this dataset had two left them out of reach. */}
           {(evals.length > 0 || allDatasets || (hasDatasets && selectedDatasetId)) && (
-            <div className="flex flex-wrap items-center gap-1.5 pb-3">
+            <div className="flex flex-wrap items-center gap-2 pb-3">
+              {evals.length > 0 && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      type="button"
+                      className={`${secondaryBtn} min-w-0 max-w-full`}
+                      aria-label="Choose which eval to show"
+                      title="The eval on screen — choose another"
+                    >
+                      {shownSummary && <StatusGlyph phase={EVAL_PHASE[shownSummary.status]} size={ICON.xs} title={EVAL_WORD[shownSummary.status]} />}
+                      <span className="min-w-0 truncate">
+                        {shownSummary ? relTime(shownSummary.started_at) : results ? relTime(results.startedAt) : "Choose an eval"}
+                        {shownSummary && evalDatasetLabel(shownSummary, agentDatasets) && ` · ${evalDatasetLabel(shownSummary, agentDatasets)}`}
+                      </span>
+                      <ChevronDownIcon size={ICON.xs} />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start" aria-label="Past evals" className="max-h-[360px] w-[320px] overflow-y-auto">
+                    <DropdownMenuRadioGroup value={shownEvalId ?? ""} onValueChange={(id) => selectEval(activeAgentId, id)}>
+                      {evals.slice(0, shown).map((e) => (
+                        <DropdownMenuRadioItem key={e.id} value={e.id}>
+                          <EvalFace e={e} dataset={evalDatasetLabel(e, agentDatasets)} models={modelsOf(e)} />
+                        </DropdownMenuRadioItem>
+                      ))}
+                    </DropdownMenuRadioGroup>
+                    {/* OLDER EVALS. It lists more of what is loaded first and then asks the server for a
+                        bigger window when that runs out, so one row answers "show me more" whichever of
+                        the two ceilings is in the way — and the menu stays open while they arrive. */}
+                    {(shown < evals.length || (list !== undefined && !list.complete)) && (
+                      <>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem size="compact" onSelect={(event) => { event.preventDefault(); showOlder(); }}>
+                          Older evals…
+                        </DropdownMenuItem>
+                      </>
+                    )}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
+              {/* COMPARE WITH ANOTHER EVAL — the regression question, "what changed since then". */}
+              {shownEvalId && evals.length > 1 && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      type="button"
+                      className={secondaryBtn}
+                      title="Line this eval up against an earlier one: each model's figures, and every case whose outcome changed"
+                    >
+                      {comparing ? `Comparing with ${relTime(comparing.startedAt)}` : "Compare with…"}
+                      <ChevronDownIcon size={ICON.xs} />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start" aria-label="Compare with an earlier eval" className="max-h-[360px] w-[320px] overflow-y-auto">
+                    <DropdownMenuLabel>Compare with</DropdownMenuLabel>
+                    <DropdownMenuRadioGroup
+                      value={compareWith ?? ""}
+                      onValueChange={(id) => useEvalStore.getState().setCompareWith(activeAgentId, id)}
+                    >
+                      {evals.filter((e) => e.id !== shownEvalId).slice(0, 12).map((e) => (
+                        <DropdownMenuRadioItem key={e.id} value={e.id}>
+                          <EvalFace e={e} dataset={evalDatasetLabel(e, agentDatasets)} models={modelsOf(e)} />
+                        </DropdownMenuRadioItem>
+                      ))}
+                    </DropdownMenuRadioGroup>
+                    {compareWith && (
+                      <>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem size="compact" onSelect={() => useEvalStore.getState().setCompareWith(activeAgentId, null)}>
+                          Stop comparing
+                        </DropdownMenuItem>
+                      </>
+                    )}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
               {/* WHICH HISTORY. Only offered while there is a dataset to narrow to. */}
               {hasDatasets && selectedDatasetId && (
-                <button
-                  onClick={() => { setAllDatasets((v) => !v); setShown(6); }}
-                  aria-pressed={allDatasets}
-                  title={allDatasets ? "Show only this dataset's evals" : "Show this agent's evals on every dataset, including deleted ones"}
-                  className="rounded-control px-2 py-1 text-tiny text-muted transition-colors hover:bg-active active:bg-chrome hover:text-ink"
-                >
-                  {allDatasets ? "All datasets" : "This dataset"}
-                </button>
+                <Segmented
+                  options={SCOPES}
+                  value={allDatasets ? "all" : "dataset"}
+                  onChange={(v) => { setAllDatasets(v === "all"); setShown(12); }}
+                  ariaLabel="Which evals to list"
+                  className="ml-auto"
+                />
               )}
-              {evals.slice(0, shown).map((e) => (
-                <Chip
-                  key={e.id}
-                  onClick={() => activeAgentId && selectEval(activeAgentId, e.id)}
-                  selected={e.id === shownEvalId}
-                  tone="faint"
-                  title={`${EVAL_WORD[e.status]} · ${e.targets.map((t) => t.model).join(", ")}${e.dataset_name ? ` · ${e.dataset_name}${e.dataset_gone ? " (deleted)" : ""}` : ""}`}
-                  icon={<StatusGlyph phase={EVAL_PHASE[e.status]} size={ICON.xs} title={EVAL_WORD[e.status]} />}
-                >
-                  {relTime(e.started_at)}
-                  {/* ACROSS DATASETS, each names its own — and says when that dataset is gone. */}
-                  {scopeDataset === null && evalDatasetLabel(e, agentDatasets) && (
-                    <span className="text-muted">{evalDatasetLabel(e, agentDatasets)}</span>
-                  )}
-                  {/* THE WORD IS NO LONGER COLOURED. It was `text-err` for one status and
-                      `text-muted` for the rest — a status word rendered as coloured text, which is
-                      the second of the three things §2.5 removes. The glyph carries the state now
-                      and the word carries which state, which is the division I8 asks for. */}
-                  {e.status !== "completed" && <span className="text-muted">{EVAL_WORD[e.status]}</span>}
-                </Chip>
-              ))}
-              {/* COMPARE WITH ANOTHER EVAL — the regression question, "what changed since then". */}
-              {shownEvalId && evals.length > 1 && !picking && (
-                <button
-                  onClick={() => setPicking(true)}
-                  className="rounded-control px-2 py-1 text-tiny text-muted transition-colors hover:bg-active active:bg-chrome hover:text-ink"
-                  title="Line this eval up against an earlier one: each model's figures, and every case whose outcome changed"
-                >
-                  Compare with…
-                </button>
-              )}
-              {/* OLDER COMPARISONS. It widens the strip first and then asks the server for a bigger
-                  window when the loaded ones run out, so one control answers "show me more" whichever
-                  of the two ceilings is the one in the way. It disappears when both are exhausted. */}
-              {(shown < evals.length || (list !== undefined && !list.complete)) && (
-                <button
-                  onClick={() => {
-                    if (shown < evals.length) setShown(shown + 12);
-                    else if (activeAgentId) sendListEvals(activeAgentId, scopeDataset, Math.min((list?.window ?? 50) * 2, 500));
-                  }}
-                  className="rounded-control px-2 py-1 text-tiny text-muted transition-colors hover:bg-active active:bg-chrome hover:text-ink"
-                >
-                  older…
-                </button>
-              )}
-            </div>
-          )}
-
-          {picking && activeAgentId && (
-            <div className="flex flex-wrap items-center gap-1.5 pb-3 text-tiny" role="group" aria-label="Compare with an earlier eval">
-              <span className="text-faint">Compare with</span>
-              {evals.filter((e) => e.id !== shownEvalId).slice(0, 12).map((e) => (
-                <Chip
-                  key={e.id}
-                  tone="faint"
-                  onClick={() => { useEvalStore.getState().setCompareWith(activeAgentId, e.id); setPicking(false); }}
-                  title={`${EVAL_WORD[e.status]} · ${e.targets.map((t) => t.model).join(", ")}`}
-                >
-                  {relTime(e.started_at)}
-                  {/* WHICH ONE: two from the same afternoon both read "4d ago". */}
-                  {evalDatasetLabel(e, agentDatasets) && <span className="text-muted">{evalDatasetLabel(e, agentDatasets)}</span>}
-                  {e.status !== "completed" && <span className="text-muted">{EVAL_WORD[e.status]}</span>}
-                </Chip>
-              ))}
-              <button onClick={() => setPicking(false)} className="text-faint hover:text-ink">Cancel</button>
             </div>
           )}
 

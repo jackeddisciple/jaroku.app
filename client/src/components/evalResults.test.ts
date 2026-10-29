@@ -320,8 +320,38 @@ console.log("\na dataset with one eval still offers the agent's evals on every d
     }], complete: true, window: 50 } },
   } as never);
   const html = markup(createElement(TooltipProvider, null, createElement(EvalsPanel)));
-  check(/aria-pressed="false"[^>]*>This dataset</.test(html) || text(html).includes("This dataset"),
+  check(/role="radiogroup" aria-label="Which evals to list"/.test(html) && /role="radio" aria-checked="true"[^>]*>This dataset</.test(html)
+    && />Every dataset</.test(html),
     "the switch to every dataset is there with only one eval", text(html).slice(0, 200));
+  check(/aria-label="Choose which eval to show"/.test(html) && text(html).includes("Screening cases"),
+    "and the eval on screen is one menu, naming when it ran and on what");
+  check(!text(html).includes("Compare with"), "with nothing to compare it with, there is no compare menu");
+}
+
+console.log("\nthe pickers name each past eval by when, what it ran on, and against which models");
+{
+  const { EvalFace, EvalsPanel } = await import("./EvalsPanel.tsx");
+  const { useEvalStore, evalListKey } = await import("../store/evalStore.ts");
+  const { TooltipProvider } = await import("./ui/tooltip.tsx");
+  const e = (id: string, status: string, ago: number) => ({
+    id, dataset_id: "d1", agent_id: "liven", rubric_id: "r", status, budget_usd: 1, judge_cost_usd: 0,
+    targets: [{ provider: "anthropic", model: "claude-haiku-4-5" }, { provider: "anthropic", model: "claude-sonnet-5", effort: "high" }],
+    started_at: new Date(Date.now() - ago).toISOString(), ended_at: null, error: null, dataset_name: "Screening cases", dataset_gone: false,
+  });
+  const face = text(markup(createElement(EvalFace, { e: e("e2", "aborted_over_budget", 3 * 3600_000) as never, dataset: "Screening cases", models: "Haiku 4.5 · Sonnet 5 (high)" })));
+  check(face === "3h ago Screening cases Haiku 4.5 · Sonnet 5 (high) · over budget", "its time, its dataset, its models, and how it ended when not cleanly", face);
+  seed(useEvalStore, {
+    evalLists: { [evalListKey("liven", "d1")]: { evals: [e("e1", "completed", 60_000), e("e2", "aborted_over_budget", 3 * 3600_000)], complete: true, window: 50 } },
+    selectedEvalByAgent: { liven: "e1" },
+    compareWithByAgent: {},
+  } as never);
+  const panel = (): string => markup(createElement(TooltipProvider, null, createElement(EvalsPanel)));
+  check(text(panel()).includes("Compare with…"), "with two, the eval on screen can be compared with the other");
+  seed(useEvalStore, {
+    compareWithByAgent: { liven: "e2" },
+    resultsByEval: { e2: results({ evalId: "e2", startedAt: new Date(Date.now() - 3 * 3600_000).toISOString() }) },
+  } as never);
+  check(text(panel()).includes("Comparing with 3h ago"), "and once compared, the menu says with which", text(panel()).slice(0, 300));
 }
 
 console.log("\nthe panel is headed as the trace is, and its two views are tabs that count only totals");
