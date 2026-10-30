@@ -450,6 +450,8 @@ export const MANIFEST = {
     runs: "Grid3X2Icon",
     estimate: "Calculator01Icon",
     ceiling: "LimitationIcon",
+    // A deleted dataset or case, put back within its five seconds — the Inbox's undo mark.
+    undo: "Undo03Icon",
   },
 
   // ── §5 Trace ──────────────────────────────────────────────────────────────

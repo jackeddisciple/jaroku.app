@@ -86,7 +86,8 @@ console.log("\nthe manifest parses, and it is the size the specification asks fo
   // rubric's criteria, and the cases' search, view menu, notes and removal.
   // 364 WITH THE RUN BAR: effort, a model's way off, the models no key runs, the runs, the estimate
   // and the ceiling — every one a mark already here, so the marks stay at 226.
-  check("364 registry keys", entries.length === 364, `${entries.length}`);
+  // 365 WITH THE EVAL UNDO TOAST'S UNDO, on the Inbox's undo mark.
+  check("365 registry keys", entries.length === 365, `${entries.length}`);
   const names = new Set(entries.map((e) => e.export));
   // 104 from icons_integration's appendix, plus D8's 13 — the composer glyphs that had to move
   // here when `@hugeicons/react` came out. See the note at the top of `registry.ts`.
