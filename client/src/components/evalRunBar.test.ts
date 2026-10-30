@@ -89,11 +89,18 @@ console.log("\nthe model chips, rendered");
     progressByEval: {},
   } as never);
   let words = text(markup(createElement(EvalRunBar)));
-  check(words.includes("Anthropic") && words.includes("Haiku 4.5") && words.includes("Sonnet 5"), "a provider's models sit under its name", words);
-  check(!words.includes("GPT-5.6 Luna") && !words.includes("Muse Spark"), "models with no key are not drawn as greyed chips", words);
-  check(words.includes("+2 models need an API key"), "they are one link to Secrets instead", words);
-  check(words.includes("1 × 1 = 1 run"), "the models chosen for this agent are the ones counted, from the store", words);
+  // THE CATALOGUE IS A MENU, grouped by provider; what the bar draws is the models chosen.
+  const { modelGroups } = await import("./EvalRunBar.tsx");
+  const { runProviders, useProviderStore: providers } = await import("../store/providerStore.ts");
+  const { groups, missing } = modelGroups(runProviders(providers.getState().models), providers.getState().providers, [{ provider: "anthropic", model: "claude-sonnet-5" }]);
+  check(groups.length === 1 && groups[0]!.label === "Anthropic" && groups[0]!.models.join() === "claude-haiku-4-5,claude-sonnet-5",
+    "a provider's models sit under its name", JSON.stringify(groups));
+  check(words.includes("Sonnet 5") && !words.includes("Haiku 4.5"), "and the bar draws the one chosen, not the whole catalogue", words);
+  check(!words.includes("GPT-5.6 Luna") && !words.includes("Muse Spark") && !groups.some((g) => g.id !== "anthropic"),
+    "models with no key are not drawn as greyed chips", words);
   const idle = markup(createElement(EvalRunBar));
+  check(missing.count === 2 && words.includes("+2") && /title="Add a key for OpenAI, Meta in Secrets/.test(idle), "they are one link to Secrets instead", words);
+  check(words.includes("1 × 1 = 1 run"), "the models chosen for this agent are the ones counted, from the store", words);
   check(/<button[^>]*title="Estimate the cost of this eval[^"]*"[^>]*>(?:(?!<\/button>).)*Estimate cost<\/button>/s.test(idle),
     "the tab's primary action is the filled button, saying what it does");
   check(!/text-run/.test(idle), "and nothing on an idle run bar is amber — amber is for what is running");
@@ -176,9 +183,14 @@ console.log("\na chosen model with effort levels can be given one");
   } as never);
   const html = markup(createElement(EvalRunBar));
   const words = html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
-  check(/aria-label="Reasoning effort for Sonnet 5"/.test(html), "Sonnet 5 gets an effort row", words);
+  check(/aria-label="Reasoning effort for Sonnet 5"/.test(html), "Sonnet 5 gets an effort menu", words);
   check(!/aria-label="Reasoning effort for Haiku 4.5"/.test(html), "Haiku 4.5, which has no levels, does not");
-  check(words.includes("Default") && words.includes("High"), "with Default and the model's own levels", words);
+  const { effortChoices } = await import("./EvalRunBar.tsx");
+  const sonnet = useProviderStore.getState().models.find((m) => m.id === "claude-sonnet-5");
+  const labels = effortChoices(sonnet).map((c) => c.label);
+  check(words.includes("High") && labels[0] === "Default" && labels.includes("High") && labels.length === 4,
+    "it says the level chosen, and offers Default and the model's own levels", `${words} | ${labels.join(", ")}`);
+  check(effortChoices(useProviderStore.getState().models.find((m) => m.id === "claude-haiku-4-5")).length === 0, "and a model with none offers nothing");
 }
 
 console.log(failures === 0 ? "\nALL CORRECT" : `\n${failures} FAILURES`);

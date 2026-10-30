@@ -13,21 +13,33 @@
 // only thing between a user and a large bill, so the confirm step requires a ceiling and
 // the server aborts on true spend regardless of what was predicted.
 
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { useBuildStore } from "../store/buildStore.ts";
 import { examplesOf, liveEvalOf, useEvalStore } from "../store/evalStore.ts";
 import { useTraceStore } from "../store/traceStore.ts";
-import { isRunnable, modelName, runProviders, useProviderStore } from "../store/providerStore.ts";
+import { isRunnable, modelName, runProviders, useProviderStore, type RunProvider } from "../store/providerStore.ts";
 import { useUiStore } from "../store/uiStore.ts";
 import { sendCancelEval, sendEstimateEval, sendStartEval } from "../lib/socket.ts";
 import { fmtCost } from "../lib/format.ts";
 import { effortName, effortStops } from "../lib/effortLevels.ts";
-import { Chip } from "./Chip.tsx";
-import { primaryBtnSm, textBtn } from "./buttons.ts";
-import type { EvalEstimate, EvalTarget } from "../types.ts";
+import { ProviderMark } from "../lib/icons.tsx";
+import { primaryBtnSm, selectBtn, textBtn } from "./buttons.ts";
+import type { EvalEstimate, EvalTarget, ProviderModel, ProviderStatus } from "../types.ts";
 import { Icon } from "../lib/icons/registry.ts";
-import { ICON } from "../lib/tokens.ts";
+import { ICON, TYPE } from "../lib/tokens.ts";
 import { IconButton } from "./IconButton.tsx";
+import { ModelLabel, Pill } from "./evalUi.tsx";
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "./ui/dropdown-menu.tsx";
 
 const key = (t: EvalTarget) => `${t.provider}/${t.model}`;
 
@@ -94,36 +106,77 @@ export function refusalOf(estimate: EvalEstimate | null): string | null {
   return estimate?.affordability?.wouldRefuse ? (estimate.affordability.refusalMessage ?? "This workspace cannot start an eval right now.") : null;
 }
 
+/**
+ * The catalogue as the models menu lists it — GROUPED BY PROVIDER, and only the providers that can run
+ * spelled out. Three groups of greyed models for providers with no key said nothing a single link
+ * could not; a leg already chosen stays listed, so it can always be taken off. What is left out is
+ * counted, for the one link to Secrets that stands in for it.
+ */
+export function modelGroups(
+  catalogue: RunProvider[],
+  statuses: ProviderStatus[],
+  targets: EvalTarget[],
+): { groups: (RunProvider & { usable: boolean })[]; missing: { labels: string[]; count: number; first: string | null } } {
+  const groups = catalogue
+    .map((p) => {
+      const usable = isRunnable(statuses, p.id);
+      return { ...p, usable, models: p.models.filter((m) => usable || targets.some((x) => key(x) === key({ provider: p.id, model: m }))) };
+    })
+    .filter((p) => p.models.length > 0);
+  const missing = catalogue.filter((p) => !isRunnable(statuses, p.id));
+  return {
+    groups,
+    missing: { labels: missing.map((p) => p.label), count: missing.reduce((n, p) => n + p.models.length, 0), first: missing[0]?.id ?? null },
+  };
+}
+
+/**
+ * How hard a model can be asked to think, as its effort menu offers it: the model's own default
+ * first, then its levels in the runtime's order — or nothing, for a model with no reasoning control.
+ */
+export function effortChoices(model: ProviderModel | undefined): { value: string | null; label: string }[] {
+  const stops = effortStops(model);
+  if (!stops.length) return [];
+  return [{ value: null, label: "Default" }, ...stops.map((level) => ({ value: level as string, label: effortName(model, level) }))];
+}
+
 /** The estimate's detail: each model's share, the server's caveats, and a refusal before it happens. */
 export function EstimateDetail({ estimate }: { estimate: EvalEstimate }) {
-  const providerModels = useProviderStore((s) => s.models);
   const refusal = refusalOf(estimate);
   return (
     <>
       {/* EACH MODEL'S SHARE, and what it was projected from. The server worked this out per model and
           the box showed only the total, so which leg made an eval expensive was a guess. */}
       {estimate.perTarget.length > 1 && (
-        <div className="space-y-0.5 text-tiny">
+        <div className="space-y-1 text-tiny">
           {estimate.perTarget.map((t) => (
-            <div key={`${t.provider}/${t.model}`} className="flex items-baseline gap-2">
-              <span className="min-w-0 truncate text-muted">{modelName(providerModels, t.model)}</span>
+            <div key={`${t.provider}/${t.model}`} className="flex items-center gap-2">
+              <ModelLabel provider={t.provider} model={t.model} className="text-muted" />
               <span className="ml-auto whitespace-nowrap tabular-nums text-ink">
                 {t.priced && t.lowUsd !== null && t.highUsd !== null ? `${fmtCost(t.lowUsd)}–${fmtCost(t.highUsd)}` : "unknown"}
               </span>
-              <span className="whitespace-nowrap text-faint" title={BASIS[t.basis]}>
+              <Pill title={BASIS[t.basis]} tone={t.basis === "default" ? "info" : "neutral"}>
                 {t.basis === "measured" ? `from ${t.sampleSize} run${t.sampleSize === 1 ? "" : "s"}` : t.basis === "other-model" ? "other model" : "default"}
-              </span>
+              </Pill>
             </div>
           ))}
         </div>
       )}
 
       {estimate.notes.map((n, i) => (
-        <div key={i} className="text-tiny text-faint">· {n}</div>
+        <div key={i} className="flex items-start gap-1.5 text-tiny text-faint">
+          <Icon.evals.caveat size={ICON.xs} className="mt-px shrink-0" />
+          <span>{n}</span>
+        </div>
       ))}
 
       {/* WOULD IT BE REFUSED. Said here, before Run, in the words the refusal would use. */}
-      {refusal && <div className="text-tiny text-err" role="alert">{refusal}</div>}
+      {refusal && (
+        <div className="flex items-start gap-1.5 text-tiny text-err" role="alert">
+          <Icon.evals.refused size={ICON.xs} className="mt-px shrink-0" />
+          <span>{refusal}</span>
+        </div>
+      )}
     </>
   );
 }
@@ -218,6 +271,10 @@ export function EvalRunBar() {
       : null;
   const refusal = refusalOf(estimate);
   const warning = estimate && "usd" in parsedCeiling ? ceilingWarning(parsedCeiling.usd, estimate) : null;
+  const { groups, missing } = modelGroups(catalogue, providerStatuses, targets);
+  /** LOCKED, AND SAID SO, while an eval runs: the models would not change under a running eval. */
+  const locked = running ? "Locked while this eval runs — choose the next eval's models when it finishes" : null;
+  const openSecrets = (): void => { if (missing.first) useUiStore.getState().openSecretsForProvider(missing.first); };
 
   const confirmRun = () => {
     if (!activeAgentId || !("usd" in parsedCeiling)) return;
@@ -229,113 +286,177 @@ export function EvalRunBar() {
   return (
     // THE RUN AS THE TAB'S FOOTER: its own surface under a hairline, so what will run and what it
     // will cost read as one place rather than as more rows of the dataset above them.
-    <div className="shrink-0 space-y-2 border-t border-hair bg-panel px-6 py-3">
-      {/* provider selection — GROUPED BY PROVIDER, and only the ones that can run spelled out. Three
-          rows of greyed chips for providers with no key said nothing a single link could not, and
-          pushed everything else down; a leg already chosen stays, so it can always be taken off. */}
-      <div className="space-y-1 text-caption">
-        {catalogue.map((p) => {
-          const usable = isRunnable(providerStatuses, p.id);
-          const shown = p.models.filter((m) => usable || targets.some((x) => key(x) === key({ provider: p.id, model: m })));
-          if (!shown.length) return null;
-          return (
-            <div key={p.id} className="flex flex-wrap items-center gap-1.5">
-              {/* THE PROVIDER AT THE START OF ITS OWN ROW, not on a line of its own above it — a line
-                  per provider that held one word. */}
-              <span className="mr-0.5 text-tiny text-faint">{p.label}</span>
-              {shown.map((m) => {
-                const t: EvalTarget = { provider: p.id, model: m };
-                const on = targets.some((x) => key(x) === key(t));
-                return (
-                  <Chip
-                    key={key(t)}
-                    onClick={() => toggle(t)}
-                    selected={on}
-                    disabled={running || (!usable && !on)}
-                    // The model's name, in Sans: §04 lists model labels as prose, and §05 is explicit
-                    // that looking technical is not the test. LOCKED, AND SAID SO, while an eval runs:
-                    // the tooltip still read "billed per token" over a chip that would not press.
-                    title={
-                      running ? "Locked while this eval runs — choose the next eval's models when it finishes"
-                        : usable ? `${p.label} · billed per token` : `No ${p.label} API key in this workspace`
-                    }
-                    className="whitespace-nowrap"
-                  >
-                    {modelName(providerModels, m)}
-                  </Chip>
-                );
-              })}
-            </div>
-          );
-        })}
-        {(() => {
-          const missing = catalogue.filter((p) => !isRunnable(providerStatuses, p.id));
-          const count = missing.reduce((n, p) => n + p.models.length, 0);
-          if (!count) return null;
-          return (
+    <div className="shrink-0 space-y-2.5 border-t border-hair bg-panel px-6 py-3">
+      {/* WHICH MODELS, AS A PICKER AND THE ONES PICKED. The catalogue is a menu of checks grouped by
+          provider, each behind its mark; what is chosen sits beside it as pills, each with its effort
+          and a way off. It was every model as a chip, provider by provider, two or three rows deep. */}
+      <div className="flex flex-wrap items-center gap-1.5">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
             <button
               type="button"
-              onClick={() => useUiStore.getState().openSecretsForProvider(missing[0]!.id)}
-              title={`Add a key for ${missing.map((p) => p.label).join(", ")} in Secrets to compare on these models`}
-              className={`${textBtn} -ml-2`}
+              disabled={running}
+              className={selectBtn}
+              aria-label="Choose the models to compare"
+              title={locked ?? "Choose the models to compare — each is billed per token"}
             >
-              +{count} model{count === 1 ? "" : "s"} need an API key →
+              <Icon.evals.models size={ICON.xs} className="shrink-0 text-faint" />
+              Models
+              <span className="tabular-nums text-faint">{targets.length}</span>
+              <Icon.evals.menu size={ICON.xs} className="shrink-0 text-faint" />
             </button>
-          );
-        })()}
-      </div>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" side="top" aria-label="Models" className="max-h-[380px] w-[260px] overflow-y-auto">
+            {groups.map((g, i) => (
+              <Fragment key={g.id}>
+                {i > 0 && <DropdownMenuSeparator />}
+                <DropdownMenuLabel className="flex items-center gap-1.5">
+                  <ProviderMark provider={g.id} size={ICON.badge} />
+                  {g.label}
+                </DropdownMenuLabel>
+                {g.models.map((m) => {
+                  const t: EvalTarget = { provider: g.id, model: m };
+                  const on = targets.some((x) => key(x) === key(t));
+                  return (
+                    <DropdownMenuCheckboxItem
+                      key={key(t)}
+                      checked={on}
+                      disabled={!g.usable && !on}
+                      onCheckedChange={() => toggle(t)}
+                      // THE MENU STAYS OPEN, because choosing three models is three presses, not three trips.
+                      onSelect={(e) => e.preventDefault()}
+                      title={g.usable ? `${g.label} · billed per token` : `No ${g.label} API key in this workspace`}
+                    >
+                      {modelName(providerModels, m)}
+                    </DropdownMenuCheckboxItem>
+                  );
+                })}
+              </Fragment>
+            ))}
+            {missing.count > 0 && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem size="compact" onSelect={openSecrets}>
+                  <Icon.evals.needKey size={ICON.xs} />
+                  +{missing.count} model{missing.count === 1 ? "" : "s"} need an API key →
+                </DropdownMenuItem>
+              </>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
 
-      {/* HOW HARD EACH CHOSEN MODEL THINKS, as Test mode lets you choose. An eval ran every model at its
-          default — Liven failed six of six on Sonnet 5 at a level Test mode would not have used. Only
-          the models that have levels get a row; the app's segmented chips, never a native select. */}
-      {targets.some((t) => effortStops(providerModels.find((m) => m.id === t.model)).length > 0) && (
-        <div className="space-y-1 text-tiny">
-          {targets.map((t) => {
-            const model = providerModels.find((m) => m.id === t.model);
-            const stops = effortStops(model);
-            if (!stops.length) return null;
-            const pick = (effort: string | null) =>
-              setTargets((cur) => cur.map((x) => (key(x) === key(t) ? { ...x, effort } : x)));
-            return (
-              <div key={key(t)} className="flex flex-wrap items-center gap-1" role="group" aria-label={`Reasoning effort for ${modelName(providerModels, t.model)}`}>
-                <span className="mr-1 text-faint">{modelName(providerModels, t.model)} effort</span>
-                <Chip size="sm" selected={!t.effort} disabled={running} onClick={() => pick(null)} title="The model's own default">
-                  Default
-                </Chip>
-                {stops.map((level) => (
-                  <Chip key={level} size="sm" selected={t.effort === level} disabled={running} onClick={() => pick(level)}>
-                    {effortName(model, level)}
-                  </Chip>
-                ))}
-              </div>
-            );
-          })}
-        </div>
-      )}
+        {targets.map((t) => {
+          const model = providerModels.find((m) => m.id === t.model);
+          const name = modelName(providerModels, t.model);
+          // HOW HARD EACH CHOSEN MODEL THINKS, as Test mode lets you choose. An eval ran every model at
+          // its default — Liven failed six of six on Sonnet 5 at a level Test mode would not have used.
+          // Only the models that have levels get the menu; never a native select.
+          const choices = effortChoices(model);
+          const pick = (effort: string | null) =>
+            setTargets((cur) => cur.map((x) => (key(x) === key(t) ? { ...x, effort } : x)));
+          return (
+            <span key={key(t)} className="inline-flex h-7 max-w-full items-center gap-1 rounded-control border border-hair bg-elevated pl-2 pr-0.5 text-caption text-ink">
+              <ModelLabel provider={t.provider} model={t.model} />
+              {choices.length > 0 && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      type="button"
+                      disabled={running}
+                      aria-label={`Reasoning effort for ${name}`}
+                      title={locked ?? `How hard ${name} thinks on every case of this eval`}
+                      className="inline-flex h-5 shrink-0 items-center gap-1 rounded-pill bg-active px-1.5 text-tiny text-muted transition-colors hover:bg-chrome hover:text-ink focus-visible:outline-none focus-visible:shadow-focusring disabled:cursor-not-allowed disabled:opacity-60 data-[state=open]:bg-chrome"
+                    >
+                      <Icon.evals.effort size={ICON.badge} />
+                      {choices.find((c) => c.value === (t.effort ?? null))?.label ?? "Default"}
+                      <Icon.evals.menu size={ICON.badge} />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start" side="top" aria-label={`Effort for ${name}`}>
+                    <DropdownMenuLabel className="flex items-center gap-1.5">
+                      <Icon.evals.effort size={ICON.badge} />
+                      Effort
+                    </DropdownMenuLabel>
+                    <DropdownMenuRadioGroup value={t.effort ?? "default"} onValueChange={(v) => pick(v === "default" ? null : v)}>
+                      {choices.map((c) => (
+                        <DropdownMenuRadioItem key={c.value ?? "default"} value={c.value ?? "default"} title={c.value ? undefined : "The model's own default"}>
+                          <span className="flex-1 text-caption">{c.label}</span>
+                          <span aria-hidden className={(t.effort ?? null) === c.value ? "text-ink" : "text-transparent"}><Icon.evals.chosen size={ICON.xs} /></span>
+                        </DropdownMenuRadioItem>
+                      ))}
+                    </DropdownMenuRadioGroup>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
+              <button
+                type="button"
+                onClick={() => toggle(t)}
+                disabled={running}
+                aria-label={`Take ${name} off this eval`}
+                title={locked ?? `Take ${name} off this eval`}
+                className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-control text-faint transition-colors hover:bg-active hover:text-ink focus-visible:outline-none focus-visible:shadow-focusring disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <Icon.evals.removeModel size={ICON.xs} />
+              </button>
+            </span>
+          );
+        })}
+
+        {/* THE MODELS NO KEY RUNS, as one mark and a count that leads to Secrets — said in the bar too,
+            so nobody has to open the menu to learn that more of the catalogue is there. */}
+        {missing.count > 0 && (
+          <button
+            type="button"
+            onClick={openSecrets}
+            title={`Add a key for ${missing.labels.join(", ")} in Secrets — ${missing.count} more model${missing.count === 1 ? "" : "s"} to compare on`}
+            className={`${textBtn} inline-flex items-center gap-1`}
+          >
+            <Icon.evals.needKey size={ICON.xs} />
+            +{missing.count}
+          </button>
+        )}
+      </div>
 
       {/* the estimate — shown only when money is involved, and always as a range */}
       {confirming && (
-        <div className="rounded-card border border-hair bg-elevated px-3 py-2.5 space-y-1.5">
+        <div className="space-y-2 rounded-card border border-hair bg-elevated px-3 py-2.5">
           {!estimate ? (
             // A refusal in place of the estimate, rather than "estimating…" for ever.
-            error ? <div className="text-tiny text-err" role="alert">{error}</div> : <div className="text-tiny text-muted">estimating…</div>
+            error ? (
+              <div className="flex items-start gap-1.5 text-tiny text-err" role="alert">
+                <Icon.evals.refused size={ICON.xs} className="mt-px shrink-0" />
+                <span>{error}</span>
+              </div>
+            ) : (
+              <div className="flex items-center gap-1.5 text-tiny text-muted">
+                <Icon.evals.estimate size={ICON.xs} className="shrink-0 text-faint" />
+                estimating…
+              </div>
+            )
           ) : (
             <>
-              <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-tiny">
-                <span className="text-ink">
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-tiny">
+                <span className={`inline-flex items-center gap-1.5 ${TYPE.sectionLabel}`}>
+                  <Icon.evals.estimate size={ICON.xs} className="text-faint" />
+                  Estimate
+                </span>
+                <span className="text-muted">
                   {estimate.examples} example{estimate.examples === 1 ? "" : "s"} ×{" "}
                   {estimate.targets} provider{estimate.targets === 1 ? "" : "s"} ={" "}
                   {estimate.totalRuns} run{estimate.totalRuns === 1 ? "" : "s"}
                 </span>
-                {/* A RANGE, never a point value — this is a projection, not a quote. The figure the box
-                    is opened for, so it is the one in label weight; it was amber, which means running. */}
-                <span className="text-label tabular-nums text-ink">
-                  roughly {fmtCost(estimate.totalLowUsd)}–{fmtCost(estimate.totalHighUsd)}
+              </div>
+              {/* A RANGE, never a point value — this is a projection, not a quote. The figure the box
+                  is opened for, so it is the largest type in the bar; it was amber, which means running. */}
+              <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                <span className="text-section tabular-nums text-ink">
+                  {fmtCost(estimate.totalLowUsd)}–{fmtCost(estimate.totalHighUsd)}
                 </span>
+                <span className="text-tiny text-faint">roughly</span>
                 {estimate.judgeHighUsd > 0 && (
-                  <span className="text-faint">
+                  <Pill icon={Icon.evals.judge} title="What scoring the answers is expected to cost — included in the range">
                     incl. {fmtCost(estimate.judgeLowUsd)}–{fmtCost(estimate.judgeHighUsd)} judge
-                  </span>
+                  </Pill>
                 )}
               </div>
 
@@ -343,20 +464,23 @@ export function EvalRunBar() {
 
               {/* STOP AT, ON ONE LINE. The explanation that wrapped between the field and the buttons
                   moved under them, with whatever this ceiling means against this estimate. */}
-              <div className="flex items-center gap-2 pt-1">
+              <div className="flex items-center gap-2 border-t border-hair pt-2">
+                <Icon.evals.ceiling size={ICON.xs} className="shrink-0 text-faint" />
                 <label className="whitespace-nowrap text-tiny text-muted" htmlFor="eval-ceiling">Stop at</label>
-                <span className="text-muted text-tiny">$</span>
-                <input
-                  id="eval-ceiling"
-                  value={ceiling}
-                  onChange={(e) => { setCeiling(e.target.value); setCeilingTyped(true); }}
-                  aria-label="Stop at, in dollars"
-                  aria-invalid={"error" in parsedCeiling}
-                  inputMode="decimal"
-                  className={`w-20 bg-elevated text-ink rounded-input border px-2 py-1 text-tiny tabular-nums outline-none focus:shadow-focusring ${
-                    "error" in parsedCeiling ? "border-err" : "border-edge"
-                  }`}
-                />
+                <span className="relative">
+                  <span className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-tiny text-faint">$</span>
+                  <input
+                    id="eval-ceiling"
+                    value={ceiling}
+                    onChange={(e) => { setCeiling(e.target.value); setCeilingTyped(true); }}
+                    aria-label="Stop at, in dollars"
+                    aria-invalid={"error" in parsedCeiling}
+                    inputMode="decimal"
+                    className={`h-7 w-24 bg-elevated text-ink rounded-input border pl-5 pr-2 text-tiny tabular-nums outline-none focus:shadow-focusring ${
+                      "error" in parsedCeiling ? "border-err" : "border-edge"
+                    }`}
+                  />
+                </span>
                 <button
                   type="button"
                   onClick={() => { setConfirming(false); setEstimate(null); }}
@@ -377,7 +501,12 @@ export function EvalRunBar() {
               </div>
               {"error" in parsedCeiling && <div className="text-tiny text-err" role="alert">{parsedCeiling.error}</div>}
               {/* A CAUTION, in the info blue: amber is spent only on what is running. */}
-              {warning && <div className="text-tiny text-warn" role="status">{warning}</div>}
+              {warning && (
+                <div className="flex items-start gap-1.5 text-tiny text-warn" role="status">
+                  <Icon.evals.caveat size={ICON.xs} className="mt-px shrink-0" />
+                  <span>{warning}</span>
+                </div>
+              )}
               {/* Says what the ceiling actually does. It is checked against real spend
                   before anything is DISPATCHED, so runs already in flight finish and pay
                   out — with providers running two at a time, a small eval can dispatch
@@ -395,7 +524,8 @@ export function EvalRunBar() {
       {/* run control */}
       {!confirming && (
         <div className="flex items-center gap-2.5 text-caption">
-          <span className="text-faint tabular-nums whitespace-nowrap">
+          <span className="inline-flex items-center gap-1.5 whitespace-nowrap tabular-nums text-faint" title="Cases × models — one run of the agent each">
+            <Icon.evals.runs size={ICON.xs} className="shrink-0" />
             {examples.length} × {targets.length} = {examples.length * targets.length} run
             {examples.length * targets.length === 1 ? "" : "s"}
           </span>
@@ -403,7 +533,10 @@ export function EvalRunBar() {
             <span className="min-w-0 text-tiny text-muted">{unbuilt}</span>
           ) : targets.length > 0 && (
             // A FACT ABOUT THE BILL, NOT SOMETHING RUNNING — it was amber, the colour of in flight.
-            <span className="text-muted text-tiny whitespace-nowrap">billed per token</span>
+            <span className="inline-flex items-center gap-1 whitespace-nowrap text-tiny text-muted">
+              <Icon.evals.cost size={ICON.xs} className="shrink-0 text-faint" />
+              billed per token
+            </span>
           )}
           <span className="ml-auto" />
           {running ? (
@@ -417,10 +550,9 @@ export function EvalRunBar() {
             />
           ) : (
             // THE TAB'S PRIMARY ACTION, AS THE ONE FILLED BUTTON WITH ITS WORD — the trace's own
-            // construction for the next thing to do. It was a play mark in the corner, the same grey as
-            // the marks around it. §8: A GATE'S LABEL NAMES WHAT THE PRESS DOES. Every eval sits behind
-            // a spend ceiling, so this opens the estimate rather than dispatching, and "Run eval" would
-            // promise money moving that the next screen has not asked about yet.
+            // construction for the next thing to do. §8: A GATE'S LABEL NAMES WHAT THE PRESS DOES. Every
+            // eval sits behind a spend ceiling, so this opens the estimate rather than dispatching, and
+            // "Run eval" would promise money moving that the next screen has not asked about yet.
             <button
               type="button"
               onClick={beginRun}
@@ -428,7 +560,7 @@ export function EvalRunBar() {
               title={estimateBlocked ? `Estimate the cost of this eval — ${estimateBlocked}` : "Estimate the cost of this eval"}
               className={`${primaryBtnSm} shrink-0 focus-visible:outline-none focus-visible:shadow-focusring`}
             >
-              <Icon.evals.run size={ICON.sm} />
+              <Icon.evals.estimate size={ICON.sm} />
               Estimate cost
             </button>
           )}

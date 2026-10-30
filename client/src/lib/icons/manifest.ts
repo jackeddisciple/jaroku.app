@@ -442,6 +442,14 @@ export const MANIFEST = {
     viewOptions: "SlidersHorizontalIcon",
     note: "Note01Icon",
     removeCase: "Delete02Icon",
+    // THE RUN BAR: a chosen model's effort and its way off, the models no key runs, the grid of runs
+    // the cases and models make, the estimate's calculator, and the ceiling that stops the spending.
+    effort: "BrainIcon",
+    removeModel: "XIcon",
+    needKey: "KeySquareIcon",
+    runs: "Grid3X2Icon",
+    estimate: "Calculator01Icon",
+    ceiling: "LimitationIcon",
   },
 
   // ── §5 Trace ──────────────────────────────────────────────────────────────
