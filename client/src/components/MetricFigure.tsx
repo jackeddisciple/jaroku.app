@@ -34,6 +34,11 @@ export interface MetricFigureProps {
   onNote?: () => void;
   /** What pressing the note does, for its tooltip. The trace's note opens the run it is compared with. */
   noteTitle?: string;
+  /**
+   * How full the figure is, 0–1, as a thin bar under it — an eval's spend against its ceiling, so
+   * "how close did it come" is read as a length before anybody divides two numbers.
+   */
+  meter?: { value: number; tone?: string };
 }
 
 export function MetricFigure({
@@ -46,6 +51,7 @@ export function MetricFigure({
   note,
   onNote,
   noteTitle = "Open the run this is compared with",
+  meter,
 }: MetricFigureProps) {
   return (
     <div className="min-w-0 px-3 py-2.5" title={title}>
@@ -67,6 +73,11 @@ export function MetricFigure({
           {note}
         </button>
       ) : <div className="truncate text-tiny text-faint">{note}</div>)}
+      {meter && (
+        <div aria-hidden className="mt-1.5 h-1 overflow-hidden rounded-full bg-active">
+          <div className={`h-full rounded-full ${meter.tone ?? "bg-muted"}`} style={{ width: `${Math.round(Math.min(1, Math.max(0, meter.value)) * 100)}%` }} />
+        </div>
+      )}
     </div>
   );
 }

@@ -9,12 +9,14 @@
 // is the whole reason eval jobs were built on the normal execution path — the debugger the
 // user already knows is the drill-down.
 
-import { Fragment, useState, type CSSProperties } from "react";
+import { Fragment, useState, type CSSProperties, type ReactNode } from "react";
 import { sendLoadRun } from "../lib/socket.ts";
 import { useTraceStore } from "../store/traceStore.ts";
 import { useUiStore } from "../store/uiStore.ts";
 import { useEvalStore } from "../store/evalStore.ts";
 import { modelName, useProviderStore } from "../store/providerStore.ts";
+import { ProviderMark } from "../lib/icons.tsx";
+import { ModelLabel, Pill } from "./evalUi.tsx";
 import { fmtCost, fmtLatency } from "../lib/format.ts";
 import { CASE_FACETS, criterionLabel, criterionTable, facetCounts, rowIs, type CaseFacet } from "../lib/evalView.ts";
 import { useNarrowerThan } from "../lib/useNarrower.ts";
@@ -26,7 +28,7 @@ import { SectionHeader } from "./SectionHeader.tsx";
 import { Segmented, type SegmentOption } from "./Segmented.tsx";
 import { secondaryBtn } from "./buttons.ts";
 import type { EvalResults, ExampleCell } from "../types.ts";
-import { Icon } from "../lib/icons/registry.ts";
+import { Icon, type IconComponent } from "../lib/icons/registry.ts";
 import { IconButton } from "./IconButton.tsx";
 
 /**
@@ -87,6 +89,8 @@ function ScoreChip({ cell, name, active, onClick }: { cell: ExampleCell; name: s
       // the work rather than the face.
       tone="muted"
       title={`${cell.model}${why}`}
+      // THE PROVIDER'S MARK, so a row of four chips is told apart by its marks before its names.
+      icon={<ProviderMark provider={cell.provider} size={ICON.xs} />}
       figure={<span className={`${tone}${look?.struck ? " line-through" : ""}`}>{label}</span>}
     >
       {/* BY THE NAME THE RUN BAR USES — "Haiku 4.5" — with the id kept in the tooltip. */}
@@ -114,9 +118,11 @@ export function ClampedText({ text, lines = 3, className = "" }: { text: string;
       </div>
       {long && (
         <button
+          type="button"
           onClick={() => setOpen((v) => !v)}
-          className="mt-0.5 text-tiny text-faint transition-colors hover:text-ink"
+          className="mt-0.5 inline-flex items-center gap-1 rounded-xs text-tiny text-faint transition-colors hover:text-ink focus-visible:outline-none focus-visible:shadow-focusring"
         >
+          {open ? <Icon.evals.fold size={ICON.xs} /> : <Icon.evals.unfold size={ICON.xs} />}
           {open ? "show less" : "show more"}
         </button>
       )}
@@ -131,6 +137,30 @@ function Steps({ value }: { value: number }) {
       {[1, 2, 3, 4].map((i) => (
         <span key={i} className={`h-1.5 w-2.5 rounded-full ${value >= i ? "bg-muted" : "bg-active"}`} />
       ))}
+    </span>
+  );
+}
+
+/** One of a cell's parts — the answer, what was expected, the judge — under its mark and its word. */
+function Part({ Mark, label, aside, children }: { Mark: IconComponent; label: string; aside?: ReactNode; children: ReactNode }) {
+  return (
+    <div className="min-w-0">
+      <div className={`mb-1 flex items-center gap-1.5 ${TYPE.sectionLabel}`}>
+        <Mark size={ICON.xs} className="shrink-0 text-faint" />
+        {label}
+        {aside}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+/** A cell's figure behind its mark — what it cost, how long it took. */
+function Fact({ Mark, title, children }: { Mark: IconComponent; title?: string; children: ReactNode }) {
+  return (
+    <span className="inline-flex items-center gap-1 tabular-nums text-muted" title={title}>
+      <Mark size={ICON.xs} className="shrink-0 text-faint" />
+      {children}
     </span>
   );
 }
@@ -170,7 +200,6 @@ export function CellDetail({
 }) {
   const setRightTab = useUiStore((s) => s.setRightTab);
   const selectRun = useTraceStore((s) => s.selectRun);
-  const providerModels = useProviderStore((s) => s.models);
   const [box, narrow] = useNarrowerThan<HTMLDivElement>(SIDE_BY_SIDE_PX);
 
   const openTrace = () => {
@@ -204,62 +233,79 @@ export function CellDetail({
             onClick={() => onStep(1)}
           />
         </span>
-        <span className="text-label text-ink" title={`${cell.provider} · ${cell.model}`}>{modelName(providerModels, cell.model)}</span>
-        <span className={cellLook(cell.status)?.tone ?? "text-muted"}>{cellLook(cell.status)?.label ?? cell.status}</span>
+        <ModelLabel provider={cell.provider} model={cell.model} className="text-label text-ink" />
+        {cellLook(cell.status)
+          ? <span className={cellLook(cell.status)!.tone}>{cellLook(cell.status)!.label}</span>
+          : <Pill icon={Icon.evals.ranOk} tone="ok">{cell.status}</Pill>}
         {/* The floor marker, where the number is. `cost_complete` has ridden the per-leg rollup
             since the dashboard was written and never reached the cell — so a cost that was an
             undercount rendered, and exported, as a clean measurement. A "≥" is the smallest
             thing that says otherwise and it goes beside the figure, not in a legend. */}
-        <span
-          className="text-muted tabular-nums"
-          title={cell.costComplete ? undefined : "some step reported tokens with no price — this is a floor"}
-        >
+        <Fact Mark={Icon.evals.cost} title={cell.costComplete ? "What this run cost" : "some step reported tokens with no price — this is a floor"}>
           {cell.costComplete ? "" : "≥ "}{fmtCost(cell.costUsd)}
-        </span>
-        <span className="text-muted tabular-nums">{fmtLatency(cell.latencyMs)}</span>
+        </Fact>
+        <Fact Mark={Icon.evals.latency} title="How long this run took">{fmtLatency(cell.latencyMs)}</Fact>
         {cell.attempt > 0 && (
-          <span className="text-muted" title="this job was retried after a transient failure">
+          <Pill icon={Icon.evals.attempt} title="this job was retried after a transient failure">
             attempt {cell.attempt + 1}
-          </span>
+          </Pill>
         )}
         {cell.runId && (
           // A WAY TO LOOK AT SOMETHING, so the secondary weight — the one `buttons.ts` gives exactly that.
           <button type="button" onClick={openTrace} className={`${secondaryBtn} ml-auto`}>
-            Open trace
             <Icon.cockpitWork.openTrace size={ICON.xs} />
+            Open trace
           </button>
         )}
       </div>
 
-      {cell.error && <div className="text-tiny text-err whitespace-pre-wrap break-words">{cell.error}</div>}
+      {cell.error && (
+        <div className="flex items-start gap-1.5 rounded-control bg-err/10 px-2.5 py-2 text-tiny text-err">
+          <Icon.evals.facetFailed size={ICON.xs} className="mt-px shrink-0" />
+          <span className="min-w-0 whitespace-pre-wrap break-words">{cell.error}</span>
+        </div>
+      )}
 
       {/* WHAT IT ANSWERED, beside what was expected — side by side where there is room, so the reading
           this view exists for is one glance across rather than one scroll down. */}
       {cell.status === "succeeded" && (
-        <div className={expected && !narrow ? "grid grid-cols-2 gap-4" : "space-y-2.5"}>
-          <div className="min-w-0">
-            <div className={`mb-1 ${TYPE.sectionLabel}`}>Answer</div>
-            {cell.output
-              ? <ClampedText text={cell.output} lines={6} className={TYPE.body} />
-              : <div className="text-tiny text-faint italic">no answer was kept for this run — Open trace has the whole of it</div>}
-          </div>
-          {expected && (
-            <div className="min-w-0">
-              <div className={`mb-1 flex items-center gap-2 ${TYPE.sectionLabel}`}>
-                Expected
-                {cell.matches === true && <span className="normal-case tracking-normal text-ok">matches</span>}
-                {cell.matches === false && <span className="normal-case tracking-normal text-err">does not match</span>}
-              </div>
-              <ClampedText text={expected} lines={3} className="text-caption text-muted" />
+        <div className={expected && !narrow ? "grid grid-cols-2 gap-3" : "space-y-2.5"}>
+          {/* EACH IN ITS OWN WELL, on the page's ground under a hairline, so the answer and what was
+              expected read as two documents to hold side by side rather than as more of the case. */}
+          <Part Mark={Icon.evals.answer} label="Answer">
+            <div className="rounded-control border border-hair bg-bg px-2.5 py-2">
+              {cell.output
+                ? <ClampedText text={cell.output} lines={6} className={TYPE.body} />
+                : <div className="text-tiny text-faint italic">no answer was kept for this run — Open trace has the whole of it</div>}
             </div>
+          </Part>
+          {expected && (
+            <Part
+              Mark={Icon.evals.expected}
+              label="Expected"
+              aside={cell.matches === true
+                ? <Pill icon={Icon.evals.match} tone="ok" className="ml-auto normal-case tracking-normal">matches</Pill>
+                : cell.matches === false
+                  ? <Pill icon={Icon.evals.noMatch} tone="err" className="ml-auto normal-case tracking-normal">does not match</Pill>
+                  : null}
+            >
+              <div className="rounded-control border border-hair bg-bg px-2.5 py-2">
+                <ClampedText text={expected} lines={3} className="text-caption text-muted" />
+              </div>
+            </Part>
           )}
         </div>
       )}
 
       {/* WHAT THE SCORE IS MADE OF, each criterion by its name and as the four steps it is scored on. */}
       {cell.perCriterion && criteria.length > 0 && (
-        <div>
-          <div className={`mb-1 ${TYPE.sectionLabel}`}>Judge</div>
+        <Part
+          Mark={Icon.evals.judge}
+          label="Judge"
+          aside={cell.score !== null
+            ? <Pill icon={Icon.evals.quality} tone={cell.score >= 0.8 ? "ok" : cell.score < 0.4 ? "err" : "ink"} className="ml-auto">{Math.round(cell.score * 100)}</Pill>
+            : null}
+        >
           <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-x-3 gap-y-1 text-tiny">
             {criteria.map((id) => {
               const value = cell.perCriterion?.[id];
@@ -274,18 +320,23 @@ export function CellDetail({
               );
             })}
           </div>
-        </div>
+        </Part>
       )}
 
+      {/* WHAT THE JUDGE SAID, AS ITS WORDS — set off as a quotation, not more of the panel's own text. */}
       {cell.rationale && (
-        <div className="text-tiny text-muted whitespace-pre-wrap break-words leading-relaxed">
-          {cell.rationale}
+        <div className="flex items-start gap-2 rounded-control bg-active/50 px-2.5 py-2">
+          <Icon.evals.rationale size={ICON.xs} className="mt-0.5 shrink-0 text-faint" />
+          <div className="min-w-0 text-tiny leading-relaxed text-muted whitespace-pre-wrap break-words">{cell.rationale}</div>
         </div>
       )}
 
       {/* Unscored is not zero, and the reason matters — a judge failure is not a bad answer. */}
       {cell.score === null && cell.status === "succeeded" && (
-        <div className="text-tiny text-faint">{cell.scoreError ?? "not scored"}</div>
+        <div className="flex items-center gap-1.5 text-tiny text-faint">
+          <Icon.evals.facetUnscored size={ICON.xs} className="shrink-0" />
+          {cell.scoreError ?? "not scored"}
+        </div>
       )}
     </div>
   );
@@ -314,16 +365,25 @@ function CriterionMeter({ value, n, lead }: { value: number | null; n: number; l
  */
 export function CriterionBreakdown({ results }: { results: EvalResults }) {
   const providerModels = useProviderStore((s) => s.models);
+  const [open, setOpen] = useState(true);
   const rows = criterionTable(results);
   if (!rows.length) return null;
   const totalWeight = rows.reduce((sum, r) => sum + (r.weight ?? 0), 0);
   const cell = (first: boolean): string => `py-2 ${first ? "" : "border-t border-hair"}`;
   return (
     <section className="mt-5" aria-label="By criterion">
-      <div className="mb-1.5 flex min-h-8 items-center gap-2">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className="mb-1.5 flex min-h-8 w-full items-center gap-2 rounded-control text-left focus-visible:outline-none focus-visible:shadow-focusring"
+      >
+        <span aria-hidden className={`text-faint transition-transform duration-fast ${open ? "" : "-rotate-90"}`}><Icon.trace.fold size={ICON.xs} /></span>
+        <Icon.evals.criteria size={ICON.xs} className="text-faint" />
         <span className={TYPE.sectionLabel}>By criterion</span>
         <span className="text-tiny text-faint">each model's average, 0–4</span>
-      </div>
+      </button>
+      {open && (
       <div className="overflow-x-auto rounded-card border border-hair bg-panel">
         <table className="w-full border-separate border-spacing-0 text-caption">
           <thead>
@@ -335,7 +395,10 @@ export function CriterionBreakdown({ results }: { results: EvalResults }) {
                   className={`whitespace-nowrap pb-1.5 pt-2.5 text-right font-normal ${i === results.providers.length - 1 ? "pl-2 pr-3" : "px-2"}`}
                   title={`${p.provider} · ${p.model}`}
                 >
-                  {modelName(providerModels, p.model)}
+                  <span className="inline-flex items-center justify-end gap-1">
+                    <ProviderMark provider={p.provider} size={ICON.badge} />
+                    {modelName(providerModels, p.model)}
+                  </span>
                 </th>
               ))}
             </tr>
@@ -349,9 +412,9 @@ export function CriterionBreakdown({ results }: { results: EvalResults }) {
                   <td className={`${cell(i === 0)} pl-3 pr-3`}>
                     <span className="text-ink">{r.label}</span>
                     {r.weight !== null && totalWeight > 0 && (
-                      <span className="ml-1.5 text-tiny tabular-nums text-faint" title="This criterion's share of the overall score">
+                      <Pill title="This criterion's share of the overall score" className="ml-1.5 align-middle">
                         {Math.round((r.weight / totalWeight) * 100)}%
-                      </span>
+                      </Pill>
                     )}
                   </td>
                   {r.scores.map((s, j) => (
@@ -365,17 +428,18 @@ export function CriterionBreakdown({ results }: { results: EvalResults }) {
           </tbody>
         </table>
       </div>
+      )}
     </section>
   );
 }
 
 /** Each facet as the case list's filter says it, and what choosing it shows. */
-const FACET_TEXT: Record<CaseFacet, { text: string; noun: string }> = {
-  all: { text: "All", noun: "every case" },
-  failed: { text: "Failed", noun: "the cases a model failed" },
-  disagree: { text: "Disagree", noun: "the cases the models answered differently" },
-  unscored: { text: "Unscored", noun: "the cases with an answer the judge did not score" },
-  changed: { text: "Changed", noun: "the cases whose outcome moved since the eval this is compared with" },
+const FACET_TEXT: Record<CaseFacet, { text: string; noun: string; Mark: IconComponent }> = {
+  all: { text: "All", noun: "every case", Mark: Icon.evals.facetAll },
+  failed: { text: "Failed", noun: "the cases a model failed", Mark: Icon.evals.facetFailed },
+  disagree: { text: "Disagree", noun: "the cases the models answered differently", Mark: Icon.evals.facetDisagree },
+  unscored: { text: "Unscored", noun: "the cases with an answer the judge did not score", Mark: Icon.evals.facetUnscored },
+  changed: { text: "Changed", noun: "the cases whose outcome moved since the eval this is compared with", Mark: Icon.evals.facetChanged },
 };
 
 export function ExampleDrillDown({ results, changed }: {
@@ -410,6 +474,7 @@ export function ExampleDrillDown({ results, changed }: {
   const options: SegmentOption<CaseFacet>[] = offered.map((f) => ({
     value: f,
     text: FACET_TEXT[f].text,
+    glyph: FACET_TEXT[f].Mark,
     count: counts[f],
     countTone: f === "failed" ? "danger" : undefined,
     alert: f === "failed" && counts.failed > 0,
@@ -422,7 +487,7 @@ export function ExampleDrillDown({ results, changed }: {
 
   return (
     <section className="mt-5" aria-label="Cases">
-      <SectionHeader name="Cases" count={results.rows.length} className="mb-1.5 min-h-8 flex-wrap">
+      <SectionHeader name="Cases" count={results.rows.length} icon={Icon.evals.cases} className="mb-1.5 min-h-8 flex-wrap">
         {offered.length > 1 && (
           <div className="ml-auto max-w-full overflow-x-auto">
             <Segmented
@@ -436,7 +501,8 @@ export function ExampleDrillDown({ results, changed }: {
         )}
       </SectionHeader>
       {shown.length === 0 ? (
-        <div className="rounded-card border border-hair bg-panel px-3 py-3 text-tiny text-faint">
+        <div className="flex items-center gap-2 rounded-card border border-hair bg-panel px-3 py-3 text-tiny text-faint">
+          <Icon.evals.facetAll size={ICON.xs} className="shrink-0" />
           No case is in this view.
         </div>
       ) : (
@@ -444,7 +510,7 @@ export function ExampleDrillDown({ results, changed }: {
           {shown.map(({ row, i }) => {
             const open = row.cells.find((c) => c.jobId === openCell);
             return (
-              <div key={row.exampleId} data-example-id={row.exampleId} className="px-3 py-2.5">
+              <div key={row.exampleId} data-example-id={row.exampleId} className={`px-3 py-2.5 transition-colors ${open ? "bg-active/30" : "hover:bg-active/20"}`}>
                 <div className="flex items-start gap-3">
                   <span className="text-faint text-tiny tabular-nums w-5 shrink-0 text-right select-none pt-0.5">
                     {i + 1}
@@ -455,8 +521,8 @@ export function ExampleDrillDown({ results, changed }: {
                         into the text — and a whole case filled the panel. */}
                     <ClampedText text={row.input} lines={3} className="text-caption text-ink" />
                     {row.expected && (
-                      <div className="mt-0.5 flex gap-1 text-tiny text-faint">
-                        <span className="shrink-0">expected:</span>
+                      <div className="mt-1 flex items-start gap-1.5 text-tiny text-faint" title="What this case expected">
+                        <Icon.evals.expected size={ICON.xs} className="mt-px shrink-0" />
                         <ClampedText text={row.expected} lines={2} className="min-w-0" />
                       </div>
                     )}

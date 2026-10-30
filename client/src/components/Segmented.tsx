@@ -40,6 +40,11 @@ export interface SegmentOption<T extends string> {
   countTone?: "danger";
   /** A small dot before a text segment's word, in the colour of the thing it stands for. */
   dot?: string;
+  /**
+   * A mark before a text segment's word — unlike `icon`, which replaces the word. For a filter whose
+   * options are read by their marks first and their words second: the eval's Failed and Disagree.
+   */
+  glyph?: IconComponent;
   /** The whole segment says there is something wrong in it — its word in the danger colour. */
   alert?: boolean;
   /**
@@ -112,6 +117,7 @@ export function Segmented<T extends string>({
             }`}
           >
             {o.dot && <span aria-hidden className="mr-1.5 inline-block h-1.5 w-1.5 rounded-full align-middle" style={{ background: o.dot }} />}
+            {o.glyph && <span aria-hidden className="mr-1 inline-flex align-middle"><o.glyph size={ICON.xs} /></span>}
             {o.text ?? o.label}
             {o.count !== undefined && (
               <span className={`ml-1 ${o.countTone === "danger" && o.count > 0 ? "text-err" : o.disabled ? "" : "text-faint"}`}>

@@ -21,26 +21,43 @@ import {
   resultsToJson,
   summaryToCsv,
 } from "../lib/evalExport.ts";
+import { useState } from "react";
 import { ICON } from "../lib/tokens.ts";
 import { TYPE } from "../lib/tokens.ts";
-import { Icon } from "../lib/icons/registry.ts";
-import { CheckIcon } from "./panelIcons.tsx";
+import { Icon, type IconComponent } from "../lib/icons/registry.ts";
 import { FIGURE_STRIP, MetricFigure, type MetricFigureProps } from "./MetricFigure.tsx";
-import { modelName, useProviderStore } from "../store/providerStore.ts";
 import { useUiStore } from "../store/uiStore.ts";
+import { ModelLabel, Pill } from "./evalUi.tsx";
 import type { EvalResults, ProviderMetrics } from "../types.ts";
 
 /**
- * "This one leads the column." A green check rather than the `●` it replaces: a coloured bullet
- * character is the same shape as every other bullet on the screen, and this one is the only mark
- * in the table that means something. Same check the rest of the app uses for "this is the good
- * one", at the same weight.
+ * "This one leads the column", as the column's own mark in a green pill beside the figure it leads
+ * on — a crown for quality, coins for the cheapest, a flash for the fastest — so three leads on one
+ * row are three different marks rather than three identical ticks somebody has to hover to tell apart.
  */
-function LeadMark({ title }: { title: string }) {
+function LeadMark({ title, Mark }: { title: string; Mark: IconComponent }) {
   return (
-    <span className="ml-1 inline-flex align-middle text-ok" title={title}>
-      <CheckIcon size={ICON.xs} />
+    <span className="ml-1.5 inline-flex align-middle" role="img" aria-label={title}>
+      <Pill icon={Mark} tone="ok" title={title} className="px-1" />
     </span>
+  );
+}
+
+/** A column's head: its mark, then its word — the same mark the card's fact carries. */
+function Head({ Mark, children, title, align = "right", className = "" }: {
+  Mark: IconComponent;
+  children: React.ReactNode;
+  title?: string;
+  align?: "left" | "right";
+  className?: string;
+}) {
+  return (
+    <th className={`pb-1.5 pt-2.5 font-normal ${align === "left" ? "text-left" : "text-right"} ${className}`} title={title}>
+      <span className={`inline-flex items-center gap-1 ${align === "left" ? "" : "justify-end"}`}>
+        <Mark size={ICON.badge} />
+        {children}
+      </span>
+    </th>
   );
 }
 
@@ -72,6 +89,21 @@ function CostCell({ p }: { p: ProviderMetrics }) {
 }
 
 /**
+ * What one answered run cost — the figure the table compares on — in the same four states as the
+ * total: known, unknown, a floor, or nothing answered to compare.
+ */
+function PerRunCell({ p }: { p: ProviderMetrics }) {
+  if (p.succeeded === 0) return <span className="text-faint" title="Nothing succeeded, so there is no per-run cost to compare">—</span>;
+  if (p.costUnknown) return <span className="text-faint" title={`No pricing entry for ${p.model} — cost is unknown, not zero`}>unknown</span>;
+  return (
+    <span className="text-ink tabular-nums" title={p.costIncomplete ? "Some steps could not be priced — this is a floor" : undefined}>
+      {p.costIncomplete && <span className="text-warn">≥</span>}
+      {fmtCost(p.costPerRunUsd ?? 0)}
+    </span>
+  );
+}
+
+/**
  * Quality as a number and a bar — the bar so a column of them can be read at a glance, the number
  * so it can be read exactly. Built as the step details' token split is: a fill on a rounded track.
  * The leader's fill is ink and the rest are muted, so the lead reads before any number does.
@@ -88,15 +120,19 @@ function QualityCell({ p, lead = false }: { p: ProviderMetrics; lead?: boolean }
   const tone = p.qualityScore >= 0.8 ? "text-ok" : p.qualityScore < 0.4 ? "text-err" : "text-ink";
   return (
     <span className="inline-flex items-center justify-end gap-2">
-      <span aria-hidden className="h-1.5 w-14 shrink-0 overflow-hidden rounded-full bg-active">
+      <span aria-hidden className="h-1.5 w-10 shrink-0 overflow-hidden rounded-full bg-active">
         <span className={`block h-full rounded-full ${lead ? "bg-ink" : "bg-muted"}`} style={{ width: `${Math.round(p.qualityScore * 100)}%` }} />
       </span>
       <span className={`${tone} tabular-nums`}>
         {(p.qualityScore * 100).toFixed(0)}
-        <span className="text-faint text-tiny ml-0.5">
-          /100{p.unscored > 0 && ` · ${p.unscored} unscored`}
-        </span>
+        <span className="text-faint text-tiny ml-0.5">/100</span>
       </span>
+      {/* UNSCORED IS NOT ZERO, so it is said beside the average rather than folded into it. */}
+      {p.unscored > 0 && (
+        <Pill icon={Icon.evals.facetUnscored} title={`${p.unscored} unscored — answers the judge did not score, left out of the average`}>
+          {p.unscored}
+        </Pill>
+      )}
     </span>
   );
 }
@@ -117,8 +153,15 @@ function RanOk({ p }: { p: ProviderMetrics }) {
     (p.cancelled ?? 0) > 0 ? `${p.cancelled} cancelled` : null,
     (p.pending ?? 0) > 0 ? `${p.pending} waiting` : null,
   ].filter(Boolean);
+  // EVERY JOB AS A LENGTH: answered, failed, and the rest — cancelled or still to run — as the empty
+  // track. The progress bar's own construction, so a finished leg reads as a finished bar.
+  const share = (n: number): string => `${p.total > 0 ? (n / p.total) * 100 : 0}%`;
   return (
-    <span className="whitespace-nowrap tabular-nums">
+    <span className="inline-flex items-center justify-end gap-1.5 whitespace-nowrap tabular-nums">
+      <span aria-hidden className="flex h-1.5 w-8 shrink-0 overflow-hidden rounded-full bg-active">
+        <span className="h-full bg-muted" style={{ width: share(p.succeeded) }} />
+        <span className="h-full bg-err" style={{ width: share(p.failed) }} />
+      </span>
       <span className={p.failed > 0 ? "text-err" : "text-muted"}>
         {p.succeeded}/{ran}
       </span>
@@ -142,30 +185,34 @@ function MatchCell({ p }: { p: ProviderMetrics }) {
 }
 
 /** The table's row as a card, for a panel too narrow for seven columns. */
-function ProviderCard({ p, lead, name, showProvider }: { p: ProviderMetrics; lead: ReturnType<typeof leaders>; name: string; showProvider: boolean }) {
-  const fact = (label: string, value: React.ReactNode) => (
-    <div className="flex items-baseline justify-between gap-2">
-      <span className="text-faint">{label}</span>
+function ProviderCard({ p, lead }: { p: ProviderMetrics; lead: ReturnType<typeof leaders> }) {
+  // EACH FACT BEHIND THE SAME MARK AS ITS TABLE COLUMN, so a card and a row of the same model are
+  // read the same way — and the marks, in one column down the card, are what the eye runs along.
+  const fact = (Mark: IconComponent, label: string, value: React.ReactNode) => (
+    <div className="flex items-center justify-between gap-2">
+      <span className="inline-flex items-center gap-1.5 text-faint"><Mark size={ICON.xs} />{label}</span>
       <span className="text-right">{value}</span>
     </div>
   );
   return (
     <div className="rounded-card border border-hair bg-panel px-3 py-2.5 text-caption">
-      <div className="pb-1.5" title={`${p.provider} · ${p.model}`}>
-        <span className="text-label text-ink">{name}</span>
-        {showProvider && <span className="text-faint ml-1.5 text-tiny">{p.provider}</span>}
+      <div className="flex items-center gap-1 pb-2">
+        <ModelLabel provider={p.provider} model={p.model} className="text-label text-ink" />
+        {lead.best === p.model && <LeadMark title="highest quality" Mark={Icon.evals.bestQuality} />}
+        {lead.cheapest === p.model && <LeadMark title="cheapest per run" Mark={Icon.evals.cheapest} />}
+        {lead.fastest === p.model && <LeadMark title="fastest" Mark={Icon.evals.fastest} />}
       </div>
-      <div className="space-y-0.5 text-tiny">
-        {fact("Quality", <><QualityCell p={p} lead={lead.best === p.model} />{lead.best === p.model && <LeadMark title="highest quality" />}</>)}
-        {fact("Cost", <CostCell p={p} />)}
-        {fact("Per run", <span className="text-muted tabular-nums">{p.costUnknown || p.succeeded === 0 ? "—" : fmtCost(p.costPerRunUsd ?? 0)}{lead.cheapest === p.model && <LeadMark title="cheapest per run" />}</span>)}
-        {fact("p50 · p95", <span className="text-muted tabular-nums">{fmtLatency(p.latencyP50Ms)} · {fmtLatency(p.latencyP95Ms)}{lead.fastest === p.model && <LeadMark title="fastest" />}</span>)}
-        {(p.checked ?? 0) > 0 && fact("Matches", <MatchCell p={p} />)}
-        {fact("Ran OK", <RanOk p={p} />)}
+      <div className="space-y-1 text-tiny">
+        {fact(Icon.evals.quality, "Quality", <QualityCell p={p} lead={lead.best === p.model} />)}
+        {fact(Icon.evals.cost, "Cost", <CostCell p={p} />)}
+        {fact(Icon.evals.perRun, "Per run", <span className="text-muted tabular-nums">{p.costUnknown || p.succeeded === 0 ? "—" : fmtCost(p.costPerRunUsd ?? 0)}</span>)}
+        {fact(Icon.evals.latency, "p50 · p95", <span className="text-muted tabular-nums">{fmtLatency(p.latencyP50Ms)} · {fmtLatency(p.latencyP95Ms)}</span>)}
+        {(p.checked ?? 0) > 0 && fact(Icon.evals.matches, "Matches", <MatchCell p={p} />)}
+        {fact(Icon.evals.ranOk, "Ran OK", <RanOk p={p} />)}
         {/* WHAT IT ACTUALLY COST AND USED — every attempt, failed ones included — which the server
             sent for each model and nothing drew. */}
-        {fact("Spent", <span className="text-muted tabular-nums">{fmtCost(p.spentUsd)}</span>)}
-        {fact("Tokens", <span className="text-muted tabular-nums">{fmtTokens(p.tokens)}</span>)}
+        {fact(Icon.evals.spent, "Spent", <span className="text-muted tabular-nums">{fmtCost(p.spentUsd)}</span>)}
+        {fact(Icon.evals.tokens, "Tokens", <span className="text-muted tabular-nums">{fmtTokens(p.tokens)}</span>)}
       </div>
     </div>
   );
@@ -199,6 +246,8 @@ export function EvalFigures({ results }: { results: EvalResults }) {
       value: `${floor ? "≥ " : ""}${fmtCost(totals.trueSpendUsd)}`,
       tone: over ? "text-err" : "text-ink",
       note: totals.budgetUsd !== null ? `of ${fmtBudget(totals.budgetUsd)} budget${over ? " — ceiling reached" : ""}` : "no ceiling",
+      // THE CEILING AS A LENGTH. Red once it is reached; there is no bar where there is no ceiling.
+      meter: totals.budgetUsd ? { value: totals.trueSpendUsd / totals.budgetUsd, tone: over ? "bg-err" : "bg-muted" } : undefined,
       title: `${fmtCost(totals.agentSpendUsd)} on agent runs and ${fmtCost(totals.judgeCostUsd)} on the judge, failed attempts included — the comparison below leaves those out`
         + (floor ? ". Some steps could not be priced, so this is a floor" : ""),
     },
@@ -206,6 +255,7 @@ export function EvalFigures({ results }: { results: EvalResults }) {
       Mark: Icon.trace.metricSteps,
       label: "Ran OK",
       value: `${ok}/${ran}`,
+      meter: ran ? { value: ok / ran } : undefined,
       note: [cancelled ? `${cancelled} cancelled` : null, waiting ? `${waiting} waiting` : null].filter(Boolean).join(" · ")
         || (ran ? fmtPercent(ok / ran, "share") : "nothing has run yet"),
       title: "Of the jobs that ran, how many finished without failing. Not a judgement of the answer.",
@@ -235,9 +285,10 @@ export function EvalFigures({ results }: { results: EvalResults }) {
 /**
  * Narrower than this, the table's columns are clipped; the rows become cards. 640 since quality is a
  * bar and models go by their names: at 560 the table cut "Ran OK" in half at the panel's default
- * width, with nothing to say so but a sideways scroll macOS does not draw.
+ * width, with nothing to say so but a sideways scroll macOS does not draw. 700 since each lead wears
+ * its own mark beside the figure it leads on.
  */
-const STACK_BELOW_PX = 640;
+const STACK_BELOW_PX = 700;
 
 /** The three files an eval exports, each with what it holds. Offered from the eval's actions. */
 export const EXPORTS = [
@@ -264,14 +315,11 @@ export function ComparisonTable({
   const lead = leaders(results.providers);
   // A MATCHES COLUMN, only when the eval checked answers against `expected` — see expectedMatch.ts.
   const checking = results.providers.some((p) => (p.checked ?? 0) > 0);
-  // The models by the names the run bar uses — "Haiku 4.5" — with the id where the catalogue has none.
-  const providerModels = useProviderStore((s) => s.models);
-  const name = (model: string): string => modelName(providerModels, model);
-  // THE PROVIDER ONLY WHERE IT TELLS THE ROWS APART — an eval across Anthropic and OpenAI. With one
-  // provider it was the same word on every row, in the column the table could least spare.
-  const mixed = new Set(results.providers.map((p) => p.provider)).size > 1;
   // HOW WIDE THE PANEL ACTUALLY IS. Below about 600px the columns were clipped with nothing to say so.
   const [box, narrow] = useNarrowerThan<HTMLDivElement>(STACK_BELOW_PX);
+  // FOLDED AS THE TRACE FOLDS A SECTION, so the cases under it can be reached without a scroll past
+  // a comparison somebody has already read.
+  const [open, setOpen] = useState(true);
   const cell = (first: boolean): string => `py-2 ${first ? "" : "border-t border-hair"}`;
 
   return (
@@ -280,28 +328,36 @@ export function ComparisonTable({
       {/* THE COMPARISON AS A SECTION OF ITS OWN — its word over it and the table in the trace's card —
           rather than a bare table under a line of text. */}
       <section aria-label="Models">
-        <div className="mb-1.5 flex min-h-8 items-center gap-2">
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          aria-expanded={open}
+          className="mb-1.5 flex min-h-8 w-full items-center gap-2 rounded-control text-left focus-visible:outline-none focus-visible:shadow-focusring"
+        >
+          <span aria-hidden className={`text-faint transition-transform duration-fast ${open ? "" : "-rotate-90"}`}><Icon.trace.fold size={ICON.xs} /></span>
+          <Icon.evals.models size={ICON.xs} className="text-faint" />
           <span className={TYPE.sectionLabel}>Models</span>
-        </div>
-        {narrow ? (
+          <span className="text-tiny tabular-nums text-faint">{results.providers.length}</span>
+        </button>
+        {!open ? null : narrow ? (
           <div className="space-y-2">
-            {results.providers.map((p) => <ProviderCard key={`${p.provider} ${p.model}`} p={p} lead={lead} name={name(p.model)} showProvider={mixed} />)}
+            {results.providers.map((p) => <ProviderCard key={`${p.provider} ${p.model}`} p={p} lead={lead} />)}
           </div>
         ) : (
         <div className="overflow-x-auto rounded-card border border-hair bg-panel">
           <table className="w-full text-caption border-separate border-spacing-0">
             <thead>
               <tr className={TYPE.sectionLabel}>
-                <th className="text-left font-normal pb-1.5 pt-2.5 pl-3 pr-3">Model</th>
-                <th className="text-right font-normal pb-1.5 pt-2.5 px-2">Quality</th>
-                <th className="text-right font-normal pb-1.5 pt-2.5 px-2">Cost</th>
-                <th className="text-right font-normal pb-1.5 pt-2.5 px-2">Per run</th>
-                <th className="text-right font-normal pb-1.5 pt-2.5 px-2">p50</th>
-                <th className="text-right font-normal pb-1.5 pt-2.5 px-2">p95</th>
+                <Head Mark={Icon.evals.models} align="left" className="pl-3 pr-3">Model</Head>
+                <Head Mark={Icon.evals.quality} className="px-2" title="The judge's mean score, over the answers it scored">Quality</Head>
+                {/* PER RUN AND NOT THE TOTAL, in the table: it is the like-for-like figure, and the total is in
+                    each row's tooltip and on the cards. Both columns did not fit beside each lead's mark. */}
+                <Head Mark={Icon.evals.perRun} className="px-2" title="The mean cost of one answered run — the like-for-like figure">Per run</Head>
+                <Head Mark={Icon.evals.latency} className="px-2" title="Latency of an answered run: the median, then the 95th percentile">p50 · p95</Head>
                 {checking && (
-                  <th className="text-right font-normal pb-1.5 pt-2.5 px-2" title={`Answers that met the case's expected output (${results.checkMode ?? "checked"})`}>Matches</th>
+                  <Head Mark={Icon.evals.matches} className="px-2" title={`Answers that met the case's expected output (${results.checkMode ?? "checked"})`}>Matches</Head>
                 )}
-                <th className="text-right font-normal pb-1.5 pt-2.5 pl-2 pr-3" title="Of the jobs that ran, how many finished without failing. Not a judgement of the answer.">Ran OK</th>
+                <Head Mark={Icon.evals.ranOk} className="pl-2 pr-3" title="Of the jobs that ran, how many finished without failing. Not a judgement of the answer.">Ran OK</Head>
               </tr>
             </thead>
             <tbody>
@@ -309,8 +365,8 @@ export function ComparisonTable({
                 <tr
                   key={`${p.provider} ${p.model}`}
                   onClick={() => onSelectProvider?.(p)}
-                  title={`${p.provider} · ${p.model} — ${fmtCost(p.spentUsd)} spent and ${fmtTokens(p.tokens)} used, failed attempts included`}
-                  className={`${onSelectProvider ? "cursor-pointer hover:bg-active/40" : ""} transition-colors`}
+                  title={`${p.provider} · ${p.model} — ${p.costUnknown ? "cost unknown" : `${fmtCost(p.comparisonCostUsd ?? 0)} on answered runs`}; ${fmtCost(p.spentUsd)} spent and ${fmtTokens(p.tokens)} used, failed attempts included`}
+                  className={`${onSelectProvider ? "cursor-pointer" : ""} transition-colors hover:bg-active/40`}
                 >
                   {/* A model's name breaks as a unit or not at all. While the judge is still scoring, the
                       quality column carries an extra "· N unscored" and squeezes this one — which was
@@ -318,31 +374,27 @@ export function ComparisonTable({
                       "claude-haiku-4-" over a lone "5". The name of the thing being compared is the last
                       text in a comparison table that should be guessable. */}
                   <td className={`${cell(i === 0)} pl-3 pr-3`}>
-                    <span className="whitespace-nowrap text-label text-ink">{name(p.model)}</span>
-                    {mixed && <span className="text-faint ml-1.5 text-tiny">{p.provider}</span>}
+                    <ModelLabel provider={p.provider} model={p.model} className="whitespace-nowrap text-label text-ink" />
                   </td>
                   <td className={`${cell(i === 0)} px-2 text-right whitespace-nowrap`}>
                     <QualityCell p={p} lead={lead.best === p.model} />
                     {lead.best === p.model && p.qualityScore !== null && (
-                      <LeadMark title="highest quality" />
+                      <LeadMark title="highest quality" Mark={Icon.evals.bestQuality} />
                     )}
                   </td>
-                  <td className={`${cell(i === 0)} px-2 text-right`}><CostCell p={p} /></td>
                   <td className={`${cell(i === 0)} px-2 text-right whitespace-nowrap`}>
-                    <span className="text-muted tabular-nums">
-                      {p.costUnknown || p.succeeded === 0 ? "—" : fmtCost(p.costPerRunUsd ?? 0)}
-                    </span>
+                    <PerRunCell p={p} />
                     {lead.cheapest === p.model && !p.costUnknown && (
-                      <LeadMark title="cheapest per run" />
+                      <LeadMark title="cheapest per run" Mark={Icon.evals.cheapest} />
                     )}
                   </td>
                   <td className={`${cell(i === 0)} px-2 text-right text-muted tabular-nums whitespace-nowrap`}>
                     {fmtLatency(p.latencyP50Ms)}
+                    <span className="text-faint"> · {fmtLatency(p.latencyP95Ms)}</span>
                     {lead.fastest === p.model && p.latencyP50Ms !== null && (
-                      <LeadMark title="fastest" />
+                      <LeadMark title="fastest" Mark={Icon.evals.fastest} />
                     )}
                   </td>
-                  <td className={`${cell(i === 0)} px-2 text-right text-muted tabular-nums`}>{fmtLatency(p.latencyP95Ms)}</td>
                   {checking && (
                     <td className={`${cell(i === 0)} px-2 text-right whitespace-nowrap tabular-nums`}>
                       <MatchCell p={p} />

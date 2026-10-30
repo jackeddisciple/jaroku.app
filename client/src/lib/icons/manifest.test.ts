@@ -80,7 +80,9 @@ console.log("\nthe manifest parses, and it is the size the specification asks fo
   // 299 WITH A DATASET'S EXPORT AND DUPLICATE — both marks already here, so no new export.
   // 314 WITH THE EVALS PANEL'S HEAD AND ITS RESULTS' TOOLBAR: the panel, agent and two views, the
   // eval, compare and scope pickers, and an eval's when, duration, verdict, judge and stop.
-  check("314 registry keys", entries.length === 314, `${entries.length}`);
+  // 345 WITH ITS RESULTS' BODY: the comparison's columns and leads, the case filters, a cell's parts,
+  // and the compare's directions.
+  check("345 registry keys", entries.length === 345, `${entries.length}`);
   const names = new Set(entries.map((e) => e.export));
   // 104 from icons_integration's appendix, plus D8's 13 — the composer glyphs that had to move
   // here when `@hugeicons/react` came out. See the note at the top of `registry.ts`.
@@ -119,7 +121,10 @@ console.log("\nthe manifest parses, and it is the size the specification asks fo
   // `TextFontIcon` leaves with the tokens mark it was.
   // 215 WITH `ChartColumnIcon`, `Timer02Icon` AND `JusticeScale01Icon`, for Results, an eval's
   // duration and its judge; the panel's other twelve new keys reuse marks already here.
-  check("215 distinct marks", names.size === 215, `${names.size}`);
+  // 225 WITH `DollarCircleIcon`, `DashboardSpeed01Icon`, `Crown02Icon`, `FlashIcon`, `CheckListIcon`,
+  // `ArrowLeftRightIcon`, `HelpCircleIcon`, `RepeatIcon`, `QuoteDownIcon` AND `ArrowDownRight01Icon`;
+  // the body's other twenty-one keys reuse marks already here.
+  check("225 distinct marks", names.size === 225, `${names.size}`);
   check("no key is declared twice", new Set(entries.map((e) => e.key)).size === entries.length);
 }
 

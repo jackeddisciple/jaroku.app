@@ -32,7 +32,8 @@
 //
 //   npm run test:section-count
 
-import { TYPE } from "../lib/tokens.ts";
+import { ICON, TYPE } from "../lib/tokens.ts";
+import type { IconComponent } from "../lib/icons/registry.ts";
 
 /** What `count === null` renders. The same mark `lib/format.ts` returns for every unknown figure. */
 export const UNKNOWN_COUNT = "—";
@@ -42,6 +43,7 @@ export function SectionHeader({
   count,
   rule = false,
   className = "",
+  icon: Mark,
   children,
 }: {
   /** The section's own word. Rendered as it is given; the header's caps are a class, not a transform. */
@@ -58,11 +60,14 @@ export function SectionHeader({
   /** The hairline out to the edge, for a header that sits over a full-width list. */
   rule?: boolean;
   className?: string;
+  /** A mark before the name, for a section read by its mark first — the eval's Cases. */
+  icon?: IconComponent;
   /** A control that belongs to the section rather than to the page — a collapse, a filter. */
   children?: React.ReactNode;
 }) {
   return (
     <div className={`flex shrink-0 items-center gap-2 ${className}`}>
+      {Mark && <span aria-hidden className="inline-flex shrink-0 text-faint"><Mark size={ICON.xs} /></span>}
       <span className={TYPE.panelLabel}>{name}</span>
       {/* TABULAR, so a column of headers has its counts on one axis rather than dancing by a pixel
           per digit. And `aria-label` on the pair, because "Blocking 12" read as two unrelated runs

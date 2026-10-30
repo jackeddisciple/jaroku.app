@@ -87,7 +87,8 @@ console.log("\nthe comparison, rendered");
   const same = markup(createElement(EvalCompare, { before, after: before, onClose: () => {} })).replace(/<[^>]+>/g, " ");
   check(same.includes("No case changed its outcome"), "and says so when nothing did");
   // WHICH EVAL, not only when — two from the same afternoon both read "4d ago".
-  check(/the eval .* on Screening cases/.test(words), "it names the dataset the earlier eval ran on", words.slice(0, 160));
+  // Its date in a pill and its dataset after it: "Compared with [16 Oct] on Screening cases".
+  check(/Compared with .* on Screening cases/.test(words), "it names the dataset the earlier eval ran on", words.slice(0, 160));
   const gone = markup(createElement(EvalCompare, { before: { ...before, datasetId: "d-gone", datasetName: null }, after, onClose: () => {} }))
     .replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
   check(gone.includes("on a deleted dataset") && gone.includes("a deleted dataset and Screening cases"),
@@ -96,7 +97,7 @@ console.log("\nthe comparison, rendered");
   // THE PICKED EVAL, even when it is the later one: it was announced as the eval already on screen.
   const later = { ...after, datasetId: "d-gone", datasetName: null };
   const picked = markup(createElement(EvalCompare, { before, after: later, against: later, onClose: () => {} })).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
-  check(picked.includes("on a deleted dataset") && !/the eval [^·]*on Screening cases/.test(picked),
+  check(picked.includes("on a deleted dataset") && !/Compared with [^·]*on Screening cases/.test(picked),
     "the header names the eval that was picked, not whichever is older", picked.slice(0, 160));
 
   // NARROW: the six columns were clipped — Per run cut in half, p50 off the edge.

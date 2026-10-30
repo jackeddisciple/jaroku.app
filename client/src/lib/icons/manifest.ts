@@ -384,6 +384,48 @@ export const MANIFEST = {
     verdict: "Award01Icon",
     judge: "JusticeScale01Icon",
     refused: "Alert01Icon",
+    // THE COMPARISON'S COLUMNS, each a mark its table head, its card's fact and the compare's column
+    // all wear — so a figure is found by its mark wherever the panel says it.
+    models: "AiBrain02Icon",
+    quality: "StarIcon",
+    cost: "Coins01Icon",
+    perRun: "DollarCircleIcon",
+    latency: "DashboardSpeed01Icon",
+    matches: "Target02Icon",
+    ranOk: "CheckmarkCircle02Icon",
+    spent: "Invoice01Icon",
+    tokens: "TokenCircleIcon",
+    // What a leg leads on, beside the figure it leads with: a crown, coins and a flash rather than
+    // three identical ticks.
+    bestQuality: "Crown02Icon",
+    cheapest: "Coins01Icon",
+    fastest: "FlashIcon",
+    criteria: "CheckListIcon",
+    // The cases and their filters, each read by its mark first.
+    cases: "ListViewIcon",
+    facetAll: "ListViewIcon",
+    facetFailed: "Alert01Icon",
+    facetDisagree: "ArrowLeftRightIcon",
+    facetUnscored: "HelpCircleIcon",
+    facetChanged: "GitCompareIcon",
+    // One cell, opened: what it answered against what was expected, whether they match, a retried
+    // attempt, the judge's own words, and a long text folded and unfolded.
+    answer: "Message01Icon",
+    expected: "Target02Icon",
+    match: "Tick02Icon",
+    noMatch: "XIcon",
+    attempt: "RepeatIcon",
+    rationale: "QuoteDownIcon",
+    unfold: "UnfoldMoreIcon",
+    fold: "UnfoldLessIcon",
+    // Then against now: a figure that rose or fell (green or red by whether that is better), a
+    // change that moved neither way, and a caveat about the pair. PLAIN ARROWS, NOT THE TRENDING
+    // MARKS: this package's `TrendingUpIcon` draws a line falling to the right, and its
+    // `TrendingDownIcon` one rising — a reader goes by the line, not the name.
+    rose: "ArrowUpRight01Icon",
+    fell: "ArrowDownRight01Icon",
+    moved: "ArrowLeftRightIcon",
+    caveat: "InformationCircleIcon",
   },
 
   // ── §5 Trace ──────────────────────────────────────────────────────────────
