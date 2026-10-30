@@ -23,8 +23,9 @@ import { EvalCompare } from "./EvalCompare.tsx";
 import { absTime, relTime } from "../lib/format.ts";
 import { evalDuration, verdict } from "../lib/evalView.ts";
 import { EmptyState } from "./EmptyState.tsx";
-import { ChevronDownIcon, DatabaseIcon } from "./panelIcons.tsx";
+import { DatabaseIcon } from "./panelIcons.tsx";
 import { Segmented, type SegmentOption } from "./Segmented.tsx";
+import { ModelLabel } from "./evalUi.tsx";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -36,7 +37,7 @@ import {
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu.tsx";
 import { modelName, useProviderStore } from "../store/providerStore.ts";
-import { factChip, iconBtn, markBtn, primaryBtnSm, secondaryBtn, tabBtn, textBtn } from "./buttons.ts";
+import { factChip, iconBtn, markBtn, primaryBtnSm, secondaryBtn, selectBtn, tabBtn, textBtn } from "./buttons.ts";
 import { Tip } from "./ui/tooltip.tsx";
 import { ICON, TYPE } from "../lib/tokens.ts";
 import { Icon, type IconComponent } from "../lib/icons/registry.ts";
@@ -77,48 +78,61 @@ export function ResultsHeader({ results, live, actions }: {
   actions?: React.ReactNode;
 }) {
   const agentName = useBuildStore((s) => s.agents.find((a) => a.agent_id === results.agentId)?.name ?? results.agentId);
-  const providerModels = useProviderStore((s) => s.models);
   const liveHere = live !== null && live.evalId === results.evalId && live.status === undefined;
   const status = (liveHere ? "running" : results.status) as EvalRunStatus;
-  // Each by the name the run bar uses, with its effort when it had one, so two comparisons at
+  // Each leg as the run bar chose it, with its effort when it had one, so two comparisons at
   // different levels are told apart.
-  const models = (results.targets ?? results.providers).map((t) => {
-    const name = modelName(providerModels, t.model);
-    return "effort" in t && t.effort ? `${name} (${t.effort})` : name;
-  });
+  const legs = (results.targets ?? results.providers).map((t) => ({
+    provider: t.provider,
+    model: t.model,
+    effort: "effort" in t ? (t.effort ?? null) : null,
+  }));
   const duration = evalDuration(results);
   // HEADED AS A RUN IS IN THE TRACE: what this is and its outcome on the first line, the facts that
-  // identify it as round chips on the second. It was two lines of 11px text with a glyph in them, and
-  // the outcome was a word the same weight as the date beside it.
+  // identify it as round chips on the second — each behind its own mark, so the row is read by its
+  // marks before its words — and the models it compared as a third, each behind its provider's mark.
   return (
     <div className="pb-3">
-      <div className="flex min-h-6 flex-wrap items-center gap-x-3 gap-y-1.5">
-        <span className="min-w-0 flex-1 truncate text-label text-ink" title={results.datasetName ?? undefined}>
-          {results.datasetName ?? "a deleted dataset"}
+      <div className="flex min-h-7 flex-wrap items-center gap-x-3 gap-y-1.5">
+        <span className="flex min-w-0 flex-1 items-center gap-2" title={results.datasetName ?? undefined}>
+          <Icon.evals.datasetView size={ICON.sm} className="shrink-0 text-faint" />
+          <span className="min-w-0 truncate text-title text-ink">{results.datasetName ?? "a deleted dataset"}</span>
         </span>
         <span className="flex shrink-0 items-center gap-2">
           <EvalOutcomePill status={status} detail={liveHere ? `${live.done} of ${live.total}` : null} />
           {actions}
         </span>
       </div>
-      <div className="mt-1 flex min-w-0 flex-wrap items-center gap-1.5 text-tiny text-muted">
+      <div className="mt-1.5 flex min-w-0 flex-wrap items-center gap-1.5 text-tiny text-muted">
         <Tip label="The agent, and the version of it this eval ran against">
-          <span className={`${factChip} shrink-0 cursor-default`} tabIndex={0}>
+          <span className={`${factChip} inline-flex shrink-0 cursor-default items-center gap-1`} tabIndex={0}>
+            <Icon.evals.agent size={ICON.badge} />
             {agentName}{results.agentVersion != null ? ` v${results.agentVersion}` : ""}
           </span>
         </Tip>
         <Tip label={absTime(results.startedAt)}>
-          <span className={`${factChip} shrink-0 cursor-default`} tabIndex={0}>{relTime(results.startedAt)}</span>
+          <span className={`${factChip} inline-flex shrink-0 cursor-default items-center gap-1`} tabIndex={0}>
+            <Icon.evals.when size={ICON.badge} />
+            {relTime(results.startedAt)}
+          </span>
         </Tip>
         {duration && (
           <Tip label="How long the eval took, from its first run to its last">
-            <span className={`${factChip} shrink-0 cursor-default tabular-nums`} tabIndex={0}>{duration}</span>
+            <span className={`${factChip} inline-flex shrink-0 cursor-default items-center gap-1 tabular-nums`} tabIndex={0}>
+              <Icon.evals.duration size={ICON.badge} />
+              {duration}
+            </span>
           </Tip>
         )}
-        <span className="min-w-0 truncate" title={models.join(", ")}>{models.join(" · ")}</span>
+      </div>
+      <div className="mt-1.5 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-caption text-muted" aria-label="Models compared">
+        {legs.map((t) => <ModelLabel key={`${t.provider} ${t.model}`} provider={t.provider} model={t.model} effort={t.effort} />)}
       </div>
       {results.stopReason && status !== "completed" && status !== "running" && (
-        <div className="mt-1.5 text-tiny text-muted">{results.stopReason}</div>
+        <div className="mt-2 flex items-start gap-1.5 text-tiny text-muted">
+          <Icon.evals.refused size={ICON.xs} className="mt-px shrink-0 text-faint" />
+          <span>{results.stopReason}</span>
+        </div>
       )}
     </div>
   );
@@ -186,10 +200,10 @@ export function EvalActions({ results }: { results: EvalResults }) {
           type="button"
           onClick={() => (spentOut ? setRetrying(true) : sendRetryEval(results.evalId, results.agentId, totals.budgetUsd))}
           className={`${primaryBtnSm} focus-visible:outline-none focus-visible:shadow-focusring`}
-          title="Run the failed, timed-out and cancelled cells again, inside this eval"
+          title={`Retry ${again} cell${again === 1 ? "" : "s"} — the failed, timed-out and cancelled ones, inside this eval`}
         >
           <Icon.graph.retry size={ICON.sm} />
-          Retry {again} cell{again === 1 ? "" : "s"}
+          Retry {again}
         </button>
       )}
       {retrying && parsed && (
@@ -253,6 +267,7 @@ export function EvalRefusal() {
   if (!error) return null;
   return (
     <div className={NOTICE} role="alert">
+      <Icon.evals.refused size={ICON.sm} className="shrink-0 text-err" />
       <span className="min-w-0 flex-1 text-err">{error}</span>
       <button type="button" onClick={() => setError(null)} title="Dismiss" aria-label="Dismiss" className={`${iconBtn} shrink-0`}>
         <Icon.global.dismissNotice size={ICON.xs} />
@@ -291,6 +306,7 @@ export function JudgeLine() {
     if (judge.source !== "own-key" || !judge.ownKey) return null;
     return (
       <div className={NOTICE}>
+        <Icon.evals.judge size={ICON.sm} className="shrink-0 text-faint" />
         <span className="min-w-0 flex-1 text-muted">Quality is judged on this workspace's Anthropic key.</span>
         {canSwitch && (
           <button type="button" onClick={() => sendSetJudgeOwnKey(false)} className={TEXT_ACTION}>
@@ -302,6 +318,7 @@ export function JudgeLine() {
   }
   return (
     <div className={NOTICE} role="status">
+      <Icon.evals.judge size={ICON.sm} className="shrink-0 text-faint" />
       <span className="min-w-0 flex-1 text-muted">Quality isn't scored — the judge is off.</span>
       {!judge.keyPresent ? (
         <button
@@ -426,7 +443,13 @@ export function EvalProgressBar({ progress }: { progress: EvalProgress }) {
  * IT WAS A CHIP READING "4d ago". Two evals from one afternoon on two datasets were two identical
  * chips, and the models — the thing a comparison is OF — were only in a tooltip.
  */
-export function EvalFace({ e, dataset, models }: { e: EvalRunSummary; dataset: string | null; models: string }) {
+export function EvalFace({ e, dataset, models, chosen = false }: {
+  e: EvalRunSummary;
+  dataset: string | null;
+  models: string;
+  /** The one on screen, ticked — a menu row's fill alone is the same grey as the one under the pointer. */
+  chosen?: boolean;
+}) {
   return (
     <span className="flex min-w-0 flex-1 items-start gap-2">
       <span className="pt-0.5">
@@ -442,20 +465,26 @@ export function EvalFace({ e, dataset, models }: { e: EvalRunSummary; dataset: s
           {e.status !== "completed" && ` · ${EVAL_WORD[e.status]}`}
         </span>
       </span>
+      <span aria-hidden className={`shrink-0 pt-0.5 ${chosen ? "text-ink" : "text-transparent"}`}>
+        <Icon.evals.chosen size={ICON.xs} />
+      </span>
     </span>
   );
 }
 
-/** Which evals the picker lists. "Every dataset" is how a deleted dataset's evals are reached. */
+/**
+ * Which evals the picker lists, as two marks — one dataset, or the stack of all of them. "Every
+ * dataset" is how a deleted dataset's evals are reached. The words are the tooltips.
+ */
 const SCOPES: SegmentOption<"dataset" | "all">[] = [
-  { value: "dataset", label: "Show only this dataset's evals", text: "This dataset" },
-  { value: "all", label: "Show this agent's evals on every dataset, including deleted ones", text: "Every dataset" },
+  { value: "dataset", label: "Show only this dataset's evals", icon: Icon.evals.scopeDataset },
+  { value: "all", label: "Show this agent's evals on every dataset, including deleted ones", icon: Icon.evals.scopeAll },
 ];
 
-/** The panel's two views, as the trace's run views are drawn. */
-const VIEWS: { id: "dataset" | "results"; label: string; title: string }[] = [
-  { id: "dataset", label: "Dataset", title: "The cases, and how answers are scored" },
-  { id: "results", label: "Results", title: "What each eval found" },
+/** The panel's two views, as the trace's run views are drawn — each behind its own mark. */
+const VIEWS: { id: "dataset" | "results"; label: string; title: string; Mark: IconComponent }[] = [
+  { id: "dataset", label: "Dataset", title: "The cases, and how answers are scored", Mark: Icon.evals.datasetView },
+  { id: "results", label: "Results", title: "What each eval found", Mark: Icon.evals.resultsView },
 ];
 
 type Mode = "dataset" | "results";
@@ -597,7 +626,10 @@ export function EvalsPanel() {
           two glyphs with a word beside them, the only panel on the rail that did not say what it was. */}
       <div className="shrink-0 px-6 pt-3">
         <div className="flex min-h-6 items-center gap-3">
-          <span className={`min-w-0 truncate ${TYPE.panelLabel}`}>Evals</span>
+          <span className={`flex min-w-0 items-center gap-1.5 ${TYPE.panelLabel}`}>
+            <Icon.evals.panel size={ICON.xs} className="shrink-0" />
+            <span className="truncate">Evals</span>
+          </span>
           {running && (
             <span className="ml-auto flex shrink-0 items-center gap-3">
               <EvalOutcomePill
@@ -609,11 +641,15 @@ export function EvalsPanel() {
           )}
         </div>
         <div className="mt-1 flex min-w-0 items-center gap-1.5 text-tiny text-muted">
-          <span className="min-w-0 shrink truncate text-label text-ink" title={agentName ?? undefined}>{agentName}</span>
+          <span className="flex min-w-0 shrink items-center gap-1.5 text-label text-ink" title={agentName ?? undefined}>
+            <Icon.evals.agent size={ICON.sm} className="shrink-0 text-faint" />
+            <span className="truncate">{agentName}</span>
+          </span>
           {openDataset && (
             <Tip label="The dataset open in this tab">
-              <span className={`${factChip} min-w-[1.75rem] shrink-[1000] cursor-default truncate`} tabIndex={0}>
-                {openDataset.name}
+              <span className={`${factChip} inline-flex min-w-[1.75rem] shrink-[1000] cursor-default items-center gap-1 truncate`} tabIndex={0}>
+                <Icon.evals.datasetView size={ICON.badge} className="shrink-0" />
+                <span className="truncate">{openDataset.name}</span>
               </span>
             </Tip>
           )}
@@ -633,6 +669,7 @@ export function EvalsPanel() {
             title={v.title}
             className={tabBtn(mode === v.id, "sm")}
           >
+            <v.Mark size={ICON.xs} />
             {v.label}
             {counts[v.id] !== undefined && <span className="tabular-nums text-faint">{counts[v.id]}</span>}
           </button>
@@ -653,29 +690,36 @@ export function EvalsPanel() {
               and `older…`. Shown with a single eval too: the scope switch is the only way to a deleted
               dataset's evals, and hiding it until this dataset had two left them out of reach. */}
           {(evals.length > 0 || allDatasets || (hasDatasets && selectedDatasetId)) && (
-            <div className="flex flex-wrap items-center gap-2 pb-3">
+            <div className="flex flex-wrap items-center gap-1.5 pb-3">
               {evals.length > 0 && (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <button
                       type="button"
-                      className={`${secondaryBtn} min-w-0 max-w-full`}
+                      className={`${selectBtn} max-w-full`}
                       aria-label="Choose which eval to show"
                       title="The eval on screen — choose another"
                     >
+                      <Icon.evals.history size={ICON.xs} className="shrink-0 text-faint" />
                       {shownSummary && <StatusGlyph phase={EVAL_PHASE[shownSummary.status]} size={ICON.xs} title={EVAL_WORD[shownSummary.status]} />}
                       <span className="min-w-0 truncate">
                         {shownSummary ? relTime(shownSummary.started_at) : results ? relTime(results.startedAt) : "Choose an eval"}
-                        {shownSummary && evalDatasetLabel(shownSummary, agentDatasets) && ` · ${evalDatasetLabel(shownSummary, agentDatasets)}`}
+                        {shownSummary && evalDatasetLabel(shownSummary, agentDatasets) && (
+                          <span className="text-muted"> · {evalDatasetLabel(shownSummary, agentDatasets)}</span>
+                        )}
                       </span>
-                      <ChevronDownIcon size={ICON.xs} />
+                      <Icon.evals.menu size={ICON.xs} className="shrink-0 text-faint" />
                     </button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="start" aria-label="Past evals" className="max-h-[360px] w-[320px] overflow-y-auto">
+                    <DropdownMenuLabel className="flex items-center gap-1.5">
+                      <Icon.evals.history size={ICON.badge} />
+                      Past evals
+                    </DropdownMenuLabel>
                     <DropdownMenuRadioGroup value={shownEvalId ?? ""} onValueChange={(id) => selectEval(activeAgentId, id)}>
                       {evals.slice(0, shown).map((e) => (
                         <DropdownMenuRadioItem key={e.id} value={e.id}>
-                          <EvalFace e={e} dataset={evalDatasetLabel(e, agentDatasets)} models={modelsOf(e)} />
+                          <EvalFace e={e} dataset={evalDatasetLabel(e, agentDatasets)} models={modelsOf(e)} chosen={e.id === shownEvalId} />
                         </DropdownMenuRadioItem>
                       ))}
                     </DropdownMenuRadioGroup>
@@ -699,22 +743,27 @@ export function EvalsPanel() {
                   <DropdownMenuTrigger asChild>
                     <button
                       type="button"
-                      className={secondaryBtn}
+                      className={`${selectBtn} ${comparing ? "bg-active" : ""}`}
+                      aria-label="Compare with an earlier eval"
                       title="Line this eval up against an earlier one: each model's figures, and every case whose outcome changed"
                     >
-                      {comparing ? `Comparing with ${relTime(comparing.startedAt)}` : "Compare with…"}
-                      <ChevronDownIcon size={ICON.xs} />
+                      <Icon.evals.compare size={ICON.xs} className={`shrink-0 ${comparing ? "text-ink" : "text-faint"}`} />
+                      <span className="truncate">{comparing ? `vs ${relTime(comparing.startedAt)}` : "Compare"}</span>
+                      <Icon.evals.menu size={ICON.xs} className="shrink-0 text-faint" />
                     </button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="start" aria-label="Compare with an earlier eval" className="max-h-[360px] w-[320px] overflow-y-auto">
-                    <DropdownMenuLabel>Compare with</DropdownMenuLabel>
+                    <DropdownMenuLabel className="flex items-center gap-1.5">
+                      <Icon.evals.compare size={ICON.badge} />
+                      Compare with
+                    </DropdownMenuLabel>
                     <DropdownMenuRadioGroup
                       value={compareWith ?? ""}
                       onValueChange={(id) => useEvalStore.getState().setCompareWith(activeAgentId, id)}
                     >
                       {evals.filter((e) => e.id !== shownEvalId).slice(0, 12).map((e) => (
                         <DropdownMenuRadioItem key={e.id} value={e.id}>
-                          <EvalFace e={e} dataset={evalDatasetLabel(e, agentDatasets)} models={modelsOf(e)} />
+                          <EvalFace e={e} dataset={evalDatasetLabel(e, agentDatasets)} models={modelsOf(e)} chosen={e.id === compareWith} />
                         </DropdownMenuRadioItem>
                       ))}
                     </DropdownMenuRadioGroup>
@@ -722,6 +771,7 @@ export function EvalsPanel() {
                       <>
                         <DropdownMenuSeparator />
                         <DropdownMenuItem size="compact" onSelect={() => useEvalStore.getState().setCompareWith(activeAgentId, null)}>
+                          <Icon.evals.clearComparison size={ICON.xs} />
                           Stop comparing
                         </DropdownMenuItem>
                       </>
@@ -747,7 +797,12 @@ export function EvalsPanel() {
               <ResultsHeader results={results} live={progress} actions={<EvalActions results={results} />} />
               {/* THE ANSWER, IN A SENTENCE, before the figures it is drawn from — who leads, on what, by
                   how much. Left out when there is nothing to compare or nothing it could honestly say. */}
-              {verdictOf(results) && <p className={`${TYPE.body} pb-3`}>{verdictOf(results)}</p>}
+              {verdictOf(results) && (
+                <div className="mb-3 flex items-start gap-2.5 rounded-card border border-hair bg-panel px-3 py-2.5">
+                  <Icon.evals.verdict size={ICON.sm} className="mt-px shrink-0 text-ink" />
+                  <p className={TYPE.body}>{verdictOf(results)}</p>
+                </div>
+              )}
               <JudgeLine />
               {comparing && activeAgentId && (
                 // Older first, whichever was picked: "before → after" reads in time order.

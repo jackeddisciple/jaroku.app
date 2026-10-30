@@ -78,7 +78,9 @@ console.log("\nthe manifest parses, and it is the size the specification asks fo
   // 288 WITH THE METRICS STRIP'S FIVE MARKS — and still 288 when two of them became the trace's
   // `time` and `tokens`, renamed rather than added.
   // 299 WITH A DATASET'S EXPORT AND DUPLICATE — both marks already here, so no new export.
-  check("299 registry keys", entries.length === 299, `${entries.length}`);
+  // 314 WITH THE EVALS PANEL'S HEAD AND ITS RESULTS' TOOLBAR: the panel, agent and two views, the
+  // eval, compare and scope pickers, and an eval's when, duration, verdict, judge and stop.
+  check("314 registry keys", entries.length === 314, `${entries.length}`);
   const names = new Set(entries.map((e) => e.export));
   // 104 from icons_integration's appendix, plus D8's 13 — the composer glyphs that had to move
   // here when `@hugeicons/react` came out. See the note at the top of `registry.ts`.
@@ -115,7 +117,9 @@ console.log("\nthe manifest parses, and it is the size the specification asks fo
   // 206 WITH `TextFontIcon`, for tokens; the strip's other four marks were already here.
   // 207 WITH `TokenCircleIcon` AND `Time04Icon`, for tokens and time wherever the trace says them;
   // `TextFontIcon` leaves with the tokens mark it was.
-  check("212 distinct marks", names.size === 212, `${names.size}`);
+  // 215 WITH `ChartColumnIcon`, `Timer02Icon` AND `JusticeScale01Icon`, for Results, an eval's
+  // duration and its judge; the panel's other twelve new keys reuse marks already here.
+  check("215 distinct marks", names.size === 215, `${names.size}`);
   check("no key is declared twice", new Set(entries.map((e) => e.key)).size === entries.length);
 }
 

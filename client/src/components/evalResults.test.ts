@@ -300,8 +300,10 @@ console.log("\na finished eval can retry its unfinished cells, or run again");
     rows: [{ exampleId: "x1", input: "a", expected: null, cells: [cell("succeeded"), cell("succeeded"), ...Array.from({ length: 13 }, () => cell("cancelled"))] }],
     totals: { trueSpendUsd: 0.0048, judgeCostUsd: 0, agentSpendUsd: 0.0048, budgetUsd: 0.001 },
   });
-  const words = text(markup(createElement(EvalActions, { results: stopped })));
-  check(words.includes("Retry 13 cells"), "it offers to retry the thirteen cancelled cells", words);
+  const actions = markup(createElement(EvalActions, { results: stopped }));
+  const words = text(actions);
+  // The count beside the mark, and the whole sentence in its tooltip.
+  check(words.includes("Retry 13") && /title="Retry 13 cells — /.test(actions), "it offers to retry the thirteen cancelled cells", words);
   check(/aria-label="Run again"/.test(markup(createElement(EvalActions, { results: stopped }))), "and to run the eval again, as the trace's mark beside its pill", words);
   const done = results({ status: "completed", stopReason: null, rows: [{ exampleId: "x1", input: "a", expected: null, cells: [cell("succeeded")] }] });
   check(!text(markup(createElement(EvalActions, { results: done }))).includes("Retry"), "a complete eval has nothing to retry");
@@ -316,7 +318,7 @@ console.log("\na finished eval can retry its unfinished cells, or run again");
       { exampleId: "x2", input: "kept", expected: null, cells: [cell("cancelled")] },
     ],
   });
-  check(text(markup(createElement(EvalActions, { results: orphaned }))).includes("Retry 1 cell"), "Retry counts only the cells that still have a case");
+  check(/title="Retry 1 cell — /.test(markup(createElement(EvalActions, { results: orphaned }))), "Retry counts only the cells that still have a case");
   const allGone = results({ rows: [{ exampleId: "x1", input: "(gone)", expected: null, caseGone: true, cells: [cell("cancelled")] }] });
   check(!text(markup(createElement(EvalActions, { results: allGone }))).includes("Retry"), "and is not offered when none do");
   check(text(markup(tipped(createElement(ResultsHeader, { results: orphaned, live: null })))).includes("a deleted dataset"),
@@ -380,12 +382,14 @@ console.log("\na dataset with one eval still offers the agent's evals on every d
     }], complete: true, window: 50 } },
   } as never);
   const html = markup(createElement(TooltipProvider, null, createElement(EvalsPanel)));
-  check(/role="radiogroup" aria-label="Which evals to list"/.test(html) && /role="radio" aria-checked="true"[^>]*>This dataset</.test(html)
-    && />Every dataset</.test(html),
+  // Two marks, each named by what it lists — the dataset's evals chosen, every dataset's beside it.
+  check(/role="radiogroup" aria-label="Which evals to list"/.test(html)
+    && /aria-label="Show only this dataset[^"]*evals" role="radio" aria-checked="true"/.test(html)
+    && /aria-label="Show this agent[^"]*evals on every dataset[^"]*" role="radio" aria-checked="false"/.test(html),
     "the switch to every dataset is there with only one eval", text(html).slice(0, 200));
   check(/aria-label="Choose which eval to show"/.test(html) && text(html).includes("Screening cases"),
     "and the eval on screen is one menu, naming when it ran and on what");
-  check(!text(html).includes("Compare with"), "with nothing to compare it with, there is no compare menu");
+  check(!/aria-label="Compare with an earlier eval"/.test(html), "with nothing to compare it with, there is no compare menu");
 }
 
 console.log("\nthe pickers name each past eval by when, what it ran on, and against which models");
@@ -406,12 +410,13 @@ console.log("\nthe pickers name each past eval by when, what it ran on, and agai
     compareWithByAgent: {},
   } as never);
   const panel = (): string => markup(createElement(TooltipProvider, null, createElement(EvalsPanel)));
-  check(text(panel()).includes("Compare with…"), "with two, the eval on screen can be compared with the other");
+  check(/aria-label="Compare with an earlier eval"/.test(panel()) && text(panel()).includes("Compare"),
+    "with two, the eval on screen can be compared with the other");
   seed(useEvalStore, {
     compareWithByAgent: { liven: "e2" },
     resultsByEval: { e2: results({ evalId: "e2", startedAt: new Date(Date.now() - 3 * 3600_000).toISOString() }) },
   } as never);
-  check(text(panel()).includes("Comparing with 3h ago"), "and once compared, the menu says with which", text(panel()).slice(0, 300));
+  check(text(panel()).includes("vs 3h ago"), "and once compared, the menu says with which", text(panel()).slice(0, 300));
 }
 
 console.log("\nthe panel is headed as the trace is, and its two views are tabs that count only totals");
@@ -436,10 +441,15 @@ console.log("\nthe panel is headed as the trace is, and its two views are tabs t
   const html = panel();
   check(text(html).startsWith("Evals Liven Screening cases"), "it names itself, the agent and the open dataset first", text(html).slice(0, 80));
   check(/role="tablist" aria-label="Eval views"/.test(html), "the two views are a tab strip", html.slice(0, 200));
-  check(/role="tab" aria-selected="true"[^>]*>Dataset<span class="tabular-nums text-faint">3<\/span>/.test(html), "Dataset is open and counts its three cases");
-  check(/role="tab" aria-selected="false"[^>]*>Results<\/button>/.test(html), "and Results, whose list is still a window, carries no count");
+  // Each tab is its mark, its word and — when it is a total — its count.
+  const tab = (h: string, name: string): string =>
+    (h.match(/<button[^>]*role="tab"[\s\S]*?<\/button>/g) ?? []).find((b) => b.includes(`</svg>${name}`)) ?? "";
+  check(/aria-selected="true"/.test(tab(html, "Dataset")) && /<svg/.test(tab(html, "Dataset"))
+    && /Dataset<span class="tabular-nums text-faint">3<\/span>/.test(tab(html, "Dataset")), "Dataset is open and counts its three cases", tab(html, "Dataset"));
+  check(/aria-selected="false"/.test(tab(html, "Results")) && /Results<\/button>$/.test(tab(html, "Results")),
+    "and Results, whose list is still a window, carries no count", tab(html, "Results"));
   seed(useEvalStore, { evalLists: { [evalListKey("liven", "d1")]: { evals: [summary], complete: true, window: 50 } } } as never);
-  check(/>Results<span class="tabular-nums text-faint">1<\/span>/.test(panel()), "once the list is whole, it is counted");
+  check(/Results<span class="tabular-nums text-faint">1<\/span>/.test(tab(panel(), "Results")), "once the list is whole, it is counted");
   check(!/role="progressbar"/.test(html) && !/bg-run\/10/.test(html), "with nothing running there is no bar and no pill");
 }
 

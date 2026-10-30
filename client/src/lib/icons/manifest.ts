@@ -363,6 +363,27 @@ export const MANIFEST = {
     // an IN-FLIGHT OPERATION rather than closing a surface, which is exactly the half of the split
     // `Cancel01Icon` owns.
     cancel: "Cancel01Icon",
+    // The panel's own head: its name beside the rail's mark for it, the agent it is about, and the
+    // two views — the dataset as the database it is, the results as the chart they become.
+    panel: "FileValidationIcon",
+    agent: "Robot02Icon",
+    datasetView: "DatabaseIcon",
+    resultsView: "ChartColumnIcon",
+    // Choosing what Results shows: which eval (its history), against which (a compare), from which
+    // datasets — one, or the stack of every one — and the chevron every one of those menus opens on.
+    history: "WorkHistoryIcon",
+    compare: "GitCompareIcon",
+    scopeDataset: "DatabaseIcon",
+    scopeAll: "Layers01Icon",
+    menu: "ArrowDown01Icon",
+    chosen: "Tick02Icon",
+    // An eval's facts and findings: when it ran, how long it took, the sentence that says who won,
+    // the judge that scored it, and a stop or a refusal.
+    when: "Calendar03Icon",
+    duration: "Timer02Icon",
+    verdict: "Award01Icon",
+    judge: "JusticeScale01Icon",
+    refused: "Alert01Icon",
   },
 
   // ── §5 Trace ──────────────────────────────────────────────────────────────

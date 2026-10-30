@@ -135,6 +135,15 @@ export const markBtn =
  * spelling of it (its result card's Show more), with the hit area shown on approach so it reads as a
  * button rather than as a word somebody happened to make clickable.
  */
+/**
+ * A trigger that opens a list to choose from — which eval, which dataset, which models — drawn as an
+ * editor's select is: a hairline box on the card's ground, what is chosen in ink, and a chevron after
+ * it. A `secondaryBtn` read as an action, and pressing one of these changes nothing until something in
+ * its list is picked. It stays pressed-looking while its list is open.
+ */
+export const selectBtn =
+  "inline-flex h-7 min-w-0 items-center gap-1.5 rounded-control border border-edge bg-panel px-2 text-caption text-ink transition-colors hover:bg-active focus-visible:outline-none focus-visible:shadow-focusring disabled:cursor-not-allowed disabled:opacity-40 data-[state=open]:bg-active";
+
 export const textBtn =
   "rounded-control px-2 py-1 text-tiny text-muted transition-colors hover:bg-active hover:text-ink focus-visible:outline-none focus-visible:shadow-focusring disabled:opacity-40 disabled:cursor-not-allowed";
 
