@@ -19,6 +19,8 @@
 
 import type { ComponentProps } from "react";
 import * as MenuPrimitive from "@radix-ui/react-dropdown-menu";
+import { ICON } from "../../lib/tokens.ts";
+import { CheckIcon } from "../panelIcons.tsx";
 
 export const DropdownMenu = MenuPrimitive.Root;
 export const DropdownMenuTrigger = MenuPrimitive.Trigger;
@@ -89,6 +91,28 @@ export function DropdownMenuPlainItem({ className = "", ...props }: ComponentPro
  */
 export function DropdownMenuRadioItem({ className = "", ...props }: ComponentProps<typeof MenuPrimitive.RadioItem>) {
   return <MenuPrimitive.RadioItem className={`${ROW} ${ROW_SIZE.normal} ${ROW_TONE.default} data-[state=checked]:bg-chrome data-[state=checked]:text-ink ${className}`} {...props} />;
+}
+
+/**
+ * One of several that are each on or off — the eval case list's view options. shadcn's, with its
+ * indicator drawn as this app's `Checkbox` draws one, so a check in a menu and a check in a list are
+ * the same mark. `aria-checked` comes from Radix; the row keeps the menu open when `onSelect` says so.
+ */
+export function DropdownMenuCheckboxItem({ className = "", children, checked, ...props }: ComponentProps<typeof MenuPrimitive.CheckboxItem>) {
+  const on = checked === true;
+  return (
+    <MenuPrimitive.CheckboxItem className={`${ROW} ${ROW_SIZE.compact} ${ROW_TONE.default} ${className}`} checked={checked} {...props}>
+      <span
+        aria-hidden
+        className={`inline-flex h-3 w-3 shrink-0 items-center justify-center rounded-xs border transition-colors duration-fast ${
+          on ? "border-accent bg-accent text-bg" : "border-edge text-transparent"
+        }`}
+      >
+        <CheckIcon size={ICON.badge} />
+      </span>
+      {children}
+    </MenuPrimitive.CheckboxItem>
+  );
 }
 
 export function DropdownMenuSeparator({ className = "", ...props }: ComponentProps<typeof MenuPrimitive.Separator>) {

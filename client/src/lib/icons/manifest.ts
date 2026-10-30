@@ -426,6 +426,22 @@ export const MANIFEST = {
     fell: "ArrowDownRight01Icon",
     moved: "ArrowLeftRightIcon",
     caveat: "InformationCircleIcon",
+    // THE DATASET, AS AN EDITOR'S TOOLBAR AND LIST: a new one (the database with a plus), a rename
+    // confirmed or dismissed, how answers are checked, the rubric's criteria added, keyed, removed
+    // and saved, and the case list's search, view menu, notes and removal.
+    newDataset: "DatabaseAddIcon",
+    confirm: "Tick02Icon",
+    dismiss: "XIcon",
+    check: "TaskDone01Icon",
+    criterionId: "KeyRoundIcon",
+    addCriterion: "PlusSignIcon",
+    removeCriterion: "XIcon",
+    saveRubric: "SaveIcon",
+    search: "Search01Icon",
+    clearSearch: "XIcon",
+    viewOptions: "SlidersHorizontalIcon",
+    note: "Note01Icon",
+    removeCase: "Delete02Icon",
   },
 
   // ── §5 Trace ──────────────────────────────────────────────────────────────

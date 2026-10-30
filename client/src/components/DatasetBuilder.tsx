@@ -9,6 +9,7 @@
 // Every mutation goes over the eval channel and comes back as a full snapshot, so nothing
 // here keeps optimistic local state; the only local state is which row is being edited.
 
+
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { useBuildStore } from "../store/buildStore.ts";
 import { datasetsOf, examplesOf, useEvalStore } from "../store/evalStore.ts";
@@ -31,17 +32,40 @@ import { deleteWithUndo } from "../lib/evalUndo.ts";
 import { download, examplesToCsv } from "../lib/evalExport.ts";
 import { useUiStore } from "../store/uiStore.ts";
 import { ICON, TYPE } from "../lib/tokens.ts";
-import { Chip } from "./Chip.tsx";
-import { Truncate } from "./Truncate.tsx";
 import { EmptyState } from "./EmptyState.tsx";
 import { SectionHeader } from "./SectionHeader.tsx";
-import { DatabaseIcon, XIcon } from "./panelIcons.tsx";
-import { iconBtn, markBtn, primaryBtnSm, textBtn } from "./buttons.ts";
+import { DatabaseIcon } from "./panelIcons.tsx";
+import { iconBtn, primaryBtnSm, selectBtn, textBtn } from "./buttons.ts";
+import { IconButton } from "./IconButton.tsx";
+import { Pill } from "./evalUi.tsx";
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "./ui/dropdown-menu.tsx";
 import type { Dataset, DatasetExample, RubricCriterion } from "../types.ts";
 import { Icon } from "../lib/icons/registry.ts";
 
-/** The trace's grey mark, for the one action on a dataset that removes it: red on approach. */
-const DANGER_MARK = markBtn.replace("hover:text-ink", "hover:text-err");
+/**
+ * A case's own actions — give it an expected output, give it a note, remove it — as small marks at the
+ * row's top right. They wait to be reached for: shown on hover and on keyboard focus, so a list of
+ * fifty cases is fifty cases rather than fifty rows of controls, and Tab still finds every one.
+ */
+const CASE_ACTION =
+  "self-start inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-control text-faint opacity-0 transition-opacity hover:bg-active hover:text-ink group-hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:shadow-focusring";
+
+/** How the case list is drawn — what a person can turn off to read a long dataset faster. */
+interface CaseView {
+  expected: boolean;
+  notes: boolean;
+  fold: boolean;
+}
 
 /** An input/expected pair, editable in place. Commits on blur; Escape reverts. */
 function ExampleRow({
@@ -49,11 +73,13 @@ function ExampleRow({
   index,
   datasetId,
   agentId,
+  view,
 }: {
   example: DatasetExample;
   index: number;
   datasetId: string;
   agentId: string;
+  view: CaseView;
 }) {
   const [editing, setEditing] = useState<null | "input" | "expected" | "notes">(null);
   /** A long case folds to a few lines; this unfolds it. A Liven case is a job and a résumé. */
@@ -100,88 +126,126 @@ function ExampleRow({
   };
 
   const long = example.input.split("\n").length > 4 || example.input.length > 360;
-  const field = (which: "input" | "expected" | "notes", text: string, placeholder: string) =>
-    editing === which ? (
-      <textarea
-        ref={ref}
-        value={draft}
-        onChange={(e) => setDraft(e.target.value)}
-        onBlur={() => commit(true)}
-        onKeyDown={(e) => {
-          if (e.key === "Escape") { e.preventDefault(); setRefusal(null); setEditing(null); }
-          if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); commit(); }
-        }}
-        rows={Math.min(draft.split("\n").length + 1, 6)}
-        // An input and an expected output are compared character for character: no smart dashes or quotes.
-        spellCheck={false}
-        autoCorrect="off"
-        autoCapitalize="off"
-        className="w-full resize-none bg-elevated text-ink rounded-input border border-edge px-2 py-1 text-caption outline-none focus:shadow-focusring"
-      />
+  const folded = view.fold && long && !unfolded;
+  const editor = (
+    <textarea
+      ref={ref}
+      value={draft}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={() => commit(true)}
+      onKeyDown={(e) => {
+        if (e.key === "Escape") { e.preventDefault(); setRefusal(null); setEditing(null); }
+        if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); commit(); }
+      }}
+      rows={Math.min(draft.split("\n").length + 1, 6)}
+      // An input and an expected output are compared character for character: no smart dashes or quotes.
+      spellCheck={false}
+      autoCorrect="off"
+      autoCapitalize="off"
+      className="w-full resize-none bg-elevated text-ink rounded-input border border-edge px-2 py-1 text-caption outline-none focus:shadow-focusring"
+    />
+  );
+  /**
+   * The expected output or the note, behind its own mark — the target, the note — rather than the
+   * caps word that labelled each. Shown when it has text or is being written.
+   */
+  const extra = (which: "expected" | "notes", text: string) => {
+    const Mark = which === "expected" ? Icon.evals.expected : Icon.evals.note;
+    return editing === which ? (
+      <div className="flex items-start gap-1.5">
+        <Mark size={ICON.xs} className="mt-1.5 shrink-0 text-faint" />
+        {editor}
+      </div>
     ) : (
-      // `block`: WEBKIT SIZES A BUTTON FROM ITS CONTENT'S FULL HEIGHT, folded or not — so a folded
-      // case kept the unfolded case's height as a blank block under it, in the desktop app and Safari.
       <button
         type="button"
         onClick={() => begin(which)}
-        title="Click to edit"
-        className={`block w-full text-left text-caption rounded-control px-2 py-1 -mx-2 hover:bg-active/50 transition-colors whitespace-pre-wrap break-words ${
-          text ? (which === "input" ? "text-ink" : "text-muted") : "text-faint italic"
-        }${
-          // THE TWO INVITATIONS WAIT FOR THE CASE TO BE REACHED FOR. "+ expected output" and "+ note"
-          // under every case made a list of fifty cases three lines of grey per case. They leave the
-          // layout until the row is hovered or anything in it has focus — Tab onto the case and they
-          // are there, next in order — rather than keeping an invisible line's height under every case.
-          !text && which !== "input" ? " hidden group-hover:block group-focus-within:block" : ""
-        }`}
+        title={which === "expected" ? "Expected output — click to edit" : "Note — click to edit"}
+        className="-mx-2 flex w-full items-start gap-1.5 rounded-control px-2 py-0.5 text-left text-caption text-muted transition-colors hover:bg-active/50"
       >
-        {/* FOLDED WHEN LONG. Unfolded, one case filled the panel and the others were a scroll away. */}
-        <span
-          className={which === "input" && long && !unfolded ? "clamp-lines" : "block"}
-          style={which === "input" && long && !unfolded ? ({ "--clamp": 4 } as CSSProperties) : undefined}
-        >
-          {/* WHAT A SECOND LINE IS, said — an expected output and a note were the same grey text. */}
-          {text && which !== "input" && (
-            <span className={`mr-1.5 not-italic ${TYPE.sectionLabel}`}>{which === "expected" ? "Expected" : "Note"}</span>
-          )}
-          {text || placeholder}
-        </span>
+        <Mark size={ICON.xs} className="mt-0.5 shrink-0 text-faint" />
+        <span className="min-w-0 whitespace-pre-wrap break-words">{text}</span>
       </button>
     );
+  };
 
   return (
-    <div className="group flex gap-3 px-3 py-2.5">
+    <div className="group flex gap-3 px-3 py-2.5 transition-colors hover:bg-active/30 focus-within:bg-active/30">
       <span className="text-faint text-tiny tabular-nums pt-1 w-6 shrink-0 text-right select-none">
         {index + 1}
       </span>
       <div className="min-w-0 flex-1 space-y-0.5">
-        {field("input", example.input, "(empty)")}
-        {long && editing !== "input" && (
-          <button onClick={() => setUnfolded((v) => !v)} className="px-2 text-tiny text-faint transition-colors hover:text-ink">
+        {editing === "input" ? editor : (
+          // `block`: WEBKIT SIZES A BUTTON FROM ITS CONTENT'S FULL HEIGHT, folded or not — so a folded
+          // case kept the unfolded case's height as a blank block under it, in the desktop app and Safari.
+          <button
+            type="button"
+            onClick={() => begin("input")}
+            title="Click to edit"
+            className="block w-full text-left text-caption rounded-control px-2 py-1 -mx-2 hover:bg-active/50 transition-colors whitespace-pre-wrap break-words text-ink"
+          >
+            {/* FOLDED WHEN LONG. Unfolded, one case filled the panel and the others were a scroll away. */}
+            <span className={folded ? "clamp-lines" : "block"} style={folded ? ({ "--clamp": 4 } as CSSProperties) : undefined}>
+              {example.input || "(empty)"}
+            </span>
+          </button>
+        )}
+        {long && view.fold && editing !== "input" && (
+          <button
+            type="button"
+            onClick={() => setUnfolded((v) => !v)}
+            className="inline-flex items-center gap-1 rounded-xs px-2 text-tiny text-faint transition-colors hover:text-ink focus-visible:outline-none focus-visible:shadow-focusring"
+          >
+            {unfolded ? <Icon.evals.fold size={ICON.xs} /> : <Icon.evals.unfold size={ICON.xs} />}
             {unfolded ? "show less" : "show more"}
           </button>
         )}
         {refusal && <div className="px-2 text-tiny text-err" role="alert">{refusal}</div>}
-        {field("expected", example.expected ?? "", "+ expected output (optional)")}
         {/* NOTES, which the schema and the API carried and the tab never showed. For the person who
             wrote the case — why it is here, what it tests — and never sent to the agent or the judge. */}
-        {field("notes", example.notes ?? "", "+ note")}
+        {view.expected && (example.expected || editing === "expected") && extra("expected", example.expected ?? "")}
+        {view.notes && (example.notes || editing === "notes") && extra("notes", example.notes ?? "")}
       </div>
-      {/* SEEN BY A KEYBOARD, AND ONLY ITS OWN SIZE. It was invisible to Tab and stretched down the
-          case's whole right edge — 242px on a long case — so a stray click there deleted the case. It
-          shows on focus as on hover, sits at the top of the row, and a delete can be undone. */}
-      <button
-        type="button"
-        onClick={() => deleteWithUndo({
-          kind: "case", id: example.id, datasetId, agentId,
-          label: example.input.split("\n")[0]!.slice(0, 40),
-        })}
-        title="Remove this case"
-        aria-label={`Remove case ${index + 1}`}
-        className="self-start mt-1 shrink-0 rounded-control text-faint opacity-0 transition-opacity hover:text-err group-hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:shadow-focusring"
-      >
-        <XIcon size={ICON.xs} />
-      </button>
+      <div className="flex shrink-0 items-start gap-0.5 self-start">
+        {!example.expected && editing !== "expected" && (
+          <button
+            type="button"
+            onClick={() => begin("expected")}
+            title="Add an expected output — optional; the check and the judge read it"
+            aria-label={`Add an expected output to case ${index + 1}`}
+            className={CASE_ACTION}
+          >
+            <Icon.evals.expected size={ICON.xs} />
+          </button>
+        )}
+        {!example.notes && editing !== "notes" && (
+          <button
+            type="button"
+            onClick={() => begin("notes")}
+            title="Add a note — why this case is here; never sent to the agent or the judge"
+            aria-label={`Add a note to case ${index + 1}`}
+            className={CASE_ACTION}
+          >
+            <Icon.evals.note size={ICON.xs} />
+          </button>
+        )}
+        {/* SEEN BY A KEYBOARD, AND ONLY ITS OWN SIZE. It was invisible to Tab and stretched down the
+            case's whole right edge — 242px on a long case — so a stray click there deleted the case. It
+            shows on focus as on hover, sits at the top of the row, and a delete can be undone. */}
+        <button
+          type="button"
+          onClick={() => deleteWithUndo({
+            kind: "case", id: example.id, datasetId, agentId,
+            label: example.input.split("\n")[0]!.slice(0, 40),
+          })}
+          title="Remove this case"
+          aria-label={`Remove case ${index + 1}`}
+          // Red on approach, as every removal is — the one tone swapped, not a second hover colour added.
+          className={CASE_ACTION.replace("hover:text-ink", "hover:text-err")}
+        >
+          <Icon.evals.removeCase size={ICON.xs} />
+        </button>
+      </div>
     </div>
   );
 }
@@ -298,8 +362,8 @@ function RubricEditor({ datasetId }: { datasetId: string }) {
 
   return (
     <div className="border-t border-hair px-3 pb-2">
-      {/* FOLDED AS THE TRACE FOLDS A SECTION: the chevron, the section's word, and one line saying what
-          is in it — so the rubric reads as part of the dataset rather than as a strip of chrome. */}
+      {/* FOLDED AS THE TRACE FOLDS A SECTION: the chevron, the judge's mark, the section's word, and
+          what is in it as pills — whose rubric, how many criteria, and whether there is a draft. */}
       <button
         type="button"
         className="flex min-h-9 w-full min-w-0 items-center gap-2 rounded-control py-1.5 text-left focus-visible:outline-none focus-visible:shadow-focusring"
@@ -309,10 +373,20 @@ function RubricEditor({ datasetId }: { datasetId: string }) {
         <span aria-hidden className={`shrink-0 text-faint transition-transform duration-fast ${open ? "" : "-rotate-90"}`}>
           <Icon.trace.fold size={ICON.xs} />
         </span>
+        <Icon.evals.judge size={ICON.xs} className="shrink-0 text-faint" />
         <span className={`${TYPE.sectionLabel} shrink-0`}>Judge rubric</span>
-        <span className="min-w-0 flex-1 truncate text-caption text-ink">
-          {!loaded ? "loading…" : `${isDefault ? "Built-in" : "Custom"} · ${(rubric?.criteria ?? []).length} criteria`}
-          {dirty && " · unsaved changes"}
+        <span className="flex min-w-0 flex-1 items-center gap-1.5">
+          {!loaded ? (
+            <span className="text-tiny text-faint">loading…</span>
+          ) : (
+            <>
+              <Pill tone={isDefault ? "neutral" : "ink"} title={isDefault ? "The built-in rubric — this dataset has none of its own" : "This dataset's own rubric"}>
+                {isDefault ? "Built-in" : "Custom"}
+              </Pill>
+              <Pill icon={Icon.evals.criteria} title="How many criteria each answer is scored on">{(rubric?.criteria ?? []).length}</Pill>
+            </>
+          )}
+          {dirty && <Pill tone="info" title="Edited and not saved yet">unsaved</Pill>}
         </span>
         {/* THE DISCLOSURE IS THE EDIT — opening this is how a rubric gets changed, so the mark
             goes here rather than on a second control that would do the same thing. */}
@@ -328,8 +402,10 @@ function RubricEditor({ datasetId }: { datasetId: string }) {
             normalised, so they do not have to add up. Saving writes a rubric for{" "}
             <span className="text-muted">this dataset only</span> and never changes the built-in one.
           </p>
-          {criteria.map((c, i) => (
-            <div key={`${c.id}-${i}`} className="rounded-control border border-hair px-2 py-1.5">
+          {criteria.map((c, i) => {
+            const weight = parseWeight(c.weight);
+            return (
+            <div key={`${c.id}-${i}`} className="rounded-control border border-hair bg-elevated px-2 py-1.5">
               <div className="flex items-center gap-2">
                 <input
                   value={c.label}
@@ -343,9 +419,9 @@ function RubricEditor({ datasetId }: { datasetId: string }) {
                     already recorded against this dataset — the drill-down would show a column of
                     blanks beside a criterion that looks identical. The label is the display name
                     and is free to change. */}
-                <span className="shrink-0 text-tiny text-faint" title="the key stored verdicts are recorded against">
+                <Pill icon={Icon.evals.criterionId} title="The key stored verdicts are recorded against — fixed once it exists">
                   {c.id}
-                </span>
+                </Pill>
                 {/* THE TEXT AS TYPED, not a number re-rendered from it. `Number("0.")` is 0, so the
                     point vanished as it was typed and "0.25" became "25" — a criterion that then
                     outweighed every other one 125 to 1. */}
@@ -355,19 +431,22 @@ function RubricEditor({ datasetId }: { datasetId: string }) {
                   inputMode="decimal"
                   aria-label={`Criterion ${i + 1} weight`}
                   title="Relative weight, 0 to 100"
-                  aria-invalid={parseWeight(c.weight) === null}
-                  className={`w-14 shrink-0 rounded-input border bg-elevated px-1.5 py-1 text-tiny text-ink outline-none focus-visible:shadow-focusring ${
-                    parseWeight(c.weight) === null ? "border-err" : "border-edge"
+                  aria-invalid={weight === null}
+                  className={`w-14 shrink-0 rounded-input border bg-elevated px-1.5 py-1 text-tiny tabular-nums text-ink outline-none focus-visible:shadow-focusring ${
+                    weight === null ? "border-err" : "border-edge"
                   }`}
                 />
-                <button
+                {/* ITS SHARE, which is what a weight means once weights are normalised. */}
+                <span className="w-9 shrink-0 text-right text-tiny tabular-nums text-faint" title="This criterion's share of the overall score">
+                  {weight !== null && total > 0 ? `${Math.round((weight / total) * 100)}%` : "—"}
+                </span>
+                <IconButton
+                  icon={Icon.evals.removeCriterion}
+                  label={`Remove criterion ${i + 1}`}
+                  size={ICON.xs}
+                  danger
                   onClick={() => setDraft(criteria.filter((_, j) => j !== i))}
-                  title="Remove this criterion"
-                  aria-label={`Remove criterion ${i + 1}`}
-                  className="shrink-0 text-faint transition-colors hover:text-err"
-                >
-                  <XIcon size={ICON.xs} />
-                </button>
+                />
               </div>
               <textarea
                 value={c.description}
@@ -379,14 +458,20 @@ function RubricEditor({ datasetId }: { datasetId: string }) {
                 className="mt-1 w-full resize-none rounded-input border border-edge bg-elevated px-2 py-1 text-tiny leading-[1.5] text-muted placeholder:text-faint outline-none focus-visible:shadow-focusring"
               />
             </div>
-          ))}
+            );
+          })}
 
-          {problem && <div className="text-tiny text-err">{problem}</div>}
+          {problem && (
+            <div className="flex items-center gap-1.5 text-tiny text-err" role="alert">
+              <Icon.evals.refused size={ICON.xs} className="shrink-0" />
+              {problem}
+            </div>
+          )}
 
           <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
-              className={textBtn}
+              className={`${textBtn} inline-flex items-center gap-1`}
               onClick={() =>
                 setDraft([
                   ...criteria,
@@ -397,9 +482,12 @@ function RubricEditor({ datasetId }: { datasetId: string }) {
                 ])
               }
             >
-              + Criterion
+              <Icon.evals.addCriterion size={ICON.xs} />
+              Criterion
             </button>
-            <span className="text-tiny text-faint">weights total {total.toFixed(2)}</span>
+            <span className="text-tiny tabular-nums text-faint" title="The weights' sum — they are normalised, so it need not be 1">
+              Σ {total.toFixed(2)}
+            </span>
             {/* BACK TO THE BUILT-IN RUBRIC. A saved custom rubric could only ever be edited. Past evals
                 keep the criteria they were scored on, so this changes the next eval only. */}
             {!isDefault && !dirty && (
@@ -408,32 +496,38 @@ function RubricEditor({ datasetId }: { datasetId: string }) {
                 onClick={() => sendResetRubric(datasetId)}
                 disabled={!connected}
                 title="Score this dataset against the built-in rubric again. Past evals keep theirs."
-                className={textBtn}
+                className={`${textBtn} inline-flex items-center gap-1`}
               >
+                <Icon.evals.revertRubric size={ICON.xs} />
                 Reset to built-in
               </button>
             )}
-            {/* SAVING IS THE DECISION THE EDITOR EXISTS TO ASK, so it is the one filled button. */}
-            <button
-              type="button"
-              onClick={save}
-              disabled={!connected || !dirty || problem !== null}
-              title={!connected ? "Not connected" : problem ?? (dirty ? "Save this rubric for this dataset" : "Nothing to save")}
-              className={`${primaryBtnSm} ml-auto`}
-            >
-              {dirty ? "Save rubric" : "Saved"}
-            </button>
-            {dirty && (
+            <span className="ml-auto flex items-center gap-1">
+              {dirty && (
+                <button
+                  type="button"
+                  onClick={() => setDraft(null)}
+                  title="Revert to the saved rubric"
+                  aria-label="Revert to the saved rubric"
+                  className={iconBtn}
+                >
+                  <Icon.evals.revertRubric size={ICON.xs} />
+                </button>
+              )}
+              {/* SAVING IS THE DECISION THE EDITOR EXISTS TO ASK, so it is the one filled button. */}
               <button
                 type="button"
-                onClick={() => setDraft(null)}
-                title="Revert to the saved rubric"
-                aria-label="Revert to the saved rubric"
-                className={iconBtn}
+                onClick={save}
+                disabled={!connected || !dirty || problem !== null}
+                title={!connected ? "Not connected" : problem ?? (dirty ? "Save this rubric for this dataset" : "Nothing to save")}
+                // Named as it reads: its words are an expression, which a sweep for marks cannot see.
+                aria-label={dirty ? "Save rubric" : "Saved"}
+                className={primaryBtnSm}
               >
-                <Icon.evals.revertRubric size={ICON.xs} />
+                <Icon.evals.saveRubric size={ICON.sm} />
+                {dirty ? "Save rubric" : "Saved"}
               </button>
-            )}
+            </span>
           </div>
         </div>
       )}
@@ -455,26 +549,79 @@ export const CHECKS: { mode: string | null; label: string; hint: string }[] = [
  *
  * `expected` was only ever shown to the judge, so without one it did nothing. Kept with each eval
  * when it starts, so changing it here grades the next eval and leaves past ones as they were.
+ *
+ * ONE MENU, NOT FIVE CHIPS: the check in force is what the row needs to say, and the other four — each
+ * with the sentence that says what it does — are a press away, the way an editor's select offers them.
  */
-function CheckRow({ dataset }: { dataset: Dataset }) {
+function CheckMenu({ dataset }: { dataset: Dataset }) {
   const connected = useTraceStore((s) => s.connection === "open");
   const current = dataset.check_mode ?? null;
+  const chosen = CHECKS.find((c) => c.mode === current) ?? CHECKS[0]!;
   return (
-    <div className="flex flex-wrap items-center gap-1 px-3 py-2 text-tiny" role="group" aria-label="Check answers against expected">
-      <span className="mr-1 text-muted">Check answers against expected</span>
-      {CHECKS.map((c) => (
-        <Chip
-          key={c.label}
-          size="sm"
-          selected={current === c.mode}
-          disabled={!connected}
-          title={c.hint}
-          onClick={() => current !== c.mode && sendSetDatasetCheck(dataset.id, c.mode)}
-        >
-          {c.label}
-        </Chip>
-      ))}
+    <div className="flex flex-wrap items-center gap-2 px-3 py-2 text-tiny" role="group" aria-label="Check answers against expected">
+      <Icon.evals.check size={ICON.xs} className="shrink-0 text-faint" />
+      <span className={`${TYPE.sectionLabel} shrink-0`}>Check</span>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <button type="button" disabled={!connected} className={selectBtn} title={`${chosen.label} — ${chosen.hint}`} aria-label="How answers are checked against expected">
+            <span className={current ? "text-ink" : "text-muted"}>{chosen.label}</span>
+            <Icon.evals.menu size={ICON.xs} className="shrink-0 text-faint" />
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start" className="w-[300px]" aria-label="Checks">
+          <DropdownMenuLabel className="flex items-center gap-1.5">
+            <Icon.evals.check size={ICON.badge} />
+            Check answers against expected
+          </DropdownMenuLabel>
+          <DropdownMenuRadioGroup value={current ?? "off"} onValueChange={(v) => { const mode = v === "off" ? null : v; if (mode !== current) sendSetDatasetCheck(dataset.id, mode); }}>
+            {CHECKS.map((c) => (
+              <DropdownMenuRadioItem key={c.label} value={c.mode ?? "off"}>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-caption text-ink">{c.label}</span>
+                  <span className="block text-tiny text-faint">{c.hint}</span>
+                </span>
+                <span aria-hidden className={c.mode === current ? "text-ink" : "text-transparent"}><Icon.evals.chosen size={ICON.xs} /></span>
+              </DropdownMenuRadioItem>
+            ))}
+          </DropdownMenuRadioGroup>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <span className="min-w-0 truncate text-faint">{chosen.hint}</span>
     </div>
+  );
+}
+
+/**
+ * What the case list shows, as an editor's view menu: three checks, each on until somebody turns it
+ * off to read a long dataset faster. The menu stays open while they are flipped.
+ */
+function ViewMenu({ view, onChange }: { view: CaseView; onChange: (v: CaseView) => void }) {
+  const rows: { key: keyof CaseView; label: string }[] = [
+    { key: "expected", label: "Show expected outputs" },
+    { key: "notes", label: "Show notes" },
+    { key: "fold", label: "Fold long cases" },
+  ];
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button type="button" className={iconBtn} aria-label="How the cases are shown" title="How the cases are shown">
+          <Icon.evals.viewOptions size={ICON.sm} />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" aria-label="Case view">
+        <DropdownMenuLabel>View</DropdownMenuLabel>
+        {rows.map((r) => (
+          <DropdownMenuCheckboxItem
+            key={r.key}
+            checked={view[r.key]}
+            onCheckedChange={(on) => onChange({ ...view, [r.key]: on === true })}
+            onSelect={(e) => e.preventDefault()}
+          >
+            {r.label}
+          </DropdownMenuCheckboxItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
@@ -499,6 +646,8 @@ export function DatasetBuilder() {
   const [newExpected, setNewExpected] = useState<string | null>(null);
   /** What the case list is narrowed to. Cases are long, and there can be many. */
   const [query, setQuery] = useState("");
+  /** What the case list shows — the View menu's three checks, all on until somebody turns one off. */
+  const [view, setView] = useState<CaseView>({ expected: true, notes: true, fold: true });
   const [importNote, setImportNote] = useState<string | null>(null);
   /**
    * The dataset's new name while it is being typed, or null when nobody is renaming.
@@ -571,169 +720,164 @@ export function DatasetBuilder() {
     );
   }
 
+  /**
+   * The dataset's new name, sent — or the sentence saying why it was not. Shared by the field's
+   * Enter and the confirm mark beside it.
+   */
+  const submitRename = (): void => {
+    if (renaming === null || !selected) return;
+    const name = renaming.trim();
+    if (!name) { setRenameError("A dataset needs a name."); return; }
+    if (name.length > 80) { setRenameError("A dataset name can be at most 80 characters."); return; }
+    if (name !== selected.name) sendRenameDataset(selected.id, name);
+    setRenameError(null);
+    setRenaming(null);
+  };
+
   return (
     <div className="flex h-full flex-col">
-      {/* datasets */}
-      <div className="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-hair px-6 pb-2 pt-2">
-        {/* IN THE STRIP, for the reason the MCP panel's is: this is a wrapping row of chips rather
-            than a list with a heading over it. `listDatasets` answers with all of an agent's, so
-            the length is a total. */}
-        <SectionHeader name="Datasets" count={datasets.length} className="mr-1" />
-        {datasets.map((d) => (
-          <Chip
-            key={d.id}
-            size="lg"
-            onClick={() => selectDataset(activeAgentId, d.id)}
-            selected={d.id === selectedDatasetId}
-            title={d.name}
-            // Names come from agent names, which are generated from prompts and can be long.
-            // Truncate so one dataset can't push the row into a second line.
-            className="max-w-[220px]"
-            figure={d.example_count ?? 0}
+      {/* THE DATASET AND WHAT CAN BE DONE WITH IT, AS ONE TOOLBAR. Which dataset is a menu — each with
+          how many cases it holds, and a new one at its foot — and every action on it is a mark whose
+          words are its tooltip, with Delete set apart at the row's end. It was a wrapping row of
+          chips over a second row of grey squares. */}
+      <div className="flex shrink-0 items-center gap-1 border-b border-hair px-6 py-2">
+        {renaming !== null && selected ? (
+          <form
+            className="flex min-w-0 flex-1 items-center gap-1"
+            onSubmit={(e) => { e.preventDefault(); submitRename(); }}
           >
-            <Truncate>{d.name}</Truncate>
-          </Chip>
-        ))}
-        <button
+            <Icon.evals.renameDataset size={ICON.sm} className="mr-1 shrink-0 text-faint" />
+            <input
+              value={renaming}
+              onChange={(e) => { setRenaming(e.target.value); setRenameError(null); }}
+              aria-invalid={renameError !== null}
+              title={renameError ?? undefined}
+              onKeyDown={(e) => {
+                // The panel's own keys must not fire from a field somebody is typing a name into.
+                e.stopPropagation();
+                if (e.key === "Escape") { setRenaming(null); setRenameError(null); }
+              }}
+              autoFocus
+              aria-label="Dataset name"
+              className={`h-7 min-w-0 flex-1 rounded-input border bg-elevated px-2 text-caption text-ink outline-none focus-visible:shadow-focusring ${renameError ? "border-err" : "border-edge"}`}
+            />
+            <IconButton icon={Icon.evals.confirm} label="Rename" size={ICON.sm} onClick={submitRename} />
+            <IconButton icon={Icon.evals.dismiss} label="Keep the old name" size={ICON.sm} onClick={() => { setRenaming(null); setRenameError(null); }} />
+            {renameError && <span className="shrink-0 text-tiny text-err" role="alert">{renameError}</span>}
+          </form>
+        ) : datasets.length > 0 ? (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button type="button" className={`${selectBtn} max-w-[260px]`} aria-label="Choose a dataset" title="The dataset open in this tab — choose another">
+                <Icon.evals.datasetView size={ICON.xs} className="shrink-0 text-faint" />
+                <span className="min-w-0 truncate">{selected?.name ?? "Choose a dataset"}</span>
+                {selected && <span className="shrink-0 tabular-nums text-faint">{examples.length}</span>}
+                <Icon.evals.menu size={ICON.xs} className="shrink-0 text-faint" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" aria-label="Datasets" className="max-h-[360px] w-[280px] overflow-y-auto">
+              {/* `listDatasets` answers with all of an agent's, so the length is a total. */}
+              <SectionHeader name="Datasets" count={datasets.length} icon={Icon.evals.datasetView} className="px-2.5 py-1" />
+              <DropdownMenuRadioGroup value={selectedDatasetId ?? ""} onValueChange={(id) => selectDataset(activeAgentId, id)}>
+                {datasets.map((d) => (
+                  <DropdownMenuRadioItem key={d.id} value={d.id} title={d.name}>
+                    <Icon.evals.datasetView size={ICON.xs} className="shrink-0 text-faint" />
+                    <span className="min-w-0 flex-1 truncate text-caption">{d.name}</span>
+                    <span className="shrink-0 text-tiny tabular-nums text-faint">{d.example_count ?? 0}</span>
+                    <span aria-hidden className={d.id === selectedDatasetId ? "text-ink" : "text-transparent"}><Icon.evals.chosen size={ICON.xs} /></span>
+                  </DropdownMenuRadioItem>
+                ))}
+              </DropdownMenuRadioGroup>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem size="compact" disabled={!connected} onSelect={() => sendCreateDataset(activeAgentId)}>
+                <Icon.evals.newDataset size={ICON.xs} />
+                New dataset
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ) : (
+          <span className="flex items-center gap-1.5 text-caption text-muted">
+            <Icon.evals.datasetView size={ICON.xs} className="text-faint" />
+            No datasets yet
+          </span>
+        )}
+        {renaming === null && (
           // NO NAME: the server picks one this agent does not have. Numbering from the count here gave
           // two "Test set 3"s after a delete. Agent names are not used — they are generated from prompts
           // and run long, and the agent is already established by the sidebar.
-          type="button"
-          onClick={() => sendCreateDataset(activeAgentId)}
-          disabled={!connected}
-          className={`${textBtn} shrink-0`}
-        >
-          + New dataset
-        </button>
-      </div>
-
-      {selected && (
-        /* THE DENSEST TEXT-BUTTON CLUSTER IN THE APP, as a glyph row. Five words-as-buttons in
-            one strip — Rename, Import CSV, Delete dataset, plus Revert and Add nearby — read as a
-            form toolbar rather than as the actions on a dataset. Every mark here already existed
-            in the icon set; the words are the tooltips. DRAWN AS THE TRACE'S RUN ACTIONS ARE — marks
-            on a grey ground (`markBtn`) — with Delete set apart at the row's end. */
-        <div className="flex shrink-0 items-center gap-1 px-6 py-2">
-          {renaming !== null ? (
-            <form
-              className="flex min-w-0 flex-1 items-center gap-2"
-              onSubmit={(e) => {
-                e.preventDefault();
-                const name = renaming.trim();
-                if (!name) { setRenameError("A dataset needs a name."); return; }
-                if (name.length > 80) { setRenameError("A dataset name can be at most 80 characters."); return; }
-                if (name !== selected.name) sendRenameDataset(selected.id, name);
-                setRenameError(null);
-                setRenaming(null);
-              }}
-            >
-              <input
-                value={renaming}
-                onChange={(e) => { setRenaming(e.target.value); setRenameError(null); }}
-                aria-invalid={renameError !== null}
-                title={renameError ?? undefined}
-                onKeyDown={(e) => {
-                  // The panel's own keys must not fire from a field somebody is typing a name into.
-                  e.stopPropagation();
-                  if (e.key === "Escape") { setRenaming(null); setRenameError(null); }
-                }}
-                autoFocus
-                aria-label="Dataset name"
-                className="min-w-0 flex-1 rounded-input border border-edge bg-elevated px-2 py-0.5 text-caption text-ink outline-none focus-visible:shadow-focusring"
-              />
-              <button type="submit" className={`${primaryBtnSm} shrink-0`}>Rename</button>
-              <button
-                type="button"
-                onClick={() => { setRenaming(null); setRenameError(null); }}
-                className={`${textBtn} shrink-0`}
-              >
-                Cancel
-              </button>
-              {renameError && <span className="shrink-0 text-tiny text-err" role="alert">{renameError}</span>}
-            </form>
-          ) : (
-          <button
-            type="button"
-            onClick={() => setRenaming(selected.name)}
-            title="Rename this dataset"
-            aria-label="Rename this dataset"
-            className={markBtn}
-          >
-            <Icon.evals.renameDataset size={ICON.sm} />
-          </button>
-          )}
-          <button
-            type="button"
-            onClick={() => fileRef.current?.click()}
-            title="Import examples from a CSV"
-            aria-label="Import examples from a CSV"
-            className={markBtn}
-          >
-            <Icon.evals.importCsv size={ICON.sm} />
-          </button>
-          <input
-            ref={fileRef}
-            type="file"
-            accept=".csv,text/csv"
-            className="hidden"
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              if (f) void importCsv(f);
-              e.target.value = ""; // let the same file be re-imported
-            }}
+          <IconButton
+            icon={Icon.evals.newDataset}
+            label="New dataset"
+            size={ICON.sm}
+            disabledReason={connected ? null : "Not connected"}
+            onClick={() => sendCreateDataset(activeAgentId)}
           />
-          <button
-            type="button"
-            onClick={() => {
-              const filename = `${selected.name.replace(/[^\w.-]+/g, "-").replace(/^-|-$/g, "") || "dataset"}.csv`;
-              download(filename, examplesToCsv(examples), "text/csv");
-              useUiStore.getState().showToast(`Saved to Downloads as ${filename}`, "ok");
-            }}
-            disabled={!examples.length}
-            title={examples.length ? "Export these cases as a CSV you can import again" : "Nothing to export yet"}
-            aria-label="Export these cases as a CSV"
-            className={markBtn}
-          >
-            <Icon.evals.exportCsv size={ICON.sm} />
-          </button>
-          <button
-            type="button"
-            onClick={() => sendDuplicateDataset(selected.id)}
-            disabled={!connected}
-            title="Duplicate this dataset — its cases, check and rubric"
-            aria-label="Duplicate this dataset"
-            className={markBtn}
-          >
-            <Icon.evals.duplicateDataset size={ICON.sm} />
-          </button>
-          <button
-            type="button"
-            // UNDOABLE FOR FIVE SECONDS rather than gone in one click — see lib/evalUndo.ts.
-            onClick={() => deleteWithUndo({
-              kind: "dataset", id: selected.id, datasetId: selected.id, agentId: activeAgentId,
-              label: selected.name, cases: examples.length,
-            })}
-            title="Delete this dataset"
-            aria-label="Delete this dataset"
-            className={`${DANGER_MARK} ml-auto`}
-          >
-            <Icon.evals.deleteDataset size={ICON.sm} />
-          </button>
-        </div>
-      )}
+        )}
+        {selected && renaming === null && (
+          <>
+            <span aria-hidden className="mx-1 h-4 w-px shrink-0 bg-hair" />
+            <IconButton icon={Icon.evals.renameDataset} label="Rename this dataset" size={ICON.sm} onClick={() => setRenaming(selected.name)} />
+            <IconButton icon={Icon.evals.importCsv} label="Import examples from a CSV" size={ICON.sm} onClick={() => fileRef.current?.click()} />
+            <IconButton
+              icon={Icon.evals.exportCsv}
+              label="Export these cases as a CSV"
+              size={ICON.sm}
+              disabledReason={examples.length ? null : "Nothing to export yet"}
+              onClick={() => {
+                const filename = `${selected.name.replace(/[^\w.-]+/g, "-").replace(/^-|-$/g, "") || "dataset"}.csv`;
+                download(filename, examplesToCsv(examples), "text/csv");
+                useUiStore.getState().showToast(`Saved to Downloads as ${filename}`, "ok");
+              }}
+            />
+            <IconButton
+              icon={Icon.evals.duplicateDataset}
+              label="Duplicate this dataset"
+              size={ICON.sm}
+              disabledReason={connected ? null : "Not connected"}
+              onClick={() => sendDuplicateDataset(selected.id)}
+            />
+            <span className="ml-auto" />
+            {/* UNDOABLE FOR FIVE SECONDS rather than gone in one click — see lib/evalUndo.ts. */}
+            <IconButton
+              icon={Icon.evals.deleteDataset}
+              label="Delete this dataset"
+              size={ICON.sm}
+              danger
+              onClick={() => deleteWithUndo({
+                kind: "dataset", id: selected.id, datasetId: selected.id, agentId: activeAgentId,
+                label: selected.name, cases: examples.length,
+              })}
+            />
+          </>
+        )}
+        <input
+          ref={fileRef}
+          type="file"
+          accept=".csv,text/csv"
+          className="hidden"
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) void importCsv(f);
+            e.target.value = ""; // let the same file be re-imported
+          }}
+        />
+      </div>
 
       {/* HOW THIS DATASET'S ANSWERS ARE SCORED — the check and the judge's rubric — as one surface, in
           the trace's card. Under the dataset actions and above the examples, because it is the
           standard those examples will be scored against. */}
       {selected && (
-        <section aria-label="Scoring" className="mx-6 mb-2 shrink-0 rounded-card border border-hair bg-panel">
-          <CheckRow dataset={selected} />
+        <section aria-label="Scoring" className="mx-6 mb-2 mt-3 shrink-0 rounded-card border border-hair bg-panel">
+          <CheckMenu dataset={selected} />
           <RubricEditor key={selected.id} datasetId={selected.id} />
         </section>
       )}
 
       {(error || importNote) && (
-        <div className="mx-6 mb-2 flex shrink-0 items-center gap-2 rounded-card border border-hair bg-panel px-3 py-2 text-tiny">
+        <div className="mx-6 mb-2 flex shrink-0 items-center gap-2 rounded-card border border-hair bg-panel px-3 py-2 text-tiny" role={error ? "alert" : "status"}>
+          {error
+            ? <Icon.evals.refused size={ICON.sm} className="shrink-0 text-err" />
+            : <Icon.evals.importCsv size={ICON.sm} className="shrink-0 text-faint" />}
           <span className={`min-w-0 flex-1 ${error ? "text-err" : "text-muted"}`}>{error ?? importNote}</span>
           <button
             type="button"
@@ -753,7 +897,7 @@ export function DatasetBuilder() {
           <EmptyState
             icon={DatabaseIcon}
             title="No dataset yet"
-            hint="Create one above, or press the bookmark in the composer while in Test mode to promote the input you just ran."
+            hint="Create one with the mark above, or press the bookmark in the composer while in Test mode to promote the input you just ran."
           />
         ) : examples.length === 0 ? (
           <EmptyState
@@ -764,39 +908,62 @@ export function DatasetBuilder() {
         ) : (
           <>
             {/* §4.2's case list. A dataset's examples arrive with the dataset — `examplesOf` reads
-                what the payload carried, and there is no cursor — so the length is a total. */}
-            <SectionHeader name="Cases" count={examples.length} className="min-h-8 pb-1" />
-            {/* SEARCH, for a list of long cases. The numbers stay each case's own, so "case 7" is case 7. */}
-            {examples.length > 5 && (
-              <div className="flex items-center gap-2 pb-2">
-                <input
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  placeholder="Find a case"
-                  aria-label="Find a case"
-                  spellCheck={false}
-                  className="min-w-0 flex-1 rounded-input border border-edge bg-elevated px-2 py-1 text-tiny text-ink placeholder:text-faint outline-none focus:shadow-focusring"
-                />
-                {query.trim() && <span className="shrink-0 text-tiny text-faint">{shownCases.length} of {examples.length}</span>}
-              </div>
-            )}
+                what the payload carried, and there is no cursor — so the length is a total. The
+                search and the view menu sit on its header, as an editor's list puts them. */}
+            <div className="sticky top-0 z-10 flex min-h-10 items-center gap-2 bg-bg py-1.5">
+              <SectionHeader name="Cases" count={examples.length} icon={Icon.evals.cases} className="shrink-0" />
+              {/* SEARCH, for a list of long cases. The numbers stay each case's own, so "case 7" is case 7. */}
+              {examples.length > 5 ? (
+                <div className="relative min-w-0 flex-1">
+                  <Icon.evals.search size={ICON.xs} className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-faint" />
+                  <input
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Escape") setQuery(""); }}
+                    placeholder="Find a case"
+                    aria-label="Find a case"
+                    spellCheck={false}
+                    className="h-7 w-full rounded-input border border-edge bg-elevated pl-7 pr-7 text-tiny text-ink placeholder:text-faint outline-none focus:shadow-focusring"
+                  />
+                  {query && (
+                    <button
+                      type="button"
+                      onClick={() => setQuery("")}
+                      aria-label="Clear the search"
+                      title="Clear the search"
+                      className="absolute right-1 top-1/2 inline-flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-xs text-faint transition-colors hover:text-ink focus-visible:outline-none focus-visible:shadow-focusring"
+                    >
+                      <Icon.evals.clearSearch size={ICON.xs} />
+                    </button>
+                  )}
+                </div>
+              ) : <span className="flex-1" />}
+              {needle && <span className="shrink-0 text-tiny tabular-nums text-faint">{shownCases.length} of {examples.length}</span>}
+              <ViewMenu view={view} onChange={setView} />
+            </div>
             {/* THE CASES AS ONE LIST IN THE TRACE'S CARD, a hairline between each — they were rows of
                 text on the page with nothing to say where one case ended and the next began. */}
-            {shownCases.length > 0 && (
-              <div className="mb-3 divide-y divide-hair rounded-card border border-hair bg-panel">
+            {shownCases.length > 0 ? (
+              <div className="mb-3 divide-y divide-hair overflow-hidden rounded-card border border-hair bg-panel">
                 {shownCases.map(({ e, i }) => (
-                  <ExampleRow key={e.id} example={e} index={i} datasetId={selected.id} agentId={activeAgentId} />
+                  <ExampleRow key={e.id} example={e} index={i} datasetId={selected.id} agentId={activeAgentId} view={view} />
                 ))}
+              </div>
+            ) : (
+              <div className="mb-3 flex items-center gap-2 rounded-card border border-hair bg-panel px-3 py-3 text-tiny text-faint">
+                <Icon.evals.search size={ICON.xs} className="shrink-0" />
+                No case has “{query.trim()}” in it.
               </div>
             )}
           </>
         )}
       </div>
 
-      {/* add */}
+      {/* add — A COMPOSER, as the chat's is: the box, and under it what else the case can carry and the
+          one button that adds it. */}
       {selected && (
-        <div className="shrink-0 space-y-2 border-t border-hair px-6 py-3">
-          <div className="flex items-end gap-2">
+        <div className="shrink-0 border-t border-hair px-6 py-3">
+          <div className="rounded-input border border-edge bg-elevated transition-shadow focus-within:shadow-focusring">
             {/* A BOX, NOT A LINE, and nothing in it is "corrected". A one-line input with the system's
                 autocorrect turned `---` into an em dash and straight quotes into curly ones — and for an
                 agent that splits a job description from a résumé on `---`, a hand-typed case silently
@@ -807,48 +974,65 @@ export function DatasetBuilder() {
               onChange={(e) => setNewInput(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); addExample(); } }}
               disabled={!connected}
-              rows={Math.min(6, Math.max(1, newInput.split("\n").length))}
+              rows={Math.min(6, Math.max(2, newInput.split("\n").length))}
               spellCheck={false}
               autoCorrect="off"
               autoCapitalize="off"
               aria-label="New case input"
-              placeholder="an input the agent should handle — Shift+Enter for a new line"
-              className="flex-1 resize-none bg-elevated text-ink placeholder:text-faint rounded-input border border-edge px-2.5 py-1.5 text-caption outline-none focus:shadow-focusring disabled:opacity-50"
+              placeholder="An input the agent should handle"
+              className="block w-full resize-none bg-transparent px-2.5 pb-1 pt-2 text-caption text-ink placeholder:text-faint outline-none disabled:opacity-50"
             />
-            {/* THE BAR'S ONE DECISION, so the one filled button — with its word. It was a mark on the
-                same grey as everything around it. */}
-            <button
-              type="button"
-              onClick={addExample}
-              disabled={!connected || !newInput.trim()}
-              title={!connected ? "Not connected" : !newInput.trim() ? "Type an input first" : "Add this case"}
-              className={`${primaryBtnSm} shrink-0`}
-            >
-              <Icon.evals.addExample size={ICON.sm} />
-              Add case
-            </button>
+            {/* THE EXPECTED OUTPUT, AT THE TIME THE CASE IS WRITTEN. It could only be added afterwards, by
+                finding the new case in the list and opening its second line. */}
+            {newExpected !== null && (
+              <div className="flex items-start gap-1.5 border-t border-hair px-2.5 py-1.5">
+                <Icon.evals.expected size={ICON.xs} className="mt-1 shrink-0 text-faint" />
+                <textarea
+                  value={newExpected}
+                  onChange={(e) => setNewExpected(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); addExample(); } }}
+                  disabled={!connected}
+                  rows={Math.min(4, Math.max(1, newExpected.split("\n").length))}
+                  spellCheck={false}
+                  autoCorrect="off"
+                  autoCapitalize="off"
+                  aria-label="Expected output for the new case"
+                  placeholder="What a good answer gives — optional"
+                  className="block min-w-0 flex-1 resize-none bg-transparent py-0.5 text-caption text-ink placeholder:text-faint outline-none disabled:opacity-50"
+                />
+              </div>
+            )}
+            <div className="flex items-center gap-1 px-1.5 pb-1.5">
+              <button
+                type="button"
+                onClick={() => setNewExpected(newExpected === null ? "" : null)}
+                disabled={!connected}
+                aria-pressed={newExpected !== null}
+                aria-label="Give the new case an expected output"
+                title={newExpected === null ? "Give the new case an expected output — optional" : "Leave the expected output off"}
+                className={`${textBtn} inline-flex items-center gap-1 ${newExpected !== null ? "bg-active text-ink" : ""}`}
+              >
+                <Icon.evals.expected size={ICON.xs} />
+                Expected
+              </button>
+              <button type="button" onClick={() => fileRef.current?.click()} className={`${textBtn} inline-flex items-center gap-1`} title="Import examples from a CSV">
+                <Icon.evals.importCsv size={ICON.xs} />
+                CSV
+              </button>
+              <span className="ml-auto pr-1 text-tiny text-faint" title="Enter adds the case; Shift+Enter is a new line">⏎</span>
+              {/* THE BAR'S ONE DECISION, so the one filled button — with its word. */}
+              <button
+                type="button"
+                onClick={addExample}
+                disabled={!connected || !newInput.trim()}
+                title={!connected ? "Not connected" : !newInput.trim() ? "Type an input first" : "Add this case"}
+                className={`${primaryBtnSm} shrink-0`}
+              >
+                <Icon.evals.addExample size={ICON.sm} />
+                Add case
+              </button>
+            </div>
           </div>
-          {/* THE EXPECTED OUTPUT, AT THE TIME THE CASE IS WRITTEN. It could only be added afterwards, by
-              finding the new case in the list and opening its second line. */}
-          {newExpected === null ? (
-            <button type="button" onClick={() => setNewExpected("")} disabled={!connected} className={`${textBtn} -ml-2`}>
-              + expected output
-            </button>
-          ) : (
-            <textarea
-              value={newExpected}
-              onChange={(e) => setNewExpected(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); addExample(); } }}
-              disabled={!connected}
-              rows={Math.min(4, Math.max(1, newExpected.split("\n").length))}
-              spellCheck={false}
-              autoCorrect="off"
-              autoCapitalize="off"
-              aria-label="Expected output for the new case"
-              placeholder="what a good answer gives — optional"
-              className="w-full resize-none bg-elevated text-ink placeholder:text-faint rounded-input border border-edge px-2.5 py-1.5 text-caption outline-none focus:shadow-focusring disabled:opacity-50"
-            />
-          )}
         </div>
       )}
     </div>

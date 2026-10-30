@@ -74,12 +74,20 @@ console.log("\nthe builder, rendered");
   check(/focus-visible:opacity-100/.test(remove), "a case's delete shows on keyboard focus, not only on hover", remove);
   check(/self-start/.test(remove), "and is only its own size, not a strip down the case's edge", remove);
   const words = html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
-  check(words.includes("Check answers against expected") && words.includes("Word") && words.includes("Pattern"),
+  // ONE MENU OF THE FIVE CHECKS, saying the one in force and what it does; the rest are a press away.
+  const { CHECKS } = await import("./DatasetBuilder.tsx");
+  check(/role="group" aria-label="Check answers against expected"/.test(html) && words.includes("Off") && words.includes("Expected outputs are only shown to the judge")
+    && ["Off", "Exact", "Contains", "Word", "Pattern"].every((l) => CHECKS.some((c) => c.label === l)),
     "a dataset says how its answers are checked against expected", words.slice(0, 300));
   check(/<section aria-label="Scoring"/.test(html) && words.includes("Judge rubric"), "the check and the judge's rubric are one scoring card");
-  check(/ hidden group-hover:block group-focus-within:block/.test(html) && words.includes("+ expected output (optional)"),
-    "a case's empty lines wait to be reached for — out of the layout, not an invisible line — and are in the page for a keyboard");
-  check(words.includes("Add case") && words.includes("+ expected output"), "a case is added by name, and can be given its expected output as it is written");
+  // A CASE'S MISSING EXPECTED OUTPUT AND NOTE ARE MARKS, NOT LINES: shown on hover and on keyboard
+  // focus at the row's corner, so fifty cases are not fifty rows of grey invitations.
+  const addExpected = /<button[^>]*aria-label="Add an expected output to case 1"[^>]*>/.exec(html)?.[0] ?? "";
+  const addNote = /<button[^>]*aria-label="Add a note to case 1"[^>]*>/.exec(html)?.[0] ?? "";
+  check(/focus-visible:opacity-100/.test(addExpected) && /focus-visible:opacity-100/.test(addNote) && !words.includes("+ expected output"),
+    "a case's empty lines wait to be reached for — out of the layout, not an invisible line — and are in the page for a keyboard", addExpected);
+  check(words.includes("Add case") && /aria-label="Give the new case an expected output"/.test(html),
+    "a case is added by name, and can be given its expected output as it is written");
 }
 
 console.log("\na dataset can leave the tab, be found in, and keep its notes");
@@ -121,7 +129,8 @@ console.log("\na dataset can leave the tab, be found in, and keep its notes");
   const rule = /\.clamp-lines \{[^}]*\}/.exec(readFileSync("src/index.css", "utf8"))?.[0] ?? "";
   check(/max-height: calc\(var\(--clamp\) \* 1lh\)/.test(rule) && /max-height: calc\(var\(--clamp\) \* 1\.4em\)/.test(rule),
     "and that class takes the hidden lines' height away, not only their text", rule);
-  check(words.includes("why this case exists") && words.includes("+ note"), "notes are shown, and can be added", words.slice(0, 200));
+  check(words.includes("why this case exists") && /aria-label="Add a note to case 1"/.test(html) && !/aria-label="Add a note to case 2"/.test(html),
+    "notes are shown, and can be added to a case without one", words.slice(0, 200));
   check(/aria-label="Export these cases as a CSV"/.test(html) && /aria-label="Duplicate this dataset"/.test(html), "and a dataset can be exported and duplicated");
 }
 

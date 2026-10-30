@@ -82,7 +82,9 @@ console.log("\nthe manifest parses, and it is the size the specification asks fo
   // eval, compare and scope pickers, and an eval's when, duration, verdict, judge and stop.
   // 345 WITH ITS RESULTS' BODY: the comparison's columns and leads, the case filters, a cell's parts,
   // and the compare's directions.
-  check("345 registry keys", entries.length === 345, `${entries.length}`);
+  // 358 WITH THE DATASET'S TOOLBAR AND LIST: a new dataset, a rename's two marks, the check, the
+  // rubric's criteria, and the cases' search, view menu, notes and removal.
+  check("358 registry keys", entries.length === 358, `${entries.length}`);
   const names = new Set(entries.map((e) => e.export));
   // 104 from icons_integration's appendix, plus D8's 13 — the composer glyphs that had to move
   // here when `@hugeicons/react` came out. See the note at the top of `registry.ts`.
@@ -124,7 +126,8 @@ console.log("\nthe manifest parses, and it is the size the specification asks fo
   // 225 WITH `DollarCircleIcon`, `DashboardSpeed01Icon`, `Crown02Icon`, `FlashIcon`, `CheckListIcon`,
   // `ArrowLeftRightIcon`, `HelpCircleIcon`, `RepeatIcon`, `QuoteDownIcon` AND `ArrowDownRight01Icon`;
   // the body's other twenty-one keys reuse marks already here.
-  check("225 distinct marks", names.size === 225, `${names.size}`);
+  // 226 WITH `DatabaseAddIcon`, for a new dataset; the dataset's other twelve keys reuse marks here.
+  check("226 distinct marks", names.size === 226, `${names.size}`);
   check("no key is declared twice", new Set(entries.map((e) => e.key)).size === entries.length);
 }
 
