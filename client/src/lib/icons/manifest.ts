@@ -369,6 +369,8 @@ export const MANIFEST = {
     agent: "Robot02Icon",
     // The step between the agent and its dataset on the panel's breadcrumb — an editor's path.
     crumb: "ArrowRight01Icon",
+    // The dataset toolbar's overflow, where its actions go when the panel is too narrow for them.
+    moreActions: "MoreHorizontalIcon",
     datasetView: "DatabaseIcon",
     resultsView: "ChartColumnIcon",
     // Choosing what Results shows: which eval (its history), against which (a compare), from which

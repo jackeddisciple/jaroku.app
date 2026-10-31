@@ -37,8 +37,14 @@ import { SectionHeader } from "./SectionHeader.tsx";
 import { DatabaseIcon } from "./panelIcons.tsx";
 import { primaryBtnSm, textBtn } from "./buttons.ts";
 import { IconButton } from "./IconButton.tsx";
-import { Chosen, EVAL_SELECT, FACT_TONE, Pill, SOFT_ICON_SM, SOFT_ICON_XS } from "./evalUi.tsx";
+import { Chosen, EVAL_SELECT, FACT_TONE, Pill, SOFT_DANGER_SM, SOFT_ICON, SOFT_ICON_SM, SOFT_ICON_XS } from "./evalUi.tsx";
 import { cn } from "../lib/utils.ts";
+import { useNarrowerThan } from "../lib/useNarrower.ts";
+import { Alert } from "./ui/alert.tsx";
+import { Button } from "./ui/button.tsx";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collapsible.tsx";
+import { Input, Textarea } from "./ui/input.tsx";
+import { Separator } from "./ui/separator.tsx";
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -362,59 +368,62 @@ function RubricEditor({ datasetId }: { datasetId: string }) {
   };
 
   return (
-    <div className="border-t border-hair px-3 pb-2">
-      {/* FOLDED AS THE TRACE FOLDS A SECTION: the chevron, the judge's mark, the section's word, and
-          what is in it as pills — whose rubric, how many criteria, and whether there is a draft. */}
-      <button
-        type="button"
-        className="flex min-h-9 w-full min-w-0 items-center gap-2 rounded-control py-1.5 text-left focus-visible:outline-none focus-visible:shadow-focusring"
-        onClick={() => setOpen((v) => !v)}
-        aria-expanded={open}
-      >
-        <span aria-hidden className={`shrink-0 text-faint transition-transform duration-fast ${open ? "" : "-rotate-90"}`}>
-          <Icon.trace.fold size={ICON.xs} />
-        </span>
-        <Icon.evals.judge size={ICON.xs} className="shrink-0 text-faint" />
-        <span className={`${TYPE.sectionLabel} shrink-0`}>Judge rubric</span>
-        <span className="flex min-w-0 flex-1 items-center gap-1.5">
-          {!loaded ? (
-            <span className="text-tiny text-faint">loading…</span>
-          ) : (
-            <>
-              <Pill tone={isDefault ? "neutral" : FACT_TONE.judge} title={isDefault ? "The built-in rubric — this dataset has none of its own" : "This dataset's own rubric"}>
-                {isDefault ? "Built-in" : "Custom"}
-              </Pill>
-              <Pill icon={Icon.evals.criteria} tone={FACT_TONE.judge} title="How many criteria each answer is scored on">{(rubric?.criteria ?? []).length}</Pill>
-            </>
-          )}
-          {dirty && <Pill tone="info" title="Edited and not saved yet">unsaved</Pill>}
-        </span>
-        {/* THE DISCLOSURE IS THE EDIT — opening this is how a rubric gets changed, so the mark
-            goes here rather than on a second control that would do the same thing. */}
-        <Icon.evals.editRubric size={ICON.xs} className="shrink-0 text-faint" />
-      </button>
+    // FOLDED AS AN EDITOR FOLDS A SECTION — shadcn's Collapsible, so the row says it is expanded and
+    // which region it controls: the chevron, the judge's mark, the section's word, and what is in it
+    // as pills — whose rubric, how many criteria, and whether there is a draft.
+    <Collapsible open={open} onOpenChange={setOpen} className="flex min-h-0 flex-col border-t border-hair">
+      <CollapsibleTrigger asChild>
+        <button
+          type="button"
+          className="group flex h-10 w-full shrink-0 min-w-0 items-center gap-2 px-3 text-left transition-colors duration-fast hover:bg-active/40 focus-visible:outline-none focus-visible:shadow-focusring"
+        >
+          <span aria-hidden className="shrink-0 text-faint transition-transform duration-fast group-data-[state=closed]:-rotate-90">
+            <Icon.trace.fold size={ICON.xs} />
+          </span>
+          <Icon.evals.judge size={ICON.xs} className="shrink-0 text-bespoke" />
+          <span className={`${TYPE.sectionLabel} shrink-0`}>Judge rubric</span>
+          <span className="flex min-w-0 flex-1 items-center gap-1.5">
+            {!loaded ? (
+              <span className="text-tiny text-faint">loading…</span>
+            ) : (
+              <>
+                <Pill tone={isDefault ? "neutral" : FACT_TONE.judge} title={isDefault ? "The built-in rubric — this dataset has none of its own" : "This dataset's own rubric"}>
+                  {isDefault ? "Built-in" : "Custom"}
+                </Pill>
+                <Pill icon={Icon.evals.criteria} tone={FACT_TONE.judge} title="How many criteria each answer is scored on">{(rubric?.criteria ?? []).length}</Pill>
+              </>
+            )}
+            {dirty && <Pill tone="info" title="Edited and not saved yet">unsaved</Pill>}
+          </span>
+          {/* THE DISCLOSURE IS THE EDIT — opening this is how a rubric gets changed, so the mark
+              goes here rather than on a second control that would do the same thing. */}
+          <Icon.evals.editRubric size={ICON.xs} className="shrink-0 text-faint transition-colors group-hover:text-ink" />
+        </button>
+      </CollapsibleTrigger>
 
-      {open && (
-        // ITS OWN SCROLL AREA. It could not shrink, so five criteria pushed the case list to nothing and
-        // drew the add field over the model chips.
-        <div className="max-h-[40vh] space-y-2 overflow-y-auto pb-1">
-          <p className="text-tiny leading-[1.55] text-faint">
-            Each criterion is scored 0–4 against shared anchors and combined by weight; weights are
-            normalised, so they do not have to add up. Saving writes a rubric for{" "}
-            <span className="text-muted">this dataset only</span> and never changes the built-in one.
-          </p>
-          {criteria.map((c, i) => {
-            const weight = parseWeight(c.weight);
-            return (
-            <div key={`${c.id}-${i}`} className="rounded-control border border-hair bg-elevated px-2 py-1.5">
-              <div className="flex items-center gap-2">
-                <input
+      {/* ITS OWN SCROLL AREA. It could not shrink, so five criteria pushed the case list to nothing and
+          drew the add field over the model chips. */}
+      <CollapsibleContent className="max-h-[40vh] min-h-0 space-y-2 overflow-y-auto border-t border-hair bg-bg/60 px-3 py-2.5">
+        <p className="text-tiny leading-[1.55] text-faint">
+          Each criterion is scored 0–4 against shared anchors and combined by weight; weights are
+          normalised, so they do not have to add up. Saving writes a rubric for{" "}
+          <span className="text-muted">this dataset only</span> and never changes the built-in one.
+        </p>
+        {criteria.map((c, i) => {
+          const weight = parseWeight(c.weight);
+          return (
+            <div key={`${c.id}-${i}`} className="rounded-control border border-hair bg-elevated p-2">
+              {/* THE NAME TAKES THE ROW, and the id, weight and share wrap under it when the panel is
+                  narrow — side by side, they left the name field no width at all. */}
+              <div className="flex flex-wrap items-center gap-1.5">
+                <Input
                   value={c.label}
                   onChange={(e) => edit(i, { label: e.target.value })}
-                  placeholder="name"
+                  placeholder="Name"
                   aria-label={`Criterion ${i + 1} name`}
-                  className="min-w-0 flex-1 rounded-input border border-edge bg-elevated px-2 py-1 text-caption text-ink placeholder:text-faint outline-none focus-visible:shadow-focusring"
+                  className="min-w-[8rem] flex-[1_1_8rem]"
                 />
+                <span className="ml-auto flex items-center gap-1.5">
                 {/* THE ID IS NOT EDITABLE ONCE IT EXISTS. It is what a stored verdict's
                     per-criterion score is keyed by, so renaming it would orphan every score
                     already recorded against this dataset — the drill-down would show a column of
@@ -426,113 +435,114 @@ function RubricEditor({ datasetId }: { datasetId: string }) {
                 {/* THE TEXT AS TYPED, not a number re-rendered from it. `Number("0.")` is 0, so the
                     point vanished as it was typed and "0.25" became "25" — a criterion that then
                     outweighed every other one 125 to 1. */}
-                <input
+                <Input
                   value={c.weight}
                   onChange={(e) => edit(i, { weight: e.target.value })}
                   inputMode="decimal"
                   aria-label={`Criterion ${i + 1} weight`}
                   title="Relative weight, 0 to 100"
                   aria-invalid={weight === null}
-                  className={`w-14 shrink-0 rounded-input border bg-elevated px-1.5 py-1 text-tiny tabular-nums text-ink outline-none focus-visible:shadow-focusring ${
-                    weight === null ? "border-err" : "border-edge"
-                  }`}
+                  className="w-14 shrink-0 px-1.5 text-tiny tabular-nums"
                 />
                 {/* ITS SHARE, which is what a weight means once weights are normalised. */}
-                <span className="w-9 shrink-0 text-right text-tiny tabular-nums text-faint" title="This criterion's share of the overall score">
+                <Pill tone={FACT_TONE.judge} className="w-11 justify-center" title="This criterion's share of the overall score">
                   {weight !== null && total > 0 ? `${Math.round((weight / total) * 100)}%` : "—"}
-                </span>
-                <IconButton variant="soft"
-                  icon={Icon.evals.removeCriterion}
-                  label={`Remove criterion ${i + 1}`}
-                  size={ICON.xs}
-                  danger
+                </Pill>
+                <button
+                  type="button"
                   onClick={() => setDraft(criteria.filter((_, j) => j !== i))}
-                />
+                  aria-label={`Remove criterion ${i + 1}`}
+                  title={`Remove criterion ${i + 1}`}
+                  className={SOFT_DANGER_SM}
+                >
+                  <Icon.evals.removeCriterion size={ICON.xs} />
+                </button>
+                </span>
               </div>
-              <textarea
+              <Textarea
                 value={c.description}
                 onChange={(e) => edit(i, { description: e.target.value })}
                 // Grows with what it holds, so a sentence is not cut at the second line.
                 rows={Math.min(8, Math.max(2, Math.ceil(c.description.length / 70) + c.description.split("\n").length - 1))}
-                placeholder="what the judge should look for, phrased so a higher score is better"
+                placeholder="What the judge should look for, phrased so a higher score is better"
                 aria-label={`Criterion ${i + 1} description`}
-                className="mt-1 w-full resize-none rounded-input border border-edge bg-elevated px-2 py-1 text-tiny leading-[1.5] text-muted placeholder:text-faint outline-none focus-visible:shadow-focusring"
+                className="mt-1.5 text-tiny leading-[1.5] text-muted"
               />
             </div>
-            );
-          })}
+          );
+        })}
 
-          {problem && (
-            <div className="flex items-center gap-1.5 text-tiny text-err" role="alert">
-              <Icon.evals.refused size={ICON.xs} className="shrink-0" />
-              {problem}
-            </div>
-          )}
+        {problem && (
+          <Alert tone="destructive" role="alert" className="py-1.5">
+            <Icon.evals.refused size={ICON.xs} className="shrink-0" />
+            {problem}
+          </Alert>
+        )}
 
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              className={`${textBtn} inline-flex items-center gap-1`}
-              onClick={() =>
-                setDraft([
-                  ...criteria,
-                  // A NEW ID, never one in use. It has to be stable and it has to be a key, and
-                  // deriving it from prose would change every time somebody edited the name — which
-                  // is exactly what must not happen to the field verdicts are recorded against.
-                  { id: nextCriterionId(criteria), label: "", description: "", weight: "0.1" },
-                ])
-              }
+        <div className="flex flex-wrap items-center gap-1.5">
+          <Button
+            variant="ghost"
+            size="xs"
+            onClick={() =>
+              setDraft([
+                ...criteria,
+                // A NEW ID, never one in use. It has to be stable and it has to be a key, and
+                // deriving it from prose would change every time somebody edited the name — which
+                // is exactly what must not happen to the field verdicts are recorded against.
+                { id: nextCriterionId(criteria), label: "", description: "", weight: "0.1" },
+              ])
+            }
+          >
+            <Icon.evals.addCriterion size={ICON.xs} />
+            Criterion
+          </Button>
+          <Pill tone={FACT_TONE.judge} title="The weights' sum — they are normalised, so it need not be 1">
+            Σ {total.toFixed(2)}
+          </Pill>
+          {/* BACK TO THE BUILT-IN RUBRIC. A saved custom rubric could only ever be edited. Past evals
+              keep the criteria they were scored on, so this changes the next eval only. */}
+          {!isDefault && !dirty && (
+            <Button
+              variant="ghost"
+              size="xs"
+              onClick={() => sendResetRubric(datasetId)}
+              disabled={!connected}
+              title="Score this dataset against the built-in rubric again. Past evals keep theirs."
             >
-              <Icon.evals.addCriterion size={ICON.xs} />
-              Criterion
-            </button>
-            <span className="text-tiny tabular-nums text-faint" title="The weights' sum — they are normalised, so it need not be 1">
-              Σ {total.toFixed(2)}
-            </span>
-            {/* BACK TO THE BUILT-IN RUBRIC. A saved custom rubric could only ever be edited. Past evals
-                keep the criteria they were scored on, so this changes the next eval only. */}
-            {!isDefault && !dirty && (
+              <Icon.evals.revertRubric size={ICON.xs} />
+              Reset to built-in
+            </Button>
+          )}
+          <span className="ml-auto flex items-center gap-1">
+            {dirty && (
               <button
                 type="button"
-                onClick={() => sendResetRubric(datasetId)}
-                disabled={!connected}
-                title="Score this dataset against the built-in rubric again. Past evals keep theirs."
-                className={`${textBtn} inline-flex items-center gap-1`}
+                onClick={() => setDraft(null)}
+                title="Revert to the saved rubric"
+                aria-label="Revert to the saved rubric"
+                className={SOFT_ICON_SM}
               >
                 <Icon.evals.revertRubric size={ICON.xs} />
-                Reset to built-in
               </button>
             )}
-            <span className="ml-auto flex items-center gap-1">
-              {dirty && (
-                <button
-                  type="button"
-                  onClick={() => setDraft(null)}
-                  title="Revert to the saved rubric"
-                  aria-label="Revert to the saved rubric"
-                  className={SOFT_ICON_SM}
-                >
-                  <Icon.evals.revertRubric size={ICON.xs} />
-                </button>
-              )}
-              {/* SAVING IS THE DECISION THE EDITOR EXISTS TO ASK, so it is the one filled button. */}
-              <button
-                type="button"
-                onClick={save}
-                disabled={!connected || !dirty || problem !== null}
-                title={!connected ? "Not connected" : problem ?? (dirty ? "Save this rubric for this dataset" : "Nothing to save")}
-                // Named as it reads: its words are an expression, which a sweep for marks cannot see.
-                aria-label={dirty ? "Save rubric" : "Saved"}
-                className={primaryBtnSm}
-              >
-                <Icon.evals.saveRubric size={ICON.sm} />
-                {dirty ? "Save rubric" : "Saved"}
-              </button>
-            </span>
-          </div>
+            {/* SAVING IS THE DECISION THE EDITOR EXISTS TO ASK, so it is the one filled button — and,
+                with nothing to save, a quiet one that says so with a green tick. */}
+            <Button
+              size="sm"
+              variant={dirty ? "default" : "secondary"}
+              onClick={save}
+              disabled={!connected || !dirty || problem !== null}
+              title={!connected ? "Not connected" : problem ?? (dirty ? "Save this rubric for this dataset" : "Nothing to save")}
+              // Named as it reads: its words are an expression, which a sweep for marks cannot see.
+              aria-label={dirty ? "Save rubric" : "Saved"}
+            >
+              {dirty ? <Icon.evals.saveRubric size={ICON.sm} /> : <Icon.evals.confirm size={ICON.sm} className="text-ok" />}
+              {dirty ? "Save rubric" : "Saved"}
+            </Button>
+          </span>
         </div>
-      )}
-    </div>
+      </CollapsibleContent>
+    </Collapsible>
   );
 }
 
@@ -559,7 +569,8 @@ function CheckMenu({ dataset }: { dataset: Dataset }) {
   const current = dataset.check_mode ?? null;
   const chosen = CHECKS.find((c) => c.mode === current) ?? CHECKS[0]!;
   return (
-    <div className="flex flex-wrap items-center gap-2 px-3 py-2 text-tiny" role="group" aria-label="Check answers against expected">
+    // ONE ROW, AND ITS SENTENCE WRAPS UNDER IT when the panel is narrow rather than being cut off.
+    <div className="flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1 px-3 py-2 text-tiny" role="group" aria-label="Check answers against expected">
       <Icon.evals.check size={ICON.xs} className="shrink-0 text-ok" />
       <span className={`${TYPE.sectionLabel} shrink-0`}>Check</span>
       <DropdownMenu>
@@ -587,7 +598,7 @@ function CheckMenu({ dataset }: { dataset: Dataset }) {
           </DropdownMenuRadioGroup>
         </DropdownMenuContent>
       </DropdownMenu>
-      <span className="min-w-0 truncate text-faint">{chosen.hint}</span>
+      <span className="min-w-0 flex-1 basis-44 leading-snug text-faint">{chosen.hint}</span>
     </div>
   );
 }
@@ -627,6 +638,9 @@ function ViewMenu({ view, onChange }: { view: CaseView; onChange: (v: CaseView) 
   );
 }
 
+/** Narrower than this, the dataset toolbar's six marks crush the dataset's name; they fold into a menu. */
+const TOOLBAR_FOLD_PX = 430;
+
 export function DatasetBuilder() {
   const activeAgentId = useBuildStore((s) => s.activeAgentId);
   const connected = useTraceStore((s) => s.connection === "open");
@@ -663,6 +677,10 @@ export function DatasetBuilder() {
   const renameRequest = useEvalStore((s) => s.renameRequest);
   const requestRename = useEvalStore((s) => s.requestRename);
   const fileRef = useRef<HTMLInputElement>(null);
+  /** How wide the toolbar is — too narrow for six marks, and its actions fold into one menu. */
+  const [bar, narrow] = useNarrowerThan<HTMLDivElement>(TOOLBAR_FOLD_PX);
+  /** Set by the overflow menu's Rename, so the menu closing does not take focus from the name field. */
+  const keepFocus = useRef(false);
   const examples = examplesOf(examplesByDataset, selectedDatasetId).filter(
     (e) => !(pendingDelete?.kind === "case" && pendingDelete.id === e.id),
   );
@@ -722,6 +740,19 @@ export function DatasetBuilder() {
     );
   }
 
+  /** The open dataset's cases, as a CSV in Downloads — from the toolbar's mark or its overflow menu. */
+  const exportCases = (): void => {
+    if (!selected) return;
+    const filename = `${selected.name.replace(/[^\w.-]+/g, "-").replace(/^-|-$/g, "") || "dataset"}.csv`;
+    download(filename, examplesToCsv(examples), "text/csv");
+    useUiStore.getState().showToast(`Saved to Downloads as ${filename}`, "ok");
+  };
+  /** UNDOABLE FOR FIVE SECONDS rather than gone in one click — see lib/evalUndo.ts. */
+  const deleteDataset = (): void => {
+    if (!selected) return;
+    deleteWithUndo({ kind: "dataset", id: selected.id, datasetId: selected.id, agentId: activeAgentId, label: selected.name, cases: examples.length });
+  };
+
   /**
    * The dataset's new name, sent — or the sentence saying why it was not. Shared by the field's
    * Enter and the confirm mark beside it.
@@ -737,19 +768,20 @@ export function DatasetBuilder() {
   };
 
   return (
-    <div className="flex h-full flex-col">
-      {/* THE DATASET AND WHAT CAN BE DONE WITH IT, AS ONE TOOLBAR. Which dataset is a menu — each with
-          how many cases it holds, and a new one at its foot — and every action on it is a mark whose
-          words are its tooltip, with Delete set apart at the row's end. It was a wrapping row of
-          chips over a second row of grey squares. */}
-      <div className="flex shrink-0 items-center gap-1 border-b border-hair px-4 py-2">
+    <div className="flex h-full flex-col overflow-hidden">
+      {/* THE DATASET AND WHAT CAN BE DONE WITH IT, AS ONE TOOLBAR — an editor's action bar. Which
+          dataset is a select box — each with how many cases it holds, and a new one at its foot — and
+          every action on it is a mark on its own square whose words are its tooltip, with Delete set
+          apart at the row's end. NARROWER THAN THE ROW NEEDS, the actions go into one overflow menu:
+          at the panel's narrowest the six squares had crushed the dataset's name to nothing. */}
+      <div ref={bar} className="flex h-12 shrink-0 items-center gap-1 border-b border-hair px-4">
         {renaming !== null && selected ? (
           <form
             className="flex min-w-0 flex-1 items-center gap-1"
             onSubmit={(e) => { e.preventDefault(); submitRename(); }}
           >
             <Icon.evals.renameDataset size={ICON.sm} className="mr-1 shrink-0 text-faint" />
-            <input
+            <Input
               value={renaming}
               onChange={(e) => { setRenaming(e.target.value); setRenameError(null); }}
               aria-invalid={renameError !== null}
@@ -761,7 +793,7 @@ export function DatasetBuilder() {
               }}
               autoFocus
               aria-label="Dataset name"
-              className={`h-7 min-w-0 flex-1 rounded-input border bg-elevated px-2 text-caption text-ink outline-none focus-visible:shadow-focusring ${renameError ? "border-err" : "border-edge"}`}
+              className="flex-1"
             />
             <IconButton variant="soft" icon={Icon.evals.confirm} label="Rename" size={ICON.sm} onClick={submitRename} className="text-ok hover:text-ok" />
             <IconButton variant="soft" icon={Icon.evals.dismiss} label="Keep the old name" size={ICON.sm} onClick={() => { setRenaming(null); setRenameError(null); }} />
@@ -770,10 +802,10 @@ export function DatasetBuilder() {
         ) : datasets.length > 0 ? (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <button type="button" className={cn(EVAL_SELECT, "max-w-[260px]")} aria-label="Choose a dataset" title="The dataset open in this tab — choose another">
-                <Icon.evals.datasetView size={ICON.xs} className="shrink-0 text-faint" />
-                <span className="min-w-0 truncate">{selected?.name ?? "Choose a dataset"}</span>
-                {selected && <span className="shrink-0 tabular-nums text-faint">{examples.length}</span>}
+              <button type="button" className={cn(EVAL_SELECT, "h-8 max-w-[280px] flex-1")} aria-label="Choose a dataset" title="The dataset open in this tab — choose another">
+                <Icon.evals.datasetView size={ICON.xs} className="shrink-0 text-reviewed" />
+                <span className="min-w-0 flex-1 truncate text-left">{selected?.name ?? "Choose a dataset"}</span>
+                {selected && <Pill tone={FACT_TONE.dataset} className="h-4 px-1.5">{examples.length}</Pill>}
                 <Icon.evals.menu size={ICON.xs} className="shrink-0 text-faint" />
               </button>
             </DropdownMenuTrigger>
@@ -783,9 +815,9 @@ export function DatasetBuilder() {
               <DropdownMenuRadioGroup value={selectedDatasetId ?? ""} onValueChange={(id) => selectDataset(activeAgentId, id)}>
                 {datasets.map((d) => (
                   <DropdownMenuRadioItem key={d.id} value={d.id} title={d.name}>
-                    <Icon.evals.datasetView size={ICON.xs} className="shrink-0 text-faint" />
+                    <Icon.evals.datasetView size={ICON.xs} className="shrink-0 text-reviewed" />
                     <span className="min-w-0 flex-1 truncate text-caption">{d.name}</span>
-                    <span className="shrink-0 text-tiny tabular-nums text-faint">{d.example_count ?? 0}</span>
+                    <Pill tone={FACT_TONE.dataset} className="h-4 px-1.5">{d.example_count ?? 0}</Pill>
                     <Chosen on={d.id === selectedDatasetId} />
                   </DropdownMenuRadioItem>
                 ))}
@@ -798,7 +830,7 @@ export function DatasetBuilder() {
             </DropdownMenuContent>
           </DropdownMenu>
         ) : (
-          <span className="flex items-center gap-1.5 text-caption text-muted">
+          <span className="flex flex-1 items-center gap-1.5 text-caption text-muted">
             <Icon.evals.datasetView size={ICON.xs} className="text-faint" />
             No datasets yet
           </span>
@@ -815,9 +847,47 @@ export function DatasetBuilder() {
             onClick={() => sendCreateDataset(activeAgentId)}
           />
         )}
-        {selected && renaming === null && (
+        {selected && renaming === null && (narrow ? (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button type="button" className={cn(SOFT_ICON, "ml-auto")} aria-label="More actions on this dataset" title="More actions on this dataset">
+                <Icon.evals.moreActions size={ICON.sm} />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              edge="strong"
+              align="end"
+              aria-label="Dataset actions"
+              // A RENAME OPENS A FIELD, and the menu handing focus back to its button as it closes
+              // would take it straight back out of that field.
+              onCloseAutoFocus={(e) => { if (keepFocus.current) { e.preventDefault(); keepFocus.current = false; } }}
+            >
+              <DropdownMenuItem size="compact" onSelect={() => { keepFocus.current = true; setRenaming(selected.name); }}>
+                <Icon.evals.renameDataset size={ICON.xs} />
+                Rename this dataset
+              </DropdownMenuItem>
+              <DropdownMenuItem size="compact" onSelect={() => fileRef.current?.click()}>
+                <Icon.evals.importCsv size={ICON.xs} />
+                Import examples from a CSV
+              </DropdownMenuItem>
+              <DropdownMenuItem size="compact" disabled={!examples.length} title={examples.length ? undefined : "Nothing to export yet"} onSelect={exportCases}>
+                <Icon.evals.exportCsv size={ICON.xs} />
+                Export these cases as a CSV
+              </DropdownMenuItem>
+              <DropdownMenuItem size="compact" disabled={!connected} title={connected ? undefined : "Not connected"} onSelect={() => sendDuplicateDataset(selected.id)}>
+                <Icon.evals.duplicateDataset size={ICON.xs} />
+                Duplicate this dataset
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem size="compact" tone="danger" onSelect={deleteDataset}>
+                <Icon.evals.deleteDataset size={ICON.xs} />
+                Delete this dataset
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ) : (
           <>
-            <span aria-hidden className="mx-1 h-4 w-px shrink-0 bg-hair" />
+            <Separator orientation="vertical" className="mx-1" />
             <IconButton variant="soft" icon={Icon.evals.renameDataset} label="Rename this dataset" size={ICON.sm} onClick={() => setRenaming(selected.name)} />
             <IconButton variant="soft" icon={Icon.evals.importCsv} label="Import examples from a CSV" size={ICON.sm} onClick={() => fileRef.current?.click()} />
             <IconButton variant="soft"
@@ -825,11 +895,7 @@ export function DatasetBuilder() {
               label="Export these cases as a CSV"
               size={ICON.sm}
               disabledReason={examples.length ? null : "Nothing to export yet"}
-              onClick={() => {
-                const filename = `${selected.name.replace(/[^\w.-]+/g, "-").replace(/^-|-$/g, "") || "dataset"}.csv`;
-                download(filename, examplesToCsv(examples), "text/csv");
-                useUiStore.getState().showToast(`Saved to Downloads as ${filename}`, "ok");
-              }}
+              onClick={exportCases}
             />
             <IconButton variant="soft"
               icon={Icon.evals.duplicateDataset}
@@ -845,13 +911,10 @@ export function DatasetBuilder() {
               label="Delete this dataset"
               size={ICON.sm}
               danger
-              onClick={() => deleteWithUndo({
-                kind: "dataset", id: selected.id, datasetId: selected.id, agentId: activeAgentId,
-                label: selected.name, cases: examples.length,
-              })}
+              onClick={deleteDataset}
             />
           </>
-        )}
+        ))}
         <input
           ref={fileRef}
           type="file"
@@ -869,18 +932,20 @@ export function DatasetBuilder() {
           the trace's card. Under the dataset actions and above the examples, because it is the
           standard those examples will be scored against. */}
       {selected && (
-        <section aria-label="Scoring" className="mx-4 mb-2 mt-3 shrink-0 rounded-card border border-hair bg-panel">
+        // IT SHRINKS, AND SCROLLS INSIDE ITSELF, when an open rubric would not fit: everything here
+        // used to refuse to, and the composer under the cases was drawn over the run bar.
+        <section aria-label="Scoring" className="mx-4 mb-2 mt-3 flex min-h-[5.5rem] shrink flex-col overflow-hidden rounded-card border border-hair bg-panel">
           <CheckMenu dataset={selected} />
           <RubricEditor key={selected.id} datasetId={selected.id} />
         </section>
       )}
 
       {(error || importNote) && (
-        <div className="mx-4 mb-2 flex shrink-0 items-center gap-2 rounded-card border border-hair bg-panel px-3 py-2 text-tiny" role={error ? "alert" : "status"}>
+        <Alert tone={error ? "destructive" : "default"} className="mx-4 mb-2 shrink-0" role={error ? "alert" : "status"}>
           {error
-            ? <Icon.evals.refused size={ICON.sm} className="shrink-0 text-err" />
-            : <Icon.evals.importCsv size={ICON.sm} className="shrink-0 text-faint" />}
-          <span className={`min-w-0 flex-1 ${error ? "text-err" : "text-muted"}`}>{error ?? importNote}</span>
+            ? <Icon.evals.refused size={ICON.sm} className="shrink-0" />
+            : <Icon.evals.importCsv size={ICON.sm} className="shrink-0 text-reviewed" />}
+          <span className="min-w-0 flex-1">{error ?? importNote}</span>
           <button
             type="button"
             onClick={() => { setError(null); setImportNote(null); }}
@@ -890,11 +955,11 @@ export function DatasetBuilder() {
           >
             <Icon.global.dismissNotice size={ICON.xs} />
           </button>
-        </div>
+        </Alert>
       )}
 
       {/* examples */}
-      <div className="flex-1 min-h-0 overflow-y-auto px-4">
+      <div className="min-h-[7rem] flex-1 overflow-y-auto px-4">
         {!selected ? (
           <EmptyState
             icon={DatabaseIcon}

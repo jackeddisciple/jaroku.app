@@ -112,10 +112,10 @@ console.log("\nevery rendered button can be pressed for a reason");
       if (/disabled(?:=\{true\}|(?=[\s>]))/.test(attrs)) continue;
       if (/onClick|onMouseDown|onPointerDown|onKeyDown/.test(attrs)) continue;
       // A RADIX TRIGGER'S CHILD IS PRESSED THROUGH THE TRIGGER. `<DropdownMenuTrigger asChild>` — and
-      // the Popover's and Dialog's — hands its own pointer and key handlers to the button directly
-      // inside it, and that is the press: it opens the menu, popover or dialog. Directly inside,
-      // nothing between, so it exempts exactly that.
-      if (/<(?:DropdownMenu|Popover|Dialog)Trigger asChild>\s*$/.test(text.slice(Math.max(0, at - 120), at))) continue;
+      // the Popover's, Dialog's and Collapsible's — hands its own pointer and key handlers to the
+      // button directly inside it, and that is the press: it opens the menu, popover or dialog, or
+      // folds the section. Directly inside, nothing between, so it exempts exactly that.
+      if (/<(?:DropdownMenu|Popover|Dialog|Collapsible)Trigger asChild>\s*$/.test(text.slice(Math.max(0, at - 120), at))) continue;
       const line = text.slice(0, at).split("\n").length;
       dead.push(`${path}:${line}`);
     }

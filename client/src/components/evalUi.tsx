@@ -23,6 +23,8 @@ export type PillTone = BadgeTone;
 export const SOFT_ICON = buttonVariants({ variant: "soft", size: "icon" });
 export const SOFT_ICON_SM = buttonVariants({ variant: "soft", size: "icon-sm" });
 export const SOFT_ICON_XS = buttonVariants({ variant: "soft", size: "icon-xs" });
+/** A removal's square, at 28px — red on approach, never amber. */
+export const SOFT_DANGER_SM = buttonVariants({ variant: "destructive", size: "icon-sm" });
 
 /**
  * A trigger that opens a list to choose from — which eval, which dataset, which models — as an
