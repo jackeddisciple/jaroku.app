@@ -16,7 +16,8 @@ import { useUiStore } from "../store/uiStore.ts";
 import { useEvalStore } from "../store/evalStore.ts";
 import { modelName, useProviderStore } from "../store/providerStore.ts";
 import { ProviderMark } from "../lib/icons.tsx";
-import { FACT_TONE, ModelLabel, Pill } from "./evalUi.tsx";
+import { FACT_TONE, ModelLabel, Pill, SectionFold } from "./evalUi.tsx";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table.tsx";
 import { fmtCost, fmtLatency } from "../lib/format.ts";
 import { CASE_FACETS, criterionLabel, criterionTable, facetCounts, rowIs, type CaseFacet } from "../lib/evalView.ts";
 import { useNarrowerThan } from "../lib/useNarrower.ts";
@@ -347,8 +348,10 @@ function CriterionMeter({ value, n, lead }: { value: number | null; n: number; l
   if (value === null) return <span className="text-faint" title="nothing scored on this criterion">—</span>;
   return (
     <span className="inline-flex items-center justify-end gap-2" title={`the mean of ${n} score${n === 1 ? "" : "s"}`}>
+      {/* IN THE SCORE'S BAND, as the quality bar is — green from 3.2 of 4, red under 1.6 — the leader's
+          at full strength and the rest a step back. */}
       <span aria-hidden className="h-1.5 w-10 shrink-0 overflow-hidden rounded-full bg-active">
-        <span className={`block h-full rounded-full ${lead ? "bg-ink" : "bg-muted"}`} style={{ width: `${(value / 4) * 100}%` }} />
+        <span className={`block h-full rounded-full ${value >= 3.2 ? "bg-ok" : value < 1.6 ? "bg-err" : "bg-ink"} ${lead ? "" : "opacity-60"}`} style={{ width: `${(value / 4) * 100}%` }} />
       </span>
       <span className={`tabular-nums ${lead ? "text-ink" : "text-muted"}`}>{value.toFixed(1)}</span>
     </span>
@@ -365,71 +368,56 @@ function CriterionMeter({ value, n, lead }: { value: number | null; n: number; l
  */
 export function CriterionBreakdown({ results }: { results: EvalResults }) {
   const providerModels = useProviderStore((s) => s.models);
-  const [open, setOpen] = useState(true);
   const rows = criterionTable(results);
   if (!rows.length) return null;
   const totalWeight = rows.reduce((sum, r) => sum + (r.weight ?? 0), 0);
-  const cell = (first: boolean): string => `py-2 ${first ? "" : "border-t border-hair"}`;
   return (
-    <section className="mt-5" aria-label="By criterion">
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        aria-expanded={open}
-        className="mb-1.5 flex min-h-8 w-full items-center gap-2 rounded-control text-left focus-visible:outline-none focus-visible:shadow-focusring"
-      >
-        <span aria-hidden className={`text-faint transition-transform duration-fast ${open ? "" : "-rotate-90"}`}><Icon.trace.fold size={ICON.xs} /></span>
-        <Icon.evals.criteria size={ICON.xs} className="text-faint" />
-        <span className={TYPE.sectionLabel}>By criterion</span>
-        <span className="text-tiny text-faint">each model's average, 0–4</span>
-      </button>
-      {open && (
-      <div className="overflow-x-auto rounded-card border border-hair bg-panel">
-        <table className="w-full border-separate border-spacing-0 text-caption">
-          <thead>
-            <tr className={TYPE.sectionLabel}>
-              <th className="pb-1.5 pl-3 pr-3 pt-2.5 text-left font-normal">Criterion</th>
+    <SectionFold icon={Icon.evals.criteria} label="By criterion" aside="each model's average, 0–4" ariaLabel="By criterion" className="mt-5">
+      <div className="overflow-hidden rounded-card border border-hair bg-elevated">
+        <Table>
+          <TableHeader>
+            <tr>
+              <TableHead className="pl-3 pr-3">Criterion</TableHead>
               {results.providers.map((p, i) => (
-                <th
+                <TableHead
                   key={`${p.provider} ${p.model}`}
-                  className={`whitespace-nowrap pb-1.5 pt-2.5 text-right font-normal ${i === results.providers.length - 1 ? "pl-2 pr-3" : "px-2"}`}
+                  className={`text-right ${i === results.providers.length - 1 ? "pl-2 pr-3" : "px-2"}`}
                   title={`${p.provider} · ${p.model}`}
                 >
-                  <span className="inline-flex items-center justify-end gap-1">
+                  <span className="inline-flex items-center justify-end gap-1 normal-case tracking-normal">
                     <ProviderMark provider={p.provider} size={ICON.badge} />
                     {modelName(providerModels, p.model)}
                   </span>
-                </th>
+                </TableHead>
               ))}
             </tr>
-          </thead>
-          <tbody>
-            {rows.map((r, i) => {
+          </TableHeader>
+          <TableBody>
+            {rows.map((r) => {
               const values = r.scores.map((s) => s.avg).filter((v): v is number => v !== null);
               const top = values.length > 1 && Math.max(...values) > Math.min(...values) ? Math.max(...values) : null;
               return (
-                <tr key={r.id} title={r.description ?? undefined}>
-                  <td className={`${cell(i === 0)} pl-3 pr-3`}>
+                <TableRow key={r.id} title={r.description ?? undefined}>
+                  <TableCell className="pl-3 pr-3">
                     <span className="text-ink">{r.label}</span>
                     {r.weight !== null && totalWeight > 0 && (
                       <Pill tone={FACT_TONE.judge} title="This criterion's share of the overall score" className="ml-1.5 align-middle">
                         {Math.round((r.weight / totalWeight) * 100)}%
                       </Pill>
                     )}
-                  </td>
+                  </TableCell>
                   {r.scores.map((s, j) => (
-                    <td key={`${s.provider} ${s.model}`} className={`${cell(i === 0)} text-right ${j === r.scores.length - 1 ? "pl-2 pr-3" : "px-2"}`}>
+                    <TableCell key={`${s.provider} ${s.model}`} className={`text-right ${j === r.scores.length - 1 ? "pl-2 pr-3" : "px-2"}`}>
                       <CriterionMeter value={s.avg} n={s.n} lead={top !== null && s.avg === top} />
-                    </td>
+                    </TableCell>
                   ))}
-                </tr>
+                </TableRow>
               );
             })}
-          </tbody>
-        </table>
+          </TableBody>
+        </Table>
       </div>
-      )}
-    </section>
+    </SectionFold>
   );
 }
 

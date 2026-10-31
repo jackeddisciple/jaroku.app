@@ -12,6 +12,8 @@ import { cn } from "../lib/utils.ts";
 import { modelName, useProviderStore } from "../store/providerStore.ts";
 import { Badge, type BadgeTone } from "./ui/badge.tsx";
 import { buttonVariants } from "./ui/button.tsx";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collapsible.tsx";
+import { TYPE } from "../lib/tokens.ts";
 
 export type PillTone = BadgeTone;
 
@@ -140,5 +142,52 @@ export function ModelLabel({
       <span className="min-w-0 truncate">{modelName(providerModels, model)}</span>
       {effort && <Pill tone={FACT_TONE.judge} className="h-4 px-1">{effort}</Pill>}
     </span>
+  );
+}
+
+/**
+ * A section that folds, as an editor's sidebar folds one: the chevron, the section's mark, its word in
+ * caps, how many things are in it, and a word about it — shadcn's Collapsible underneath, so the row
+ * says it is expanded and which region it controls. Open until somebody closes it.
+ */
+export function SectionFold({
+  icon: Mark,
+  label,
+  count,
+  aside,
+  ariaLabel,
+  className = "",
+  children,
+}: {
+  icon: IconComponent;
+  label: string;
+  /** How many things are in it, as a badge — a total, or nothing. */
+  count?: number;
+  /** A word after the count: what the figures in it are. */
+  aside?: ReactNode;
+  ariaLabel: string;
+  className?: string;
+  children: ReactNode;
+}) {
+  return (
+    <Collapsible defaultOpen asChild>
+      <section aria-label={ariaLabel} className={className}>
+        <CollapsibleTrigger asChild>
+          <button
+            type="button"
+            className="group -mx-1 mb-1.5 flex min-h-8 w-[calc(100%+0.5rem)] items-center gap-2 rounded-control px-1 text-left transition-colors duration-fast hover:bg-active/50 focus-visible:outline-none focus-visible:shadow-focusring"
+          >
+            <span aria-hidden className="text-faint transition-transform duration-fast group-data-[state=closed]:-rotate-90">
+              <Icon.trace.fold size={ICON.xs} />
+            </span>
+            <Mark size={ICON.xs} className="text-faint" />
+            <span className={TYPE.sectionLabel}>{label}</span>
+            {count !== undefined && <Pill className="h-4 px-1.5">{count}</Pill>}
+            {aside && <span className="min-w-0 truncate text-tiny text-faint">{aside}</span>}
+          </button>
+        </CollapsibleTrigger>
+        <CollapsibleContent>{children}</CollapsibleContent>
+      </section>
+    </Collapsible>
   );
 }

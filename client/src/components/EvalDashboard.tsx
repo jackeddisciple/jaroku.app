@@ -21,13 +21,13 @@ import {
   resultsToJson,
   summaryToCsv,
 } from "../lib/evalExport.ts";
-import { useState } from "react";
 import { ICON } from "../lib/tokens.ts";
-import { TYPE } from "../lib/tokens.ts";
 import { Icon, type IconComponent } from "../lib/icons/registry.ts";
 import { MetricFigure, type MetricFigureProps } from "./MetricFigure.tsx";
 import { useUiStore } from "../store/uiStore.ts";
-import { ModelLabel, Pill } from "./evalUi.tsx";
+import { ModelLabel, Pill, SectionFold } from "./evalUi.tsx";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table.tsx";
+import { cn } from "../lib/utils.ts";
 import type { EvalResults, ProviderMetrics } from "../types.ts";
 
 /**
@@ -52,13 +52,13 @@ function Head({ Mark, children, title, align = "right", className = "" }: {
   className?: string;
 }) {
   return (
-    <th className={`pb-1.5 pt-2.5 font-normal ${align === "left" ? "text-left" : "text-right"} ${className}`} title={title}>
+    <TableHead className={cn(align === "left" ? "text-left" : "text-right", className)} title={title}>
       <span className={`inline-flex items-center gap-1 ${align === "left" ? "" : "justify-end"}`}>
         {/* A TICK IS GREEN, even in a header (the product owner, 2026-10-31). */}
         <Mark size={ICON.badge} className={Mark === Icon.evals.ranOk ? "text-ok" : undefined} />
         {children}
       </span>
-    </th>
+    </TableHead>
   );
 }
 
@@ -121,8 +121,10 @@ function QualityCell({ p, lead = false }: { p: ProviderMetrics; lead?: boolean }
   const tone = p.qualityScore >= 0.8 ? "text-ok" : p.qualityScore < 0.4 ? "text-err" : "text-ink";
   return (
     <span className="inline-flex items-center justify-end gap-2">
+      {/* THE BAR IN THE SCORE'S OWN BAND — green from 80, red under 40, ink between — and the leader's
+          at full strength, the rest a step back, so the lead still reads before any number does. */}
       <span aria-hidden className="h-1.5 w-10 shrink-0 overflow-hidden rounded-full bg-active">
-        <span className={`block h-full rounded-full ${lead ? "bg-ink" : "bg-muted"}`} style={{ width: `${Math.round(p.qualityScore * 100)}%` }} />
+        <span className={`block h-full rounded-full ${p.qualityScore >= 0.8 ? "bg-ok" : p.qualityScore < 0.4 ? "bg-err" : "bg-ink"} ${lead ? "" : "opacity-60"}`} style={{ width: `${Math.round(p.qualityScore * 100)}%` }} />
       </span>
       <span className={`${tone} tabular-nums`}>
         {(p.qualityScore * 100).toFixed(0)}
@@ -160,7 +162,7 @@ function RanOk({ p }: { p: ProviderMetrics }) {
   return (
     <span className="inline-flex items-center justify-end gap-1.5 whitespace-nowrap tabular-nums">
       <span aria-hidden className="flex h-1.5 w-8 shrink-0 overflow-hidden rounded-full bg-active">
-        <span className="h-full bg-muted" style={{ width: share(p.succeeded) }} />
+        <span className="h-full bg-ok" style={{ width: share(p.succeeded) }} />
         <span className="h-full bg-err" style={{ width: share(p.failed) }} />
       </span>
       <span className={p.failed > 0 ? "text-err" : "text-muted"}>
@@ -196,8 +198,8 @@ function ProviderCard({ p, lead }: { p: ProviderMetrics; lead: ReturnType<typeof
     </div>
   );
   return (
-    <div className="rounded-card border border-hair bg-panel px-3 py-2.5 text-caption">
-      <div className="flex items-center gap-1 pb-2">
+    <div className="rounded-card border border-hair bg-elevated px-3 py-2.5 text-caption">
+      <div className="-mx-3 mb-2 flex items-center gap-1 border-b border-hair px-3 pb-2">
         <ModelLabel provider={p.provider} model={p.model} className="text-label text-ink" />
         {lead.best === p.model && <LeadMark title="highest quality" Mark={Icon.evals.bestQuality} />}
         {lead.cheapest === p.model && <LeadMark title="cheapest per run" Mark={Icon.evals.cheapest} />}
@@ -328,37 +330,22 @@ export function ComparisonTable({
   const checking = results.providers.some((p) => (p.checked ?? 0) > 0);
   // HOW WIDE THE PANEL ACTUALLY IS. Below about 600px the columns were clipped with nothing to say so.
   const [box, narrow] = useNarrowerThan<HTMLDivElement>(STACK_BELOW_PX);
-  // FOLDED AS THE TRACE FOLDS A SECTION, so the cases under it can be reached without a scroll past
-  // a comparison somebody has already read.
-  const [open, setOpen] = useState(true);
-  const cell = (first: boolean): string => `py-2 ${first ? "" : "border-t border-hair"}`;
 
   return (
     <div ref={box}>
       <EvalFigures results={results} />
-      {/* THE COMPARISON AS A SECTION OF ITS OWN — its word over it and the table in the trace's card —
-          rather than a bare table under a line of text. */}
-      <section aria-label="Models">
-        <button
-          type="button"
-          onClick={() => setOpen((v) => !v)}
-          aria-expanded={open}
-          className="mb-1.5 flex min-h-8 w-full items-center gap-2 rounded-control text-left focus-visible:outline-none focus-visible:shadow-focusring"
-        >
-          <span aria-hidden className={`text-faint transition-transform duration-fast ${open ? "" : "-rotate-90"}`}><Icon.trace.fold size={ICON.xs} /></span>
-          <Icon.evals.models size={ICON.xs} className="text-faint" />
-          <span className={TYPE.sectionLabel}>Models</span>
-          <span className="text-tiny tabular-nums text-faint">{results.providers.length}</span>
-        </button>
-        {!open ? null : narrow ? (
+      {/* THE COMPARISON AS A SECTION OF ITS OWN — an editor's folding section over shadcn's Table, so
+          the cases under it can be reached without a scroll past a comparison already read. */}
+      <SectionFold icon={Icon.evals.models} label="Models" count={results.providers.length} ariaLabel="Models">
+        {narrow ? (
           <div className="space-y-2">
             {results.providers.map((p) => <ProviderCard key={`${p.provider} ${p.model}`} p={p} lead={lead} />)}
           </div>
         ) : (
-        <div className="overflow-x-auto rounded-card border border-hair bg-panel">
-          <table className="w-full text-caption border-separate border-spacing-0">
-            <thead>
-              <tr className={TYPE.sectionLabel}>
+        <div className="overflow-hidden rounded-card border border-hair bg-elevated">
+          <Table>
+            <TableHeader>
+              <tr>
                 <Head Mark={Icon.evals.models} align="left" className="pl-3 pr-3">Model</Head>
                 <Head Mark={Icon.evals.quality} className="px-2" title="The judge's mean score, over the answers it scored">Quality</Head>
                 {/* PER RUN AND NOT THE TOTAL, in the table: it is the like-for-like figure, and the total is in
@@ -370,57 +357,57 @@ export function ComparisonTable({
                 )}
                 <Head Mark={Icon.evals.ranOk} className="pl-2 pr-3" title="Of the jobs that ran, how many finished without failing. Not a judgement of the answer.">Ran OK</Head>
               </tr>
-            </thead>
-            <tbody>
-              {results.providers.map((p, i) => (
-                <tr
+            </TableHeader>
+            <TableBody>
+              {results.providers.map((p) => (
+                <TableRow
                   key={`${p.provider} ${p.model}`}
                   onClick={() => onSelectProvider?.(p)}
                   title={`${p.provider} · ${p.model} — ${p.costUnknown ? "cost unknown" : `${fmtCost(p.comparisonCostUsd ?? 0)} on answered runs`}; ${fmtCost(p.spentUsd)} spent and ${fmtTokens(p.tokens)} used, failed attempts included`}
-                  className={`${onSelectProvider ? "cursor-pointer" : ""} transition-colors hover:bg-active/40`}
+                  className={onSelectProvider ? "cursor-pointer" : ""}
                 >
                   {/* A model's name breaks as a unit or not at all. While the judge is still scoring, the
                       quality column carries an extra "· N unscored" and squeezes this one — which was
                       enough to wrap "claude-haiku-4-5" after the hyphen, leaving a row headed
                       "claude-haiku-4-" over a lone "5". The name of the thing being compared is the last
                       text in a comparison table that should be guessable. */}
-                  <td className={`${cell(i === 0)} pl-3 pr-3`}>
+                  <TableCell className="pl-3 pr-3">
                     <ModelLabel provider={p.provider} model={p.model} className="whitespace-nowrap text-label text-ink" />
-                  </td>
-                  <td className={`${cell(i === 0)} px-2 text-right whitespace-nowrap`}>
+                  </TableCell>
+                  <TableCell className="text-right whitespace-nowrap">
                     <QualityCell p={p} lead={lead.best === p.model} />
                     {lead.best === p.model && p.qualityScore !== null && (
                       <LeadMark title="highest quality" Mark={Icon.evals.bestQuality} />
                     )}
-                  </td>
-                  <td className={`${cell(i === 0)} px-2 text-right whitespace-nowrap`}>
+                  </TableCell>
+                  <TableCell className="text-right whitespace-nowrap">
                     <PerRunCell p={p} />
                     {lead.cheapest === p.model && !p.costUnknown && (
                       <LeadMark title="cheapest per run" Mark={Icon.evals.cheapest} />
                     )}
-                  </td>
-                  <td className={`${cell(i === 0)} px-2 text-right text-muted tabular-nums whitespace-nowrap`}>
+                  </TableCell>
+                  <TableCell className="text-right text-muted tabular-nums whitespace-nowrap">
                     {fmtLatency(p.latencyP50Ms)}
                     <span className="text-faint"> · {fmtLatency(p.latencyP95Ms)}</span>
                     {lead.fastest === p.model && p.latencyP50Ms !== null && (
                       <LeadMark title="fastest" Mark={Icon.evals.fastest} />
                     )}
-                  </td>
+                  </TableCell>
                   {checking && (
-                    <td className={`${cell(i === 0)} px-2 text-right whitespace-nowrap tabular-nums`}>
+                    <TableCell className="text-right whitespace-nowrap tabular-nums">
                       <MatchCell p={p} />
-                    </td>
+                    </TableCell>
                   )}
-                  <td className={`${cell(i === 0)} pl-2 pr-3 text-right`}>
+                  <TableCell className="pl-2 pr-3 text-right">
                     <RanOk p={p} />
-                  </td>
-                </tr>
+                  </TableCell>
+                </TableRow>
               ))}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         </div>
         )}
-      </section>
+      </SectionFold>
     </div>
   );
 }
