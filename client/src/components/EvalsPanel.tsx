@@ -690,7 +690,9 @@ export function EvalsPanel() {
           {(evals.length > 0 || allDatasets || (hasDatasets && selectedDatasetId)) && (
             // AN EDITOR'S VIEW TOOLBAR, pinned while the results scroll under it, so which eval this
             // is — and against which — stays in sight down a long list of cases.
-            <div className="sticky top-0 z-10 -mx-4 -mt-3 mb-3 flex flex-wrap items-center gap-1.5 border-b border-hair bg-bg px-4 py-2">
+            // `-top-3`: a sticky box stops at its scroller's padding, and the 12px above it showed the
+            // results scrolling past.
+            <div className="sticky -top-3 z-10 -mx-4 -mt-3 mb-3 flex flex-wrap items-center gap-1.5 border-b border-hair bg-bg px-4 py-2">
               {evals.length > 0 && (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>

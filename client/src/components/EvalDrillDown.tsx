@@ -16,7 +16,10 @@ import { useUiStore } from "../store/uiStore.ts";
 import { useEvalStore } from "../store/evalStore.ts";
 import { modelName, useProviderStore } from "../store/providerStore.ts";
 import { ProviderMark } from "../lib/icons.tsx";
-import { FACT_TONE, ModelLabel, Pill, SectionFold } from "./evalUi.tsx";
+import { FACT_TONE, ModelLabel, Pill, SectionFold, type PillTone } from "./evalUi.tsx";
+import { Alert } from "./ui/alert.tsx";
+import { Button } from "./ui/button.tsx";
+import { ToggleGroup, ToggleGroupItem } from "./ui/toggle-group.tsx";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table.tsx";
 import { fmtCost, fmtLatency } from "../lib/format.ts";
 import { CASE_FACETS, criterionLabel, criterionTable, facetCounts, rowIs, type CaseFacet } from "../lib/evalView.ts";
@@ -24,10 +27,7 @@ import { useNarrowerThan } from "../lib/useNarrower.ts";
 import { ICON } from "../lib/tokens.ts";
 import { Truncate } from "./Truncate.tsx";
 import { TYPE } from "../lib/tokens.ts";
-import { Chip } from "./Chip.tsx";
 import { SectionHeader } from "./SectionHeader.tsx";
-import { Segmented, type SegmentOption } from "./Segmented.tsx";
-import { secondaryBtn } from "./buttons.ts";
 import type { EvalResults, ExampleCell } from "../types.ts";
 import { Icon, type IconComponent } from "../lib/icons/registry.ts";
 import { IconButton } from "./IconButton.tsx";
@@ -80,23 +80,25 @@ function ScoreChip({ cell, name, active, onClick }: { cell: ExampleCell; name: s
     ? cell.status === "failed" || cell.status === "timed_out" ? ` — ${cell.error ?? cell.status}` : ` — ${look.label}`
     : cell.score === null ? ` — ${cell.scoreError ?? "unscored"}` : "";
   return (
-    <Chip
+    // A CELL AS A CHIP THAT OPENS IT: the provider's mark, the model's name and the score in its band's
+    // colour, on the field's ground — and, open, held down with an ink ring rather than filled, so the
+    // score keeps its colour while it is the one being read.
+    <button
+      type="button"
       onClick={onClick}
-      selected={active}
-      // The score rides in the figure slot, which is tabular everywhere, so a column of these
-      // lines up. The model id used to be set in mono beside it, on the argument that it is an
-      // identifier — typography.pdf §04 puts "provider and model labels" in its Sans list and §05
-      // refuses the argument in as many words, and the alignment was always `tabular-nums` doing
-      // the work rather than the face.
-      tone="muted"
+      aria-pressed={active}
       title={`${cell.model}${why}`}
-      // THE PROVIDER'S MARK, so a row of four chips is told apart by its marks before its names.
-      icon={<ProviderMark provider={cell.provider} size={ICON.xs} />}
-      figure={<span className={`${tone}${look?.struck ? " line-through" : ""}`}>{label}</span>}
+      className={`inline-flex h-7 max-w-full items-center gap-1.5 rounded-control border px-2 text-tiny transition-colors duration-fast focus-visible:outline-none focus-visible:shadow-focusring ${
+        active ? "border-ink bg-elevated text-ink ring-1 ring-ink" : "border-edge bg-elevated text-muted hover:border-grip hover:bg-panel hover:text-ink"
+      }`}
     >
+      {/* THE PROVIDER'S MARK, so a row of four chips is told apart by its marks before its names. */}
+      <span aria-hidden className="inline-flex shrink-0"><ProviderMark provider={cell.provider} size={ICON.xs} /></span>
       {/* BY THE NAME THE RUN BAR USES — "Haiku 4.5" — with the id kept in the tooltip. */}
       <Truncate className="max-w-[110px]">{name}</Truncate>
-    </Chip>
+      {/* The score in the figure slot, tabular, so a column of these lines up. */}
+      <span className={`tabular-nums ${tone}${look?.struck ? " line-through" : ""}`}>{label}</span>
+    </button>
   );
 }
 
@@ -131,27 +133,32 @@ export function ClampedText({ text, lines = 3, className = "" }: { text: string;
   );
 }
 
+/** A criterion's steps in the score's band: green at 3 and 4, red at 0 and 1, ink between. */
+const STEP_FILL = (value: number): string => (value >= 3 ? "bg-ok" : value <= 1 ? "bg-err" : "bg-ink");
+
 /** A criterion's 0–4 score as four steps — the judge's anchored scale, which is four steps up from 0. */
 function Steps({ value }: { value: number }) {
   return (
     <span aria-hidden className="inline-flex gap-0.5">
       {[1, 2, 3, 4].map((i) => (
-        <span key={i} className={`h-1.5 w-2.5 rounded-full ${value >= i ? "bg-muted" : "bg-active"}`} />
+        <span key={i} className={`h-1.5 w-2.5 rounded-full ${value >= i ? STEP_FILL(value) : "bg-active"}`} />
       ))}
     </span>
   );
 }
 
 /** One of a cell's parts — the answer, what was expected, the judge — under its mark and its word. */
-function Part({ Mark, label, aside, children }: { Mark: IconComponent; label: string; aside?: ReactNode; children: ReactNode }) {
+function Part({ Mark, label, aside, tone = "text-faint", children }: { Mark: IconComponent; label: string; aside?: ReactNode; tone?: string; children: ReactNode }) {
+  // AN EDITOR'S PANE: its name in a header bar on the panel's ground, and what it holds under it — so
+  // an answer and what was expected sit side by side as two documents, split as an editor splits.
   return (
-    <div className="min-w-0">
-      <div className={`mb-1 flex items-center gap-1.5 ${TYPE.sectionLabel}`}>
-        <Mark size={ICON.xs} className="shrink-0 text-faint" />
+    <div className="min-w-0 overflow-hidden rounded-control border border-hair">
+      <div className={`flex min-h-7 items-center gap-1.5 border-b border-hair bg-panel px-2.5 py-1 ${TYPE.sectionLabel}`}>
+        <Mark size={ICON.xs} className={`shrink-0 ${tone}`} />
         {label}
         {aside}
       </div>
-      {children}
+      <div className="bg-elevated px-2.5 py-2">{children}</div>
     </div>
   );
 }
@@ -253,18 +260,18 @@ export function CellDetail({
         )}
         {cell.runId && (
           // A WAY TO LOOK AT SOMETHING, so the secondary weight — the one `buttons.ts` gives exactly that.
-          <button type="button" onClick={openTrace} className={`${secondaryBtn} ml-auto`}>
+          <Button variant="secondary" size="xs" onClick={openTrace} className="ml-auto">
             <Icon.cockpitWork.openTrace size={ICON.xs} />
             Open trace
-          </button>
+          </Button>
         )}
       </div>
 
       {cell.error && (
-        <div className="flex items-start gap-1.5 rounded-control bg-err/10 px-2.5 py-2 text-tiny text-err">
+        <Alert tone="destructive" className="items-start">
           <Icon.evals.facetFailed size={ICON.xs} className="mt-px shrink-0" />
-          <span className="min-w-0 whitespace-pre-wrap break-words">{cell.error}</span>
-        </div>
+          <span className="min-w-0 flex-1 whitespace-pre-wrap break-words">{cell.error}</span>
+        </Alert>
       )}
 
       {/* WHAT IT ANSWERED, beside what was expected — side by side where there is room, so the reading
@@ -274,15 +281,14 @@ export function CellDetail({
           {/* EACH IN ITS OWN WELL, on the page's ground under a hairline, so the answer and what was
               expected read as two documents to hold side by side rather than as more of the case. */}
           <Part Mark={Icon.evals.answer} label="Answer">
-            <div className="rounded-control border border-hair bg-bg px-2.5 py-2">
-              {cell.output
-                ? <ClampedText text={cell.output} lines={6} className={TYPE.body} />
-                : <div className="text-tiny text-faint italic">no answer was kept for this run — Open trace has the whole of it</div>}
-            </div>
+            {cell.output
+              ? <ClampedText text={cell.output} lines={6} className={TYPE.body} />
+              : <div className="text-tiny text-faint italic">no answer was kept for this run — Open trace has the whole of it</div>}
           </Part>
           {expected && (
             <Part
               Mark={Icon.evals.expected}
+              tone="text-reviewed"
               label="Expected"
               aside={cell.matches === true
                 ? <Pill icon={Icon.evals.match} tone="ok" className="ml-auto normal-case tracking-normal">matches</Pill>
@@ -290,9 +296,7 @@ export function CellDetail({
                   ? <Pill icon={Icon.evals.noMatch} tone="err" className="ml-auto normal-case tracking-normal">does not match</Pill>
                   : null}
             >
-              <div className="rounded-control border border-hair bg-bg px-2.5 py-2">
-                <ClampedText text={expected} lines={3} className="text-caption text-muted" />
-              </div>
+              <ClampedText text={expected} lines={3} className="text-caption text-muted" />
             </Part>
           )}
         </div>
@@ -302,6 +306,7 @@ export function CellDetail({
       {cell.perCriterion && criteria.length > 0 && (
         <Part
           Mark={Icon.evals.judge}
+          tone="text-bespoke"
           label="Judge"
           aside={cell.score !== null
             ? <Pill icon={Icon.evals.quality} tone={cell.score >= 0.8 ? "ok" : cell.score < 0.4 ? "err" : "ink"} className="ml-auto">{Math.round(cell.score * 100)}</Pill>
@@ -326,8 +331,9 @@ export function CellDetail({
 
       {/* WHAT THE JUDGE SAID, AS ITS WORDS — set off as a quotation, not more of the panel's own text. */}
       {cell.rationale && (
-        <div className="flex items-start gap-2 rounded-control bg-active/50 px-2.5 py-2">
-          <Icon.evals.rationale size={ICON.xs} className="mt-0.5 shrink-0 text-faint" />
+        // THE JUDGE'S OWN WORDS, set off as a quotation in the judge's purple.
+        <div className="flex items-start gap-2 rounded-control border-l-2 border-l-bespoke bg-bespoke/5 px-2.5 py-2">
+          <Icon.evals.rationale size={ICON.xs} className="mt-0.5 shrink-0 text-bespoke" />
           <div className="min-w-0 text-tiny leading-relaxed text-muted whitespace-pre-wrap break-words">{cell.rationale}</div>
         </div>
       )}
@@ -421,6 +427,9 @@ export function CriterionBreakdown({ results }: { results: EvalResults }) {
   );
 }
 
+/** The colour each facet's count wears once it has something in it. */
+const FACET_TONE: Record<CaseFacet, PillTone> = { all: "neutral", failed: "err", disagree: "info", unscored: "neutral", changed: FACT_TONE.judge };
+
 /** Each facet as the case list's filter says it, and what choosing it shows. */
 const FACET_TEXT: Record<CaseFacet, { text: string; noun: string; Mark: IconComponent }> = {
   all: { text: "All", noun: "every case", Mark: Icon.evals.facetAll },
@@ -459,12 +468,14 @@ export function ExampleDrillDown({ results, changed }: {
   const anyScored = results.rows.some((r) => r.cells.some((c) => c.score !== null));
   const offered = CASE_FACETS.filter((f) => (f === "changed" ? changed !== undefined : f === "unscored" ? anyScored : true));
   const facet: CaseFacet = offered.includes(chosen) ? chosen : "all";
-  const options: SegmentOption<CaseFacet>[] = offered.map((f) => ({
+  const options = offered.map((f) => ({
     value: f,
     text: FACET_TEXT[f].text,
     glyph: FACET_TEXT[f].Mark,
     count: counts[f],
-    countTone: f === "failed" ? "danger" : undefined,
+    // EACH COUNT IN THE COLOUR OF WHAT IT COUNTS, once there is something to count: a failure red, a
+    // disagreement the caution blue, a change the judge's purple; every case and the unscored grey.
+    tone: (counts[f] > 0 ? FACET_TONE[f] : "neutral") as PillTone,
     alert: f === "failed" && counts.failed > 0,
     // Never disable the one that is chosen: it must stay pressable to read as chosen.
     disabled: counts[f] === 0 && f !== facet,
@@ -477,28 +488,43 @@ export function ExampleDrillDown({ results, changed }: {
     <section className="mt-5" aria-label="Cases">
       <SectionHeader name="Cases" count={results.rows.length} icon={Icon.evals.cases} className="mb-1.5 min-h-8 flex-wrap">
         {offered.length > 1 && (
+          // shadcn's ToggleGroup: one facet in force, its count a badge in the facet's own colour.
           <div className="ml-auto max-w-full overflow-x-auto">
-            <Segmented
-              options={options}
+            <ToggleGroup
               value={facet}
-              onChange={(f) => useEvalStore.getState().setCaseFacet(results.evalId, f)}
-              ariaLabel="Show cases"
-              round
-            />
+              onValueChange={(f) => useEvalStore.getState().setCaseFacet(results.evalId, f as CaseFacet)}
+              aria-label="Show cases"
+            >
+              {options.map((o) => (
+                <ToggleGroupItem
+                  key={o.value}
+                  value={o.value}
+                  disabled={o.disabled}
+                  aria-label={o.label}
+                  title={o.label}
+                  className={o.alert ? "text-err hover:text-err data-[state=on]:text-err" : ""}
+                >
+                  <o.glyph size={ICON.xs} />
+                  {o.text}
+                  <Pill tone={o.tone} className="h-4 px-1">{o.count}</Pill>
+                </ToggleGroupItem>
+              ))}
+            </ToggleGroup>
           </div>
         )}
       </SectionHeader>
       {shown.length === 0 ? (
-        <div className="flex items-center gap-2 rounded-card border border-hair bg-panel px-3 py-3 text-tiny text-faint">
+        <Alert className="py-3 text-faint">
           <Icon.evals.facetAll size={ICON.xs} className="shrink-0" />
           No case is in this view.
-        </div>
+        </Alert>
       ) : (
-        <div className="divide-y divide-hair rounded-card border border-hair bg-panel">
+        <div className="divide-y divide-hair overflow-hidden rounded-card border border-hair bg-panel">
           {shown.map(({ row, i }) => {
             const open = row.cells.find((c) => c.jobId === openCell);
             return (
-              <div key={row.exampleId} data-example-id={row.exampleId} className={`px-3 py-2.5 transition-colors ${open ? "bg-active/30" : "hover:bg-active/20"}`}>
+              // THE OPEN CASE IS THE LINE THE CURSOR IS ON: the elevated ground and the ink bar down its edge.
+              <div key={row.exampleId} data-example-id={row.exampleId} className={`px-3 py-2.5 transition-colors ${open ? "bg-elevated shadow-[inset_2px_0_0] shadow-ink" : "hover:bg-active/40"}`}>
                 <div className="flex items-start gap-3">
                   <span className="text-faint text-tiny tabular-nums w-5 shrink-0 text-right select-none pt-0.5">
                     {i + 1}
@@ -509,12 +535,12 @@ export function ExampleDrillDown({ results, changed }: {
                         into the text — and a whole case filled the panel. */}
                     <ClampedText text={row.input} lines={3} className="text-caption text-ink" />
                     {row.expected && (
-                      <div className="mt-1 flex items-start gap-1.5 text-tiny text-faint" title="What this case expected">
-                        <Icon.evals.expected size={ICON.xs} className="mt-px shrink-0" />
+                      <div className="mt-1 flex items-start gap-1.5 text-tiny text-muted" title="What this case expected">
+                        <Icon.evals.expected size={ICON.xs} className="mt-px shrink-0 text-reviewed" />
                         <ClampedText text={row.expected} lines={2} className="min-w-0" />
                       </div>
                     )}
-                    <div className="mt-1.5 flex flex-wrap gap-1">
+                    <div className="mt-2 flex flex-wrap gap-1">
                       {row.cells.map((c) => (
                         <ScoreChip
                           key={c.jobId}

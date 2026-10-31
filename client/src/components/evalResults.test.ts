@@ -157,9 +157,10 @@ console.log("\nthe cases can be narrowed as the trace's steps are, and a criteri
   ];
   const r = results({ evalId: "eF", rows, rubric, providers: [leg("claude-haiku-4-5"), leg("claude-sonnet-5")] });
   let html = markup(createElement(ExampleDrillDown, { results: r }));
-  check(/role="radiogroup" aria-label="Show cases"/.test(html), "the cases have the trace's filter over them");
-  check(/>Failed<span class="ml-1 text-err">1<\/span>/.test(html), "Failed counts its one case, in red");
-  check(/>Disagree<span class="ml-1 text-faint">2<\/span>/.test(html), "and the two where the models answered differently");
+  // shadcn's ToggleGroup: a radiogroup, each facet's count a badge in the colour of what it counts.
+  check(/<div[^>]*role="radiogroup"[^>]*aria-label="Show cases"/.test(html), "the cases have the trace's filter over them");
+  check(/>Failed<span data-slot="badge"[^>]*bg-err\/10 text-err[^>]*>1<\/span>/.test(html), "Failed counts its one case, in red");
+  check(/>Disagree<span data-slot="badge"[^>]*>2<\/span>/.test(html), "and the two where the models answered differently");
   check(/>Cases<\/span><span class="text-tiny tabular-nums text-faint">3</.test(html), "the header counts every case");
   check(!/>Changed</.test(html), "with nothing compared, there is no Changed");
   seed(useEvalStore, { caseFacetByEval: { eF: "failed" } } as never);
