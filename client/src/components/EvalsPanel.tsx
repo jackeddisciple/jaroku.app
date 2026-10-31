@@ -23,6 +23,7 @@ import { EvalCompare } from "./EvalCompare.tsx";
 import { absTime, relTime } from "../lib/format.ts";
 import { evalDuration, verdict } from "../lib/evalView.ts";
 import { EmptyState } from "./EmptyState.tsx";
+import { AgentFace, FACE_SIZE } from "./AgentFace.tsx";
 import { DatabaseIcon } from "./panelIcons.tsx";
 import { Chosen, EVAL_SELECT, FACT_TONE, FactPill, GreenTick, ModelLabel, SOFT_ICON, SOFT_ICON_XS, type PillTone } from "./evalUi.tsx";
 import { cn } from "../lib/utils.ts";
@@ -507,6 +508,7 @@ const HEAD_FOLD_PX = 420;
 export function EvalsPanel() {
   const activeAgentId = useBuildStore((s) => s.activeAgentId);
   const agentName = useBuildStore((s) => s.agents.find((a) => a.agent_id === s.activeAgentId)?.name ?? s.activeAgentId);
+  const activeAgent = useBuildStore((s) => s.agents.find((a) => a.agent_id === s.activeAgentId));
   const connected = useTraceStore((s) => s.connection === "open");
   // EVERYTHING BELOW IS THIS AGENT'S. These were single values for the whole tab, so another agent's
   // running eval — its table, its cases, its `running 2/12` — was what this agent's Results showed.
@@ -666,7 +668,9 @@ export function EvalsPanel() {
         <div ref={headRow} className="flex min-w-0 items-center gap-2 pl-4 pr-1.5">
           <nav aria-label="Where this is" className="flex min-w-0 flex-1 items-center gap-1.5 text-caption">
             <span className="flex min-w-0 shrink items-center gap-1.5 text-label text-ink" title={agentName ?? undefined}>
-              <Icon.evals.agent size={ICON.sm} className="shrink-0 text-stateful" />
+              {/* THE AGENT'S OWN FACE, as the sidebar draws it beside the same name and at its size
+                  (the product owner, 2026-10-31) — the robot mark said "an agent", this says which. */}
+              <AgentFace picture={activeAgent?.picture} name={agentName ?? ""} size={FACE_SIZE.sidebar} />
               <span className="truncate">{agentName}</span>
             </span>
             {openDataset && (

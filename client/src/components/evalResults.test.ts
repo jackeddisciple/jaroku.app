@@ -442,7 +442,10 @@ console.log("\nthe panel is headed as the trace is, and its two views are tabs t
   } as never);
   const panel = (): string => markup(createElement(TooltipProvider, null, createElement(EvalsPanel)));
   const html = panel();
-  check(text(html).startsWith("Evals Liven Screening cases"), "it names itself, the agent and the open dataset first", text(html).slice(0, 80));
+  // The agent's own face before its name, as the sidebar draws it — its initial, with no picture.
+  check(text(html).startsWith("Evals L Liven Screening cases"), "it names itself, the agent and the open dataset first", text(html).slice(0, 80));
+  const crumb = /<nav aria-label="Where this is"[\s\S]*?<\/nav>/.exec(html)?.[0] ?? "";
+  check(/width:16px;height:16px/.test(crumb) && !/Robot|text-stateful/.test(crumb), "the agent is its face at the sidebar's size, not the robot mark", crumb.slice(0, 200));
   // shadcn's Tabs: a tablist whose tabs control their panels, the open one a panel of its own.
   check(/role="tablist"[^>]*aria-label="Eval views"/.test(html) && /role="tabpanel"/.test(html), "the two views are a tab strip", html.slice(0, 200));
   // Each tab is its mark, its word and — when it is a total — its count.
