@@ -469,6 +469,10 @@ export const MANIFEST = {
     // The run's outcome, in the pill at the top of the trace — the product owner's call on
     // 2026-10-12: a finished run reads green, mark and word together.
     finished: "CheckmarkCircle02Icon",
+    // The run header's finished pill draws its tick as the Evals panel does — `BadgeCheckIcon`, the
+    // badge filled green and the tick white (the product owner, 2026-10-31). `finished` above stays
+    // for the step pill and the run of record.
+    finishedTick: "BadgeCheckIcon",
     failed: "Alert01Icon",
     running: "Loading03Icon",
     stopped: "StopIcon",

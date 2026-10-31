@@ -11,6 +11,8 @@
 // THE ACTIONS ARE MARKS BESIDE THE OUTCOME, and only what already works: copy the id, show this run on
 // the graph, find it in the Runs list, run it again — the same `runAgain` the Runs tab's row calls.
 
+import { AgentFace, FACE_SIZE } from "./AgentFace.tsx";
+import { BadgeTick } from "./BadgeTick.tsx";
 import { absTime, fmtDuration, relTime } from "../lib/format.ts";
 import { runElapsed } from "../lib/traceView.ts";
 import { useRunClock } from "../lib/useRunClock.ts";
@@ -60,6 +62,9 @@ function OutcomePill({ run }: { run: RunSummary }) {
     <span className={`flex h-6 items-center gap-1.5 rounded-pill px-2 text-tiny font-medium ${tone}`}>
       {live ? (
         <span aria-hidden className="h-1.5 w-1.5 shrink-0 animate-stream-pulse rounded-full bg-run motion-reduce:animate-none" />
+      ) : outcome === "finished" ? (
+        // A FINISHED RUN'S TICK IS THE BADGE: green, its tick white (the product owner, 2026-10-31).
+        <BadgeTick mark={Icon.trace.finishedTick} size={14} />
       ) : (
         <Mark size={ICON.xs} />
       )}
@@ -126,6 +131,7 @@ export function TraceHeader({ run }: { run: RunSummary | undefined }) {
   const agentName = useBuildStore((s) =>
     run ? (s.agents.find((a) => a.agent_id === run.agent_id)?.name ?? run.agent_id) : null,
   );
+  const agentPicture = useBuildStore((s) => (run ? s.agents.find((a) => a.agent_id === run.agent_id)?.picture : undefined));
   // The agent whose run of record this is, when it is one (server migration 088).
   const recordOf = useBuildStore((s) => {
     const a = run ? s.agents.find((x) => x.agent_id === run.agent_id) : undefined;
@@ -161,7 +167,12 @@ export function TraceHeader({ run }: { run: RunSummary | undefined }) {
         {/* THE NAME GIVES WAY LAST. Both it and the branch note could shrink, equally, so at 330px
             the name read "Liv…" while "branch of bec57d6c fro…" kept its room. The note now shrinks
             a thousand times faster — down to its mark — before the name loses a letter. */}
-        <span className="min-w-0 shrink truncate text-label text-ink" title={agentName ?? run.agent_id}>{agentName}</span>
+        {/* THE AGENT'S OWN FACE BESIDE ITS NAME, as the sidebar and the Evals panel draw it and at
+            their size (the product owner, 2026-10-31). It never shrinks; the name gives way first. */}
+        <span className="flex min-w-0 shrink items-center gap-1.5" title={agentName ?? run.agent_id}>
+          <AgentFace picture={agentPicture} name={agentName ?? run.agent_id} size={FACE_SIZE.sidebar} />
+          <span className="min-w-0 truncate text-label text-ink">{agentName}</span>
+        </span>
         {/* THE LINE'S PARTS DO SOMETHING (2026-10-14): the id copies itself, the time says exactly when
             on hover, and a branch's parent opens on a click. Chips, so each reads as pressable. */}
         <Tip label="Copy run ID">

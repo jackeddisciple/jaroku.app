@@ -89,7 +89,8 @@ console.log("\nthe manifest parses, and it is the size the specification asks fo
   // 365 WITH THE EVAL UNDO TOAST'S UNDO, on the Inbox's undo mark.
   // 366 WITH `evals.crumb`, the step on the Evals panel's breadcrumb — `ArrowRight01Icon`, already here.
   // 367 WITH `evals.moreActions`, the dataset toolbar's overflow — `MoreHorizontalIcon`, already here.
-  check("367 registry keys", entries.length === 367, `${entries.length}`);
+  // 368 WITH `trace.finishedTick`, the run header's finished pill — `BadgeCheckIcon`, already here.
+  check("368 registry keys", entries.length === 368, `${entries.length}`);
   const names = new Set(entries.map((e) => e.export));
   // 104 from icons_integration's appendix, plus D8's 13 — the composer glyphs that had to move
   // here when `@hugeicons/react` came out. See the note at the top of `registry.ts`.

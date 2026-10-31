@@ -251,6 +251,11 @@ console.log("\nan eval's trace leads back to the eval, and the cell is still ope
   const { TooltipProvider } = await import("./ui/tooltip.tsx");
   const words = text(markup(createElement(TooltipProvider, null, createElement(TraceHeader, { run }))));
   check(words.includes("eval · Screening cases"), "the trace says its run is an eval's, and on which dataset", words);
+  // THE TRACE'S HEAD, AS THE EVALS PANEL'S (2026-10-31): the agent's face beside its name at the
+  // sidebar's size, and a finished run's tick the green badge with a white tick.
+  const head = markup(createElement(TooltipProvider, null, createElement(TraceHeader, { run })));
+  check(/width:16px;height:16px[\s\S]{0,400}>Liven</.test(head), "the run's agent wears its face beside its name", head.slice(0, 300));
+  check(/text-ok \[&(?:amp;)?_path\]:fill-current/.test(head) && /M9 12L11 14L15 10/.test(head), "and a finished run's tick is the badge check", head.slice(0, 200));
   useEvalStore.getState().setOpenCell("e1", "job-7");
   useEvalStore.getState().setMode("liven", "dataset");
   openEvalResults("liven", "e1");

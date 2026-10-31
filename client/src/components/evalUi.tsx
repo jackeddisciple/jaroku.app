@@ -12,6 +12,7 @@ import { cn } from "../lib/utils.ts";
 import { modelName, useProviderStore } from "../store/providerStore.ts";
 import { Badge, type BadgeTone } from "./ui/badge.tsx";
 import { buttonVariants } from "./ui/button.tsx";
+import { BadgeTick } from "./BadgeTick.tsx";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collapsible.tsx";
 import { TYPE } from "../lib/tokens.ts";
 
@@ -41,35 +42,15 @@ export const EVAL_SELECT = cn(
 );
 
 /**
- * EVERY TICK IN THE TAB: `BadgeCheckIcon` with its badge filled green and its tick white (the product
- * owner, 2026-10-31) — a chosen row, a finished eval, a run that went through, a match, a saved rubric.
- *
- * TWO LAYERS OF ONE MARK, because the mark draws its tick BEFORE its badge: filled, the badge would
- * paint over the tick. So the lower copy fills every path green — the tick's own stroke vanishes into
- * the badge — and the upper copy hides the badge and strokes only the tick, in white.
+ * EVERY TICK IN THE TAB: `BadgeTick` — `BadgeCheckIcon` with its badge filled green and its tick white
+ * (the product owner, 2026-10-31) — a chosen row, a finished eval, a run that went through, a match, a
+ * saved rubric. Drawn with the tab's own `chosen` key unless the place passes its own.
  */
 export function GreenTick({
-  size = 15,
-  mark: Mark = Icon.evals.chosen,
-  title,
-  className,
-}: {
-  size?: number;
-  /** Which registry key draws it — the place's own, so every key keeps its call site. */
-  mark?: IconComponent;
-  title?: string;
-  className?: string;
-}) {
-  return (
-    <span
-      {...(title ? { role: "img", "aria-label": title, title } : { "aria-hidden": true })}
-      className={cn("relative inline-flex shrink-0", className)}
-      style={{ width: size, height: size }}
-    >
-      <Mark size={size} className="absolute inset-0 text-ok [&_path]:fill-current" />
-      <Mark size={size} className="absolute inset-0 text-elevated [&_path:nth-child(2)]:hidden" />
-    </span>
-  );
+  mark = Icon.evals.chosen,
+  ...props
+}: { size?: number; mark?: IconComponent; title?: string; className?: string }) {
+  return <BadgeTick mark={mark} {...props} />;
 }
 
 /** A `GreenTick` where a mark is expected — a column head, an `IconButton`, a pill — a size up. */
