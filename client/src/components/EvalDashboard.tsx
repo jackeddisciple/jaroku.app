@@ -54,7 +54,8 @@ function Head({ Mark, children, title, align = "right", className = "" }: {
   return (
     <th className={`pb-1.5 pt-2.5 font-normal ${align === "left" ? "text-left" : "text-right"} ${className}`} title={title}>
       <span className={`inline-flex items-center gap-1 ${align === "left" ? "" : "justify-end"}`}>
-        <Mark size={ICON.badge} />
+        {/* A TICK IS GREEN, even in a header (the product owner, 2026-10-31). */}
+        <Mark size={ICON.badge} className={Mark === Icon.evals.ranOk ? "text-ok" : undefined} />
         {children}
       </span>
     </th>
@@ -190,7 +191,7 @@ function ProviderCard({ p, lead }: { p: ProviderMetrics; lead: ReturnType<typeof
   // read the same way — and the marks, in one column down the card, are what the eye runs along.
   const fact = (Mark: IconComponent, label: string, value: React.ReactNode) => (
     <div className="flex items-center justify-between gap-2">
-      <span className="inline-flex items-center gap-1.5 text-faint"><Mark size={ICON.xs} />{label}</span>
+      <span className="inline-flex items-center gap-1.5 text-faint"><Mark size={ICON.xs} className={Mark === Icon.evals.ranOk ? "text-ok" : undefined} />{label}</span>
       <span className="text-right">{value}</span>
     </div>
   );

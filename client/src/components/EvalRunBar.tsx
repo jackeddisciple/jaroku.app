@@ -23,12 +23,12 @@ import { sendCancelEval, sendEstimateEval, sendStartEval } from "../lib/socket.t
 import { fmtCost } from "../lib/format.ts";
 import { effortName, effortStops } from "../lib/effortLevels.ts";
 import { ProviderMark } from "../lib/icons.tsx";
-import { primaryBtnSm, selectBtn, textBtn } from "./buttons.ts";
+import { primaryBtnSm, textBtn } from "./buttons.ts";
 import type { EvalEstimate, EvalTarget, ProviderModel, ProviderStatus } from "../types.ts";
 import { Icon } from "../lib/icons/registry.ts";
 import { ICON, TYPE } from "../lib/tokens.ts";
 import { IconButton } from "./IconButton.tsx";
-import { FACT_TONE, ModelLabel, Pill, SOFT_ICON_XS } from "./evalUi.tsx";
+import { Chosen, EVAL_SELECT, FACT_TONE, ModelLabel, Pill, SOFT_ICON_XS } from "./evalUi.tsx";
 import { badgeVariants } from "./ui/badge.tsx";
 import { cn } from "../lib/utils.ts";
 import {
@@ -299,7 +299,7 @@ export function EvalRunBar() {
             <button
               type="button"
               disabled={running}
-              className={selectBtn}
+              className={EVAL_SELECT}
               aria-label="Choose the models to compare"
               title={locked ?? "Choose the models to compare — each is billed per token"}
             >
@@ -309,7 +309,7 @@ export function EvalRunBar() {
               <Icon.evals.menu size={ICON.xs} className="shrink-0 text-faint" />
             </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" side="top" aria-label="Models" className="max-h-[380px] w-[260px] overflow-y-auto">
+          <DropdownMenuContent edge="strong" align="start" side="top" aria-label="Models" className="max-h-[380px] w-[260px] overflow-y-auto">
             {groups.map((g, i) => (
               <Fragment key={g.id}>
                 {i > 0 && <DropdownMenuSeparator />}
@@ -322,6 +322,7 @@ export function EvalRunBar() {
                   const on = targets.some((x) => key(x) === key(t));
                   return (
                     <DropdownMenuCheckboxItem
+                      tick="ok"
                       key={key(t)}
                       checked={on}
                       disabled={!g.usable && !on}
@@ -376,7 +377,7 @@ export function EvalRunBar() {
                       <Icon.evals.menu size={ICON.badge} />
                     </button>
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent align="start" side="top" aria-label={`Effort for ${name}`}>
+                  <DropdownMenuContent edge="strong" align="start" side="top" aria-label={`Effort for ${name}`}>
                     <DropdownMenuLabel className="flex items-center gap-1.5">
                       <Icon.evals.effort size={ICON.badge} />
                       Effort
@@ -385,7 +386,7 @@ export function EvalRunBar() {
                       {choices.map((c) => (
                         <DropdownMenuRadioItem key={c.value ?? "default"} value={c.value ?? "default"} title={c.value ? undefined : "The model's own default"}>
                           <span className="flex-1 text-caption">{c.label}</span>
-                          <span aria-hidden className={(t.effort ?? null) === c.value ? "text-ink" : "text-transparent"}><Icon.evals.chosen size={ICON.xs} /></span>
+                          <Chosen on={(t.effort ?? null) === c.value} />
                         </DropdownMenuRadioItem>
                       ))}
                     </DropdownMenuRadioGroup>

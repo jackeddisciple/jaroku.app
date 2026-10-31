@@ -35,9 +35,9 @@ import { ICON, TYPE } from "../lib/tokens.ts";
 import { EmptyState } from "./EmptyState.tsx";
 import { SectionHeader } from "./SectionHeader.tsx";
 import { DatabaseIcon } from "./panelIcons.tsx";
-import { primaryBtnSm, selectBtn, textBtn } from "./buttons.ts";
+import { primaryBtnSm, textBtn } from "./buttons.ts";
 import { IconButton } from "./IconButton.tsx";
-import { FACT_TONE, Pill, SOFT_ICON_SM, SOFT_ICON_XS } from "./evalUi.tsx";
+import { Chosen, EVAL_SELECT, FACT_TONE, Pill, SOFT_ICON_SM, SOFT_ICON_XS } from "./evalUi.tsx";
 import { cn } from "../lib/utils.ts";
 import {
   DropdownMenu,
@@ -560,18 +560,18 @@ function CheckMenu({ dataset }: { dataset: Dataset }) {
   const chosen = CHECKS.find((c) => c.mode === current) ?? CHECKS[0]!;
   return (
     <div className="flex flex-wrap items-center gap-2 px-3 py-2 text-tiny" role="group" aria-label="Check answers against expected">
-      <Icon.evals.check size={ICON.xs} className="shrink-0 text-faint" />
+      <Icon.evals.check size={ICON.xs} className="shrink-0 text-ok" />
       <span className={`${TYPE.sectionLabel} shrink-0`}>Check</span>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <button type="button" disabled={!connected} className={selectBtn} title={`${chosen.label} — ${chosen.hint}`} aria-label="How answers are checked against expected">
+          <button type="button" disabled={!connected} className={EVAL_SELECT} title={`${chosen.label} — ${chosen.hint}`} aria-label="How answers are checked against expected">
             <span className={current ? "text-ink" : "text-muted"}>{chosen.label}</span>
             <Icon.evals.menu size={ICON.xs} className="shrink-0 text-faint" />
           </button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" className="w-[300px]" aria-label="Checks">
+        <DropdownMenuContent edge="strong" align="start" className="w-[300px]" aria-label="Checks">
           <DropdownMenuLabel className="flex items-center gap-1.5">
-            <Icon.evals.check size={ICON.badge} />
+            <Icon.evals.check size={ICON.badge} className="text-ok" />
             Check answers against expected
           </DropdownMenuLabel>
           <DropdownMenuRadioGroup value={current ?? "off"} onValueChange={(v) => { const mode = v === "off" ? null : v; if (mode !== current) sendSetDatasetCheck(dataset.id, mode); }}>
@@ -581,7 +581,7 @@ function CheckMenu({ dataset }: { dataset: Dataset }) {
                   <span className="block text-caption text-ink">{c.label}</span>
                   <span className="block text-tiny text-faint">{c.hint}</span>
                 </span>
-                <span aria-hidden className={c.mode === current ? "text-ink" : "text-transparent"}><Icon.evals.chosen size={ICON.xs} /></span>
+                <Chosen on={c.mode === current} />
               </DropdownMenuRadioItem>
             ))}
           </DropdownMenuRadioGroup>
@@ -609,10 +609,11 @@ function ViewMenu({ view, onChange }: { view: CaseView; onChange: (v: CaseView) 
           <Icon.evals.viewOptions size={ICON.sm} />
         </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" aria-label="Case view">
+      <DropdownMenuContent edge="strong" align="end" aria-label="Case view">
         <DropdownMenuLabel>View</DropdownMenuLabel>
         {rows.map((r) => (
           <DropdownMenuCheckboxItem
+                      tick="ok"
             key={r.key}
             checked={view[r.key]}
             onCheckedChange={(on) => onChange({ ...view, [r.key]: on === true })}
@@ -762,21 +763,21 @@ export function DatasetBuilder() {
               aria-label="Dataset name"
               className={`h-7 min-w-0 flex-1 rounded-input border bg-elevated px-2 text-caption text-ink outline-none focus-visible:shadow-focusring ${renameError ? "border-err" : "border-edge"}`}
             />
-            <IconButton variant="soft" icon={Icon.evals.confirm} label="Rename" size={ICON.sm} onClick={submitRename} />
+            <IconButton variant="soft" icon={Icon.evals.confirm} label="Rename" size={ICON.sm} onClick={submitRename} className="text-ok hover:text-ok" />
             <IconButton variant="soft" icon={Icon.evals.dismiss} label="Keep the old name" size={ICON.sm} onClick={() => { setRenaming(null); setRenameError(null); }} />
             {renameError && <span className="shrink-0 text-tiny text-err" role="alert">{renameError}</span>}
           </form>
         ) : datasets.length > 0 ? (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <button type="button" className={`${selectBtn} max-w-[260px]`} aria-label="Choose a dataset" title="The dataset open in this tab — choose another">
+              <button type="button" className={cn(EVAL_SELECT, "max-w-[260px]")} aria-label="Choose a dataset" title="The dataset open in this tab — choose another">
                 <Icon.evals.datasetView size={ICON.xs} className="shrink-0 text-faint" />
                 <span className="min-w-0 truncate">{selected?.name ?? "Choose a dataset"}</span>
                 {selected && <span className="shrink-0 tabular-nums text-faint">{examples.length}</span>}
                 <Icon.evals.menu size={ICON.xs} className="shrink-0 text-faint" />
               </button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" aria-label="Datasets" className="max-h-[360px] w-[280px] overflow-y-auto">
+            <DropdownMenuContent edge="strong" align="start" aria-label="Datasets" className="max-h-[360px] w-[280px] overflow-y-auto">
               {/* `listDatasets` answers with all of an agent's, so the length is a total. */}
               <SectionHeader name="Datasets" count={datasets.length} icon={Icon.evals.datasetView} className="px-2.5 py-1" />
               <DropdownMenuRadioGroup value={selectedDatasetId ?? ""} onValueChange={(id) => selectDataset(activeAgentId, id)}>
@@ -785,7 +786,7 @@ export function DatasetBuilder() {
                     <Icon.evals.datasetView size={ICON.xs} className="shrink-0 text-faint" />
                     <span className="min-w-0 flex-1 truncate text-caption">{d.name}</span>
                     <span className="shrink-0 text-tiny tabular-nums text-faint">{d.example_count ?? 0}</span>
-                    <span aria-hidden className={d.id === selectedDatasetId ? "text-ink" : "text-transparent"}><Icon.evals.chosen size={ICON.xs} /></span>
+                    <Chosen on={d.id === selectedDatasetId} />
                   </DropdownMenuRadioItem>
                 ))}
               </DropdownMenuRadioGroup>

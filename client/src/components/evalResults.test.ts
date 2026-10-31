@@ -513,6 +513,39 @@ console.log("\na refused Retry says why on Results, where it was pressed");
   check(markup(createElement(EvalRefusal)) === "", "and nothing when there is none");
 }
 
+console.log("\nthe tab's menus sit on a firm edge, and every tick in it is green");
+{
+  // The product owner's two calls (2026-10-31): the menus' borders were too light, and a tick should
+  // always read green. A closed Radix menu renders nothing, so its content is checked at the source.
+  const { readFileSync } = await import("node:fs");
+  const files = ["EvalsPanel", "DatasetBuilder", "EvalRunBar"].map((f) => readFileSync(`src/components/${f}.tsx`, "utf8"));
+  const menus = files.flatMap((f) => f.match(/<DropdownMenuContent\b[^>]*>/g) ?? []);
+  check(menus.length >= 8 && menus.every((m) => /edge="strong"/.test(m)), `every menu in the tab has the strong edge (${menus.length})`, menus.filter((m) => !/edge="strong"/.test(m)).join(" "));
+  const boxes = files.flatMap((f) => f.match(/<DropdownMenuCheckboxItem\b[\s\S]*?>/g) ?? []);
+  check(boxes.length >= 2 && boxes.every((b) => /tick="ok"/.test(b)), `and every checked row ticks green (${boxes.length})`);
+  check(!files.some((f) => /"text-ink" : "text-transparent"\}><Icon\.evals\.chosen/.test(f)), "no chosen row is ticked in ink");
+  const ui = readFileSync("src/components/ui/dropdown-menu.tsx", "utf8");
+  check(/strong: "border-grip"/.test(ui) && /ok: \{ on: "border-ok bg-ok text-bg"/.test(ui), "strong is §01's strongest border, and the green tick is the success colour");
+  check(/edge = "default"/.test(ui) && /tick = "ink"/.test(ui), "and every other surface keeps its own until it asks");
+
+  const { Chosen, EVAL_SELECT } = await import("./evalUi.tsx");
+  check(/text-ok/.test(markup(createElement(Chosen, { on: true }))) && /text-transparent/.test(markup(createElement(Chosen, { on: false }))),
+    "a chosen row's tick is green, and an unchosen row keeps its space");
+  check(/\bborder-grip\b/.test(EVAL_SELECT), "a select box has the strong border too", EVAL_SELECT);
+
+  const { EvalFace } = await import("./EvalsPanel.tsx");
+  const { STATUS } = await import("../lib/tokens.ts");
+  const e = { id: "e1", dataset_id: "d1", agent_id: "liven", rubric_id: "r", status: "completed", budget_usd: 1, judge_cost_usd: 0,
+    targets: [], started_at: new Date().toISOString(), ended_at: null, error: null, dataset_name: "Screening cases", dataset_gone: false };
+  const done = markup(createElement(EvalFace, { e: e as never, dataset: "Screening cases", models: "" }));
+  check(done.toLowerCase().includes(`color:${STATUS.ok.toLowerCase()}`), "a finished eval's tick is green in the picker", done.slice(0, 200));
+  const stopped = markup(createElement(EvalFace, { e: { ...e, status: "cancelled" } as never, dataset: "Screening cases", models: "" }));
+  check(!stopped.toLowerCase().includes(`color:${STATUS.ok.toLowerCase()}`), "and a stopped one is not");
+  const { StatusGlyph } = await import("./StatusGlyph.tsx");
+  check(!markup(createElement(StatusGlyph, { phase: "done" })).toLowerCase().includes(STATUS.ok.toLowerCase()),
+    "while the shared glyph still draws done in neutral everywhere else");
+}
+
 console.log("\nthe Activity feed shows its rows before its viewport is measured");
 {
   // Measured only on mount, before the first page had arrived: the viewport stayed 0 and the feed

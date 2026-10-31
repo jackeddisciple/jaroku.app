@@ -48,14 +48,26 @@ const ROW_TONE = {
   danger: "text-err",
 } as const;
 
-export function DropdownMenuContent({ className = "", sideOffset = 4, ...props }: ComponentProps<typeof MenuPrimitive.Content>) {
+/**
+ * The menu's edge. `default` is the border every card draws; `strong` is §01's strongest border, for
+ * a surface whose menus sat too faintly on the page (the Evals panel's, 2026-10-31 — the product
+ * owner found their edge "very light"). A prop rather than a class on top, for `ROW_TONE`'s reason.
+ */
+const EDGE = { default: "border-edge", strong: "border-grip" } as const;
+
+export function DropdownMenuContent({
+  className = "",
+  sideOffset = 4,
+  edge = "default",
+  ...props
+}: ComponentProps<typeof MenuPrimitive.Content> & { edge?: keyof typeof EDGE }) {
   return (
     <MenuPrimitive.Portal>
       <MenuPrimitive.Content
         sideOffset={sideOffset}
         // THE MENU GROWS OUT OF ITS TRIGGER: `menu-in` when it opens downward and `menu-in-up` when
         // Radix flips it upward, from the origin Radix computes rather than a fixed edge.
-        className={`z-50 min-w-[170px] origin-[var(--radix-dropdown-menu-content-transform-origin)] overflow-hidden rounded-card border border-edge bg-elevated p-1 shadow-floating data-[side=bottom]:animate-menu-in data-[side=top]:animate-menu-in-up motion-reduce:animate-none ${className}`}
+        className={`z-50 min-w-[170px] origin-[var(--radix-dropdown-menu-content-transform-origin)] overflow-hidden rounded-card border ${EDGE[edge]} bg-elevated p-1 shadow-floating data-[side=bottom]:animate-menu-in data-[side=top]:animate-menu-in-up motion-reduce:animate-none ${className}`}
         {...props}
         // A NAME GIVEN IS THE NAME USED. Radix labels a menu by its trigger, and `aria-labelledby`
         // outranks `aria-label` — so the account menu was announced as the person's own name rather
@@ -98,14 +110,29 @@ export function DropdownMenuRadioItem({ className = "", ...props }: ComponentPro
  * indicator drawn as this app's `Checkbox` draws one, so a check in a menu and a check in a list are
  * the same mark. `aria-checked` comes from Radix; the row keeps the menu open when `onSelect` says so.
  */
-export function DropdownMenuCheckboxItem({ className = "", children, checked, ...props }: ComponentProps<typeof MenuPrimitive.CheckboxItem>) {
+/**
+ * The box a checked row draws. `ink` is the app's `Checkbox`; `ok` is a GREEN tick on a firmer empty
+ * box — the Evals panel's, where the product owner asked that a tick always read green (2026-10-31).
+ */
+const TICK = {
+  ink: { on: "border-accent bg-accent text-bg", off: "border-edge text-transparent" },
+  ok: { on: "border-ok bg-ok text-bg", off: "border-grip text-transparent" },
+} as const;
+
+export function DropdownMenuCheckboxItem({
+  className = "",
+  children,
+  checked,
+  tick = "ink",
+  ...props
+}: ComponentProps<typeof MenuPrimitive.CheckboxItem> & { tick?: keyof typeof TICK }) {
   const on = checked === true;
   return (
     <MenuPrimitive.CheckboxItem className={`${ROW} ${ROW_SIZE.compact} ${ROW_TONE.default} ${className}`} checked={checked} {...props}>
       <span
         aria-hidden
         className={`inline-flex h-3 w-3 shrink-0 items-center justify-center rounded-xs border transition-colors duration-fast ${
-          on ? "border-accent bg-accent text-bg" : "border-edge text-transparent"
+          on ? TICK[tick].on : TICK[tick].off
         }`}
       >
         <CheckIcon size={ICON.badge} />

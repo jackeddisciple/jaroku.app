@@ -6,7 +6,7 @@
 
 import type { ReactNode } from "react";
 import { ProviderMark } from "../lib/icons.tsx";
-import type { IconComponent } from "../lib/icons/registry.ts";
+import { Icon, type IconComponent } from "../lib/icons/registry.ts";
 import { ICON } from "../lib/tokens.ts";
 import { cn } from "../lib/utils.ts";
 import { modelName, useProviderStore } from "../store/providerStore.ts";
@@ -23,6 +23,29 @@ export type PillTone = BadgeTone;
 export const SOFT_ICON = buttonVariants({ variant: "soft", size: "icon" });
 export const SOFT_ICON_SM = buttonVariants({ variant: "soft", size: "icon-sm" });
 export const SOFT_ICON_XS = buttonVariants({ variant: "soft", size: "icon-xs" });
+
+/**
+ * A trigger that opens a list to choose from — which eval, which dataset, which models — as an
+ * editor's select box: shadcn's `outline` button, the field's white ground, and §01's STRONG border.
+ * The default border sat too faintly on the panel (the product owner, 2026-10-31); held down while
+ * its list is open.
+ */
+export const EVAL_SELECT = cn(
+  buttonVariants({ variant: "outline", size: "sm" }),
+  "min-w-0 justify-start gap-1.5 px-2 text-caption hover:border-muted/60 data-[state=open]:border-muted/60 data-[state=open]:shadow-focusring",
+);
+
+/**
+ * The tick beside the chosen row of a menu — ALWAYS GREEN (the product owner, 2026-10-31). Unchosen
+ * rows keep the space, invisibly, so the words of every row start and end in one column.
+ */
+export function Chosen({ on }: { on: boolean }) {
+  return (
+    <span aria-hidden className={`inline-flex shrink-0 ${on ? "text-ok" : "text-transparent"}`}>
+      <Icon.evals.chosen size={ICON.xs} />
+    </span>
+  );
+}
 
 /**
  * WHICH COLOUR EACH KIND OF FACT WEARS, everywhere in the tab — so an agent is the same indigo in the

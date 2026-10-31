@@ -25,7 +25,8 @@ import { evalDuration, verdict } from "../lib/evalView.ts";
 import { EmptyState } from "./EmptyState.tsx";
 import { DatabaseIcon } from "./panelIcons.tsx";
 import { Segmented, type SegmentOption } from "./Segmented.tsx";
-import { FACT_TONE, FactPill, ModelLabel, SOFT_ICON, SOFT_ICON_XS, type PillTone } from "./evalUi.tsx";
+import { Chosen, EVAL_SELECT, FACT_TONE, FactPill, ModelLabel, SOFT_ICON, SOFT_ICON_XS, type PillTone } from "./evalUi.tsx";
+import { cn } from "../lib/utils.ts";
 import { Badge } from "./ui/badge.tsx";
 import {
   DropdownMenu,
@@ -38,9 +39,9 @@ import {
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu.tsx";
 import { modelName, useProviderStore } from "../store/providerStore.ts";
-import { primaryBtnSm, secondaryBtn, selectBtn, tabBtn, textBtn } from "./buttons.ts";
+import { primaryBtnSm, secondaryBtn, tabBtn, textBtn } from "./buttons.ts";
 import { Tip } from "./ui/tooltip.tsx";
-import { ICON, TYPE } from "../lib/tokens.ts";
+import { ICON, STATUS, TYPE } from "../lib/tokens.ts";
 import { Icon, type IconComponent } from "../lib/icons/registry.ts";
 import { EVAL_PHASE } from "../lib/domainPhase.ts";
 import { StatusGlyph } from "./StatusGlyph.tsx";
@@ -157,7 +158,7 @@ export function EvalActions({ results }: { results: EvalResults }) {
           <Icon.evals.exportCsv size={ICON.sm} />
         </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
+      <DropdownMenuContent edge="strong" align="end">
         {EXPORTS.map((x) => (
           <DropdownMenuItem key={x.label} onSelect={() => saveExport(results, x, agentName)}>
             {x.label}
@@ -431,6 +432,12 @@ export function EvalProgressBar({ progress }: { progress: EvalProgress }) {
 }
 
 /**
+ * A FINISHED EVAL'S TICK IS GREEN HERE. The shared vocabulary draws `done` in neutral grey, and every
+ * other tab keeps that; the product owner asked for this panel's ticks to read green (2026-10-31).
+ */
+const tickColour = (status: EvalRunStatus): string | undefined => (status === "completed" ? STATUS.ok : undefined);
+
+/**
  * One past eval as both pickers list it: its state and when on the first line, what it ran on and
  * against which models under it.
  *
@@ -447,7 +454,7 @@ export function EvalFace({ e, dataset, models, chosen = false }: {
   return (
     <span className="flex min-w-0 flex-1 items-start gap-2">
       <span className="pt-0.5">
-        <StatusGlyph phase={EVAL_PHASE[e.status]} size={ICON.xs} title={EVAL_WORD[e.status]} />
+        <StatusGlyph phase={EVAL_PHASE[e.status]} size={ICON.xs} title={EVAL_WORD[e.status]} colour={tickColour(e.status)} />
       </span>
       <span className="min-w-0 flex-1">
         <span className="flex min-w-0 items-baseline gap-2 text-caption">
@@ -459,9 +466,7 @@ export function EvalFace({ e, dataset, models, chosen = false }: {
           {e.status !== "completed" && ` · ${EVAL_WORD[e.status]}`}
         </span>
       </span>
-      <span aria-hidden className={`shrink-0 pt-0.5 ${chosen ? "text-ink" : "text-transparent"}`}>
-        <Icon.evals.chosen size={ICON.xs} />
-      </span>
+      <span className="shrink-0 pt-0.5"><Chosen on={chosen} /></span>
     </span>
   );
 }
@@ -689,12 +694,12 @@ export function EvalsPanel() {
                   <DropdownMenuTrigger asChild>
                     <button
                       type="button"
-                      className={`${selectBtn} max-w-full`}
+                      className={cn(EVAL_SELECT, "max-w-full")}
                       aria-label="Choose which eval to show"
                       title="The eval on screen — choose another"
                     >
                       <Icon.evals.history size={ICON.xs} className="shrink-0 text-faint" />
-                      {shownSummary && <StatusGlyph phase={EVAL_PHASE[shownSummary.status]} size={ICON.xs} title={EVAL_WORD[shownSummary.status]} />}
+                      {shownSummary && <StatusGlyph phase={EVAL_PHASE[shownSummary.status]} size={ICON.xs} title={EVAL_WORD[shownSummary.status]} colour={tickColour(shownSummary.status)} />}
                       <span className="min-w-0 truncate">
                         {shownSummary ? relTime(shownSummary.started_at) : results ? relTime(results.startedAt) : "Choose an eval"}
                         {shownSummary && evalDatasetLabel(shownSummary, agentDatasets) && (
@@ -704,7 +709,7 @@ export function EvalsPanel() {
                       <Icon.evals.menu size={ICON.xs} className="shrink-0 text-faint" />
                     </button>
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent align="start" aria-label="Past evals" className="max-h-[360px] w-[320px] overflow-y-auto">
+                  <DropdownMenuContent edge="strong" align="start" aria-label="Past evals" className="max-h-[360px] w-[320px] overflow-y-auto">
                     <DropdownMenuLabel className="flex items-center gap-1.5">
                       <Icon.evals.history size={ICON.badge} />
                       Past evals
@@ -736,7 +741,7 @@ export function EvalsPanel() {
                   <DropdownMenuTrigger asChild>
                     <button
                       type="button"
-                      className={`${selectBtn} ${comparing ? "bg-active" : ""}`}
+                      className={cn(EVAL_SELECT, comparing && "border-muted/60 bg-panel")}
                       aria-label="Compare with an earlier eval"
                       title="Line this eval up against an earlier one: each model's figures, and every case whose outcome changed"
                     >
@@ -745,7 +750,7 @@ export function EvalsPanel() {
                       <Icon.evals.menu size={ICON.xs} className="shrink-0 text-faint" />
                     </button>
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent align="start" aria-label="Compare with an earlier eval" className="max-h-[360px] w-[320px] overflow-y-auto">
+                  <DropdownMenuContent edge="strong" align="start" aria-label="Compare with an earlier eval" className="max-h-[360px] w-[320px] overflow-y-auto">
                     <DropdownMenuLabel className="flex items-center gap-1.5">
                       <Icon.evals.compare size={ICON.badge} />
                       Compare with

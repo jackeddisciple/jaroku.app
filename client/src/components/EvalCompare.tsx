@@ -75,7 +75,7 @@ export function CompareCards({ models }: { models: ModelDelta[] }) {
           <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-tiny">
             {figures(m).map(([label, Mark, value]) => (
               <div key={label} className="contents">
-                <span className="inline-flex items-center gap-1.5 text-faint"><Mark size={ICON.xs} />{label}</span>
+                <span className="inline-flex items-center gap-1.5 text-faint"><Mark size={ICON.xs} className={Mark === Icon.evals.ranOk ? "text-ok" : undefined} />{label}</span>
                 <span className="text-right">{value}</span>
               </div>
             ))}
@@ -154,7 +154,7 @@ export function EvalCompare({
                 </th>
                 {figures(diff.models[0] ?? { provider: "", model: "", before: null, after: null } as ModelDelta).map(([label, Mark], i, all) => (
                   <th key={label} className={`${i === all.length - 1 ? "pl-2" : "px-2"} pb-1.5 text-right font-normal`}>
-                    <span className="inline-flex items-center justify-end gap-1"><Mark size={ICON.badge} />{label}</span>
+                    <span className="inline-flex items-center justify-end gap-1"><Mark size={ICON.badge} className={Mark === Icon.evals.ranOk ? "text-ok" : undefined} />{label}</span>
                   </th>
                 ))}
               </tr>
