@@ -25,7 +25,7 @@ import { useState } from "react";
 import { ICON } from "../lib/tokens.ts";
 import { TYPE } from "../lib/tokens.ts";
 import { Icon, type IconComponent } from "../lib/icons/registry.ts";
-import { FIGURE_STRIP, MetricFigure, type MetricFigureProps } from "./MetricFigure.tsx";
+import { MetricFigure, type MetricFigureProps } from "./MetricFigure.tsx";
 import { useUiStore } from "../store/uiStore.ts";
 import { ModelLabel, Pill } from "./evalUi.tsx";
 import type { EvalResults, ProviderMetrics } from "../types.ts";
@@ -240,6 +240,7 @@ export function EvalFigures({ results }: { results: EvalResults }) {
   const scored = sum((p) => p.scored);
   const duration = evalDuration(results);
   const live = results.status === "running" || results.status === "queued";
+  const [box, narrow] = useNarrowerThan<HTMLDivElement>(FIGURES_WRAP_PX);
   const figures: MetricFigureProps[] = [
     {
       Mark: Icon.trace.metricCost,
@@ -256,7 +257,9 @@ export function EvalFigures({ results }: { results: EvalResults }) {
       Mark: Icon.trace.metricSteps,
       label: "Ran OK",
       value: `${ok}/${ran}`,
-      meter: ran ? { value: ok / ran } : undefined,
+      // EVERY RUN THAT RAN, ANSWERED, reads green — a success, said in the success colour.
+      tone: ran > 0 && ok === ran ? "text-ok" : "text-ink",
+      meter: ran ? { value: ok / ran, tone: ok === ran ? "bg-ok" : "bg-muted" } : undefined,
       note: [cancelled ? `${cancelled} cancelled` : null, waiting ? `${waiting} waiting` : null].filter(Boolean).join(" · ")
         || (ran ? fmtPercent(ok / ran, "share") : "nothing has run yet"),
       title: "Of the jobs that ran, how many finished without failing. Not a judgement of the answer.",
@@ -277,11 +280,18 @@ export function EvalFigures({ results }: { results: EvalResults }) {
     },
   ];
   return (
-    <div className={`${FIGURE_STRIP} mb-4`} style={{ gridTemplateColumns: `repeat(${figures.length}, minmax(0, 1fr))` }}>
-      {figures.map((f) => <MetricFigure key={f.label} {...f} />)}
+    // A GRID OF STAT CARDS THAT FITS THE PANEL IT IS IN. Four abreast at the panel's narrowest cut every
+    // figure to "Spe… ≥ $0…", so below `FIGURES_WRAP_PX` they sit two by two. The hairlines are the
+    // grid's 1px gaps on a hairline ground, so they are right in either layout — the trace strip's
+    // `divide-x` would draw a stray edge down the left of the second row.
+    <div ref={box} className="mb-4 grid gap-px overflow-hidden rounded-card border border-hair bg-hair" style={{ gridTemplateColumns: `repeat(${narrow ? 2 : figures.length}, minmax(0, 1fr))` }}>
+      {figures.map((f) => <div key={f.label} className="bg-panel"><MetricFigure {...f} /></div>)}
     </div>
   );
 }
+
+/** Narrower than this, an eval's four figures cannot each show their number; they go two by two. */
+const FIGURES_WRAP_PX = 460;
 
 /**
  * Narrower than this, the table's columns are clipped; the rows become cards. 640 since quality is a

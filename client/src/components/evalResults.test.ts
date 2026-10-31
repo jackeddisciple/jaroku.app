@@ -516,6 +516,24 @@ console.log("\na refused Retry says why on Results, where it was pressed");
   check(markup(createElement(EvalRefusal)) === "", "and nothing when there is none");
 }
 
+console.log("\nan eval's figures are a grid that can go two by two, and a clean run reads green");
+{
+  const { EvalFigures } = await import("./EvalDashboard.tsx");
+  const leg = (over: Partial<import("../types.ts").ProviderMetrics>): import("../types.ts").ProviderMetrics => ({
+    provider: "anthropic", model: "m", total: 3, succeeded: 3, failed: 0, cancelled: 0, pending: 0, successRate: 1,
+    comparisonCostUsd: 0.003, costPerRunUsd: 0.001, spentUsd: 0.003, tokens: 30, latencyP50Ms: 900, latencyP95Ms: 1000,
+    costUnknown: false, costIncomplete: false, qualityScore: 0.7, scored: 3, unscored: 0, ...over,
+  });
+  const html = markup(createElement(EvalFigures, { results: results({ status: "completed", providers: [leg({})] }) }));
+  // Four abreast cut every figure to "Spe… ≥ $0…" at the panel's narrowest; a grid's hairlines are its
+  // gaps, so they are right whether it is four across or two by two.
+  check(/class="mb-4 grid gap-px[^"]*bg-hair"/.test(html) && (html.match(/<div class="bg-panel">/g) ?? []).length === 4,
+    "the four figures are cells of a grid drawn by its gaps", html.slice(0, 200));
+  check(/text-ok[^"]*">3\/3</.test(html), "every run that ran answered, and Ran OK says so in green");
+  const failed = markup(createElement(EvalFigures, { results: results({ status: "completed", providers: [leg({ succeeded: 2, failed: 1 })] }) }));
+  check(!/text-ok[^"]*">2\/3</.test(failed), "and one failure takes the green away");
+}
+
 console.log("\nthe tab's menus sit on a firm edge, and every tick in it is green");
 {
   // The product owner's two calls (2026-10-31): the menus' borders were too light, and a tick should
