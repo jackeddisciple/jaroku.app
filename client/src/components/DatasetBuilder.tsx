@@ -36,7 +36,7 @@ import { EmptyState } from "./EmptyState.tsx";
 import { SectionHeader } from "./SectionHeader.tsx";
 import { DatabaseIcon } from "./panelIcons.tsx";
 import { IconButton } from "./IconButton.tsx";
-import { Chosen, EVAL_SELECT, FACT_TONE, Pill, SOFT_DANGER_SM, SOFT_ICON, SOFT_ICON_SM, SOFT_ICON_XS } from "./evalUi.tsx";
+import { Chosen, ConfirmMark, EVAL_SELECT, FACT_TONE, GreenTick, Pill, SOFT_DANGER_SM, SOFT_ICON, SOFT_ICON_SM, SOFT_ICON_XS } from "./evalUi.tsx";
 import { cn } from "../lib/utils.ts";
 import { useNarrowerThan } from "../lib/useNarrower.ts";
 import { Alert } from "./ui/alert.tsx";
@@ -547,7 +547,7 @@ function RubricEditor({ datasetId }: { datasetId: string }) {
               // Named as it reads: its words are an expression, which a sweep for marks cannot see.
               aria-label={dirty ? "Save rubric" : "Saved"}
             >
-              {dirty ? <Icon.evals.saveRubric size={ICON.sm} /> : <Icon.evals.confirm size={ICON.sm} className="text-ok" />}
+              {dirty ? <Icon.evals.saveRubric size={ICON.sm} /> : <GreenTick mark={Icon.evals.confirm} />}
               {dirty ? "Save rubric" : "Saved"}
             </Button>
           </span>
@@ -582,7 +582,7 @@ function CheckMenu({ dataset }: { dataset: Dataset }) {
   return (
     // ONE ROW, AND ITS SENTENCE WRAPS UNDER IT when the panel is narrow rather than being cut off.
     <div className="flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1 px-3 py-2 text-tiny" role="group" aria-label="Check answers against expected">
-      <Icon.evals.check size={ICON.xs} className="shrink-0 text-ok" />
+      <GreenTick />
       <span className={`${TYPE.sectionLabel} shrink-0`}>Check</span>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
@@ -593,7 +593,7 @@ function CheckMenu({ dataset }: { dataset: Dataset }) {
         </DropdownMenuTrigger>
         <DropdownMenuContent edge="strong" align="start" className="w-[300px]" aria-label="Checks">
           <DropdownMenuLabel className="flex items-center gap-1.5">
-            <Icon.evals.check size={ICON.badge} className="text-ok" />
+            <Icon.evals.check size={ICON.badge} />
             Check answers against expected
           </DropdownMenuLabel>
           <DropdownMenuRadioGroup value={current ?? "off"} onValueChange={(v) => { const mode = v === "off" ? null : v; if (mode !== current) sendSetDatasetCheck(dataset.id, mode); }}>
@@ -806,7 +806,7 @@ export function DatasetBuilder() {
               aria-label="Dataset name"
               className="flex-1"
             />
-            <IconButton variant="soft" icon={Icon.evals.confirm} label="Rename" size={ICON.sm} onClick={submitRename} className="text-ok hover:text-ok" />
+            <IconButton variant="soft" icon={ConfirmMark} label="Rename" size={ICON.sm} onClick={submitRename} />
             <IconButton variant="soft" icon={Icon.evals.dismiss} label="Keep the old name" size={ICON.sm} onClick={() => { setRenaming(null); setRenameError(null); }} />
             {renameError && <span className="shrink-0 text-tiny text-err" role="alert">{renameError}</span>}
           </form>
@@ -826,10 +826,13 @@ export function DatasetBuilder() {
               <DropdownMenuRadioGroup value={selectedDatasetId ?? ""} onValueChange={(id) => selectDataset(activeAgentId, id)}>
                 {datasets.map((d) => (
                   <DropdownMenuRadioItem key={d.id} value={d.id} title={d.name}>
-                    <Icon.evals.datasetView size={ICON.xs} className="shrink-0 text-reviewed" />
+                    {/* THE OPEN DATASET'S TICK STANDS WHERE ITS MARK DOES — on the left, white on green —
+                        so the list is read down one column (the product owner, 2026-10-31). */}
+                    {d.id === selectedDatasetId
+                      ? <GreenTick />
+                      : <Icon.evals.datasetView size={ICON.xs} className="mx-px shrink-0 text-reviewed" />}
                     <span className="min-w-0 flex-1 truncate text-caption">{d.name}</span>
                     <Pill tone={FACT_TONE.dataset} className="h-4 px-1.5">{d.example_count ?? 0}</Pill>
-                    <Chosen on={d.id === selectedDatasetId} />
                   </DropdownMenuRadioItem>
                 ))}
               </DropdownMenuRadioGroup>

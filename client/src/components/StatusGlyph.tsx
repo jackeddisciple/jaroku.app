@@ -94,7 +94,6 @@ export function StatusGlyph({
   size = ICON.md,
   title,
   className = "",
-  colour,
 }: {
   phase: Phase;
   /** 16 in dense rows, 20 on cards. §2.3. */
@@ -105,12 +104,6 @@ export function StatusGlyph({
    */
   title?: string;
   className?: string;
-  /**
-   * The mark's colour, when a surface has been told to spend one the vocabulary does not — the Evals
-   * panel's finished tick, which the product owner asked to read green (2026-10-31). A token from
-   * `tokens.ts`, never a literal. The shape is still the phase's: only the ink changes.
-   */
-  colour?: string;
 }) {
   const word = title ?? PHASE_WORD[phase];
   // THE LABEL GOES ON THE WRAPPER, NOT ON THE SVG. An SVG element has no `title` attribute, and the
@@ -122,7 +115,7 @@ export function StatusGlyph({
       aria-label={word}
       role="img"
       className={`inline-flex shrink-0 items-center ${className}`}
-      style={{ color: colour ?? PHASE_COLOUR[phase] }}
+      style={{ color: PHASE_COLOUR[phase] }}
     >
       {draw(phase, size)}
     </span>

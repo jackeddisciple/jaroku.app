@@ -41,15 +41,48 @@ export const EVAL_SELECT = cn(
 );
 
 /**
- * The tick beside the chosen row of a menu — ALWAYS GREEN (the product owner, 2026-10-31). Unchosen
- * rows keep the space, invisibly, so the words of every row start and end in one column.
+ * EVERY TICK IN THE TAB: a white tick on its own green circle (the product owner, 2026-10-31) — a
+ * chosen row, a finished eval, a run that went through, an answer that matched, a saved rubric.
+ * `size` is the circle's; the tick inside is two thirds of it. Decorative unless given a `title`.
  */
-export function Chosen({ on }: { on: boolean }) {
+export function GreenTick({
+  size = 14,
+  mark: Mark = Icon.evals.chosen,
+  title,
+  className,
+}: {
+  size?: number;
+  /** Which registry key draws the tick — the place's own, so every key keeps its call site. */
+  mark?: IconComponent;
+  title?: string;
+  className?: string;
+}) {
   return (
-    <span aria-hidden className={`inline-flex shrink-0 ${on ? "text-ok" : "text-transparent"}`}>
-      <Icon.evals.chosen size={ICON.xs} />
+    <span
+      {...(title ? { role: "img", "aria-label": title, title } : { "aria-hidden": true })}
+      className={cn("inline-flex shrink-0 items-center justify-center rounded-full bg-ok text-elevated", className)}
+      style={{ width: size, height: size }}
+    >
+      <Mark size={Math.max(8, Math.round(size * 0.66))} />
     </span>
   );
+}
+
+/** A `GreenTick` where a mark is expected — a column head, an `IconButton`, a pill — two pixels up. */
+export const tickMark = (mark: IconComponent): IconComponent =>
+  function TickMark({ size = ICON.xs, className }) {
+    return <GreenTick mark={mark} size={size + 2} className={className} />;
+  };
+export const RanOkMark = tickMark(Icon.evals.ranOk);
+export const MatchMark = tickMark(Icon.evals.match);
+export const ConfirmMark = tickMark(Icon.evals.confirm);
+
+/**
+ * The tick beside the chosen row of a menu — a `GreenTick`. Unchosen rows keep the space, invisibly,
+ * so the words of every row start and end in one column.
+ */
+export function Chosen({ on }: { on: boolean }) {
+  return on ? <GreenTick /> : <span aria-hidden className="inline-block h-3.5 w-3.5 shrink-0" />;
 }
 
 /**

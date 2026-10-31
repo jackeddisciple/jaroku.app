@@ -396,7 +396,9 @@ export const MANIFEST = {
     perRun: "DollarCircleIcon",
     latency: "DashboardSpeed01Icon",
     matches: "Target02Icon",
-    ranOk: "CheckmarkCircle02Icon",
+    // A bare tick since 2026-10-31: the Evals panel draws every tick white on its own green circle
+    // (`GreenTick`), and a check-circle inside that circle would be two rings.
+    ranOk: "Tick02Icon",
     spent: "Invoice01Icon",
     tokens: "TokenCircleIcon",
     // What a leg leads on, beside the figure it leads with: a crown, coins and a flash rather than

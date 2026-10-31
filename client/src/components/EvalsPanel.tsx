@@ -24,7 +24,7 @@ import { absTime, relTime } from "../lib/format.ts";
 import { evalDuration, verdict } from "../lib/evalView.ts";
 import { EmptyState } from "./EmptyState.tsx";
 import { DatabaseIcon } from "./panelIcons.tsx";
-import { Chosen, EVAL_SELECT, FACT_TONE, FactPill, ModelLabel, SOFT_ICON, SOFT_ICON_XS, type PillTone } from "./evalUi.tsx";
+import { Chosen, EVAL_SELECT, FACT_TONE, FactPill, GreenTick, ModelLabel, SOFT_ICON, SOFT_ICON_XS, type PillTone } from "./evalUi.tsx";
 import { cn } from "../lib/utils.ts";
 import { Badge } from "./ui/badge.tsx";
 import {
@@ -44,7 +44,7 @@ import { Alert } from "./ui/alert.tsx";
 import { Button } from "./ui/button.tsx";
 import { Input } from "./ui/input.tsx";
 import { Tip } from "./ui/tooltip.tsx";
-import { ICON, STATUS, TYPE } from "../lib/tokens.ts";
+import { ICON, TYPE } from "../lib/tokens.ts";
 import { Icon, type IconComponent } from "../lib/icons/registry.ts";
 import { EVAL_PHASE } from "../lib/domainPhase.ts";
 import { StatusGlyph } from "./StatusGlyph.tsx";
@@ -378,6 +378,8 @@ export function EvalOutcomePill({ status, word, detail }: {
     <Badge tone={tone} size="md" className="gap-1.5 font-medium">
       {kind === "live" ? (
         <span aria-hidden className="h-1.5 w-1.5 shrink-0 animate-stream-pulse rounded-full bg-run motion-reduce:animate-none" />
+      ) : kind === "done" ? (
+        <GreenTick size={13} />
       ) : (
         <Mark size={ICON.xs} />
       )}
@@ -437,10 +439,15 @@ export function EvalProgressBar({ progress }: { progress: EvalProgress }) {
 }
 
 /**
- * A FINISHED EVAL'S TICK IS GREEN HERE. The shared vocabulary draws `done` in neutral grey, and every
- * other tab keeps that; the product owner asked for this panel's ticks to read green (2026-10-31).
+ * An eval's status as the pickers draw it: the shared vocabulary's shape — except that a FINISHED
+ * eval is this panel's tick, white on green. The shared glyph draws `done` in neutral grey, and every
+ * other tab keeps that; the product owner asked for this panel's ticks to read so (2026-10-31).
  */
-const tickColour = (status: EvalRunStatus): string | undefined => (status === "completed" ? STATUS.ok : undefined);
+function EvalGlyph({ status }: { status: EvalRunStatus }) {
+  return status === "completed"
+    ? <GreenTick size={13} title={EVAL_WORD[status]} />
+    : <StatusGlyph phase={EVAL_PHASE[status]} size={ICON.xs} title={EVAL_WORD[status]} />;
+}
 
 /**
  * One past eval as both pickers list it: its state and when on the first line, what it ran on and
@@ -459,7 +466,7 @@ export function EvalFace({ e, dataset, models, chosen = false }: {
   return (
     <span className="flex min-w-0 flex-1 items-start gap-2">
       <span className="pt-0.5">
-        <StatusGlyph phase={EVAL_PHASE[e.status]} size={ICON.xs} title={EVAL_WORD[e.status]} colour={tickColour(e.status)} />
+        <EvalGlyph status={e.status} />
       </span>
       <span className="min-w-0 flex-1">
         <span className="flex min-w-0 items-baseline gap-2 text-caption">
@@ -703,7 +710,7 @@ export function EvalsPanel() {
                       title="The eval on screen — choose another"
                     >
                       <Icon.evals.history size={ICON.xs} className="shrink-0 text-faint" />
-                      {shownSummary && <StatusGlyph phase={EVAL_PHASE[shownSummary.status]} size={ICON.xs} title={EVAL_WORD[shownSummary.status]} colour={tickColour(shownSummary.status)} />}
+                      {shownSummary && <EvalGlyph status={shownSummary.status} />}
                       <span className="min-w-0 truncate">
                         {shownSummary ? relTime(shownSummary.started_at) : results ? relTime(results.startedAt) : "Choose an eval"}
                         {shownSummary && evalDatasetLabel(shownSummary, agentDatasets) && (

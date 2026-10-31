@@ -25,7 +25,7 @@ import { ICON } from "../lib/tokens.ts";
 import { Icon, type IconComponent } from "../lib/icons/registry.ts";
 import { MetricFigure, type MetricFigureProps } from "./MetricFigure.tsx";
 import { useUiStore } from "../store/uiStore.ts";
-import { ModelLabel, Pill, SectionFold } from "./evalUi.tsx";
+import { ModelLabel, Pill, RanOkMark, SectionFold } from "./evalUi.tsx";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table.tsx";
 import { cn } from "../lib/utils.ts";
 import type { EvalResults, ProviderMetrics } from "../types.ts";
@@ -54,8 +54,7 @@ function Head({ Mark, children, title, align = "right", className = "" }: {
   return (
     <TableHead className={cn(align === "left" ? "text-left" : "text-right", className)} title={title}>
       <span className={`inline-flex items-center gap-1 ${align === "left" ? "" : "justify-end"}`}>
-        {/* A TICK IS GREEN, even in a header (the product owner, 2026-10-31). */}
-        <Mark size={ICON.badge} className={Mark === Icon.evals.ranOk ? "text-ok" : undefined} />
+        <Mark size={ICON.badge} />
         {children}
       </span>
     </TableHead>
@@ -193,7 +192,7 @@ function ProviderCard({ p, lead }: { p: ProviderMetrics; lead: ReturnType<typeof
   // read the same way — and the marks, in one column down the card, are what the eye runs along.
   const fact = (Mark: IconComponent, label: string, value: React.ReactNode) => (
     <div className="flex items-center justify-between gap-2">
-      <span className="inline-flex items-center gap-1.5 text-faint"><Mark size={ICON.xs} className={Mark === Icon.evals.ranOk ? "text-ok" : undefined} />{label}</span>
+      <span className="inline-flex items-center gap-1.5 text-faint"><Mark size={ICON.xs} />{label}</span>
       <span className="text-right">{value}</span>
     </div>
   );
@@ -211,7 +210,7 @@ function ProviderCard({ p, lead }: { p: ProviderMetrics; lead: ReturnType<typeof
         {fact(Icon.evals.perRun, "Per run", <span className="text-muted tabular-nums">{p.costUnknown || p.succeeded === 0 ? "—" : fmtCost(p.costPerRunUsd ?? 0)}</span>)}
         {fact(Icon.evals.latency, "p50 · p95", <span className="text-muted tabular-nums">{fmtLatency(p.latencyP50Ms)} · {fmtLatency(p.latencyP95Ms)}</span>)}
         {(p.checked ?? 0) > 0 && fact(Icon.evals.matches, "Matches", <MatchCell p={p} />)}
-        {fact(Icon.evals.ranOk, "Ran OK", <RanOk p={p} />)}
+        {fact(RanOkMark, "Ran OK", <RanOk p={p} />)}
         {/* WHAT IT ACTUALLY COST AND USED — every attempt, failed ones included — which the server
             sent for each model and nothing drew. */}
         {fact(Icon.evals.spent, "Spent", <span className="text-muted tabular-nums">{fmtCost(p.spentUsd)}</span>)}
@@ -355,7 +354,8 @@ export function ComparisonTable({
                 {checking && (
                   <Head Mark={Icon.evals.matches} className="px-2" title={`Answers that met the case's expected output (${results.checkMode ?? "checked"})`}>Matches</Head>
                 )}
-                <Head Mark={Icon.evals.ranOk} className="pl-2 pr-3" title="Of the jobs that ran, how many finished without failing. Not a judgement of the answer.">Ran OK</Head>
+                {/* A TICK, WHITE ON GREEN, even in a header (the product owner, 2026-10-31). */}
+                <Head Mark={RanOkMark} className="pl-2 pr-3" title="Of the jobs that ran, how many finished without failing. Not a judgement of the answer.">Ran OK</Head>
               </tr>
             </TableHeader>
             <TableBody>

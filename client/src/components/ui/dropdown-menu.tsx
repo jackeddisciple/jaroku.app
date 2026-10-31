@@ -111,12 +111,12 @@ export function DropdownMenuRadioItem({ className = "", ...props }: ComponentPro
  * the same mark. `aria-checked` comes from Radix; the row keeps the menu open when `onSelect` says so.
  */
 /**
- * The box a checked row draws. `ink` is the app's `Checkbox`; `ok` is a GREEN tick on a firmer empty
- * box — the Evals panel's, where the product owner asked that a tick always read green (2026-10-31).
+ * The box a checked row draws. `ink` is the app's `Checkbox`; `ok` is the Evals panel's tick — WHITE
+ * ON A GREEN CIRCLE, and an empty circle with a firmer edge when off (the product owner, 2026-10-31).
  */
 const TICK = {
-  ink: { on: "border-accent bg-accent text-bg", off: "border-edge text-transparent" },
-  ok: { on: "border-ok bg-ok text-bg", off: "border-grip text-transparent" },
+  ink: { shape: "h-3 w-3 rounded-xs", on: "border-accent bg-accent text-bg", off: "border-edge text-transparent" },
+  ok: { shape: "h-3.5 w-3.5 rounded-full", on: "border-ok bg-ok text-elevated", off: "border-grip text-transparent" },
 } as const;
 
 export function DropdownMenuCheckboxItem({
@@ -131,7 +131,7 @@ export function DropdownMenuCheckboxItem({
     <MenuPrimitive.CheckboxItem className={`${ROW} ${ROW_SIZE.compact} ${ROW_TONE.default} ${className}`} checked={checked} {...props}>
       <span
         aria-hidden
-        className={`inline-flex h-3 w-3 shrink-0 items-center justify-center rounded-xs border transition-colors duration-fast ${
+        className={`inline-flex ${TICK[tick].shape} shrink-0 items-center justify-center border transition-colors duration-fast ${
           on ? TICK[tick].on : TICK[tick].off
         }`}
       >

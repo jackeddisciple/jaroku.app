@@ -8,7 +8,7 @@ import { ICON, TYPE } from "../lib/tokens.ts";
 import { Icon, type IconComponent } from "../lib/icons/registry.ts";
 import { useNarrowerThan } from "../lib/useNarrower.ts";
 import { IconButton } from "./IconButton.tsx";
-import { FACT_TONE, ModelLabel, Pill } from "./evalUi.tsx";
+import { FACT_TONE, GreenTick, ModelLabel, Pill, RanOkMark } from "./evalUi.tsx";
 import { Alert } from "./ui/alert.tsx";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table.tsx";
 import type { EvalResults, ProviderMetrics } from "../types.ts";
@@ -44,7 +44,7 @@ const share = (n: number) => fmtPercent(n, "share");
 function figures(m: ModelDelta): [string, IconComponent, ReactNode][] {
   return [
     ["Quality", Icon.evals.quality, <Then before={m.before?.qualityScore ?? null} after={m.after?.qualityScore ?? null} fmt={(n) => String(Math.round(n * 100))} higher />],
-    ["Ran OK", Icon.evals.ranOk, <Then before={ranRate(m.before)} after={ranRate(m.after)} fmt={share} higher />],
+    ["Ran OK", RanOkMark, <Then before={ranRate(m.before)} after={ranRate(m.after)} fmt={share} higher />],
     ["Matches", Icon.evals.matches, <Then before={matchRate(m.before)} after={matchRate(m.after)} fmt={share} higher />],
     ["Per run", Icon.evals.perRun, <Then before={m.before?.costPerRunUsd ?? null} after={m.after?.costPerRunUsd ?? null} fmt={fmtCost} higher={false} />],
     ["p50", Icon.evals.latency, <Then before={m.before?.latencyP50Ms ?? null} after={m.after?.latencyP50Ms ?? null} fmt={fmtLatency} higher={false} />],
@@ -77,7 +77,7 @@ export function CompareCards({ models }: { models: ModelDelta[] }) {
           <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-tiny">
             {figures(m).map(([label, Mark, value]) => (
               <div key={label} className="contents">
-                <span className="inline-flex items-center gap-1.5 text-faint"><Mark size={ICON.xs} className={Mark === Icon.evals.ranOk ? "text-ok" : undefined} />{label}</span>
+                <span className="inline-flex items-center gap-1.5 text-faint"><Mark size={ICON.xs} />{label}</span>
                 <span className="text-right">{value}</span>
               </div>
             ))}
@@ -158,7 +158,7 @@ export function EvalCompare({
                 </TableHead>
                 {figures(diff.models[0] ?? { provider: "", model: "", before: null, after: null } as ModelDelta).map(([label, Mark], i, all) => (
                   <TableHead key={label} className={`${i === all.length - 1 ? "pl-2" : "px-2"} text-right`}>
-                    <span className="inline-flex items-center justify-end gap-1"><Mark size={ICON.badge} className={Mark === Icon.evals.ranOk ? "text-ok" : undefined} />{label}</span>
+                    <span className="inline-flex items-center justify-end gap-1"><Mark size={ICON.badge} />{label}</span>
                   </TableHead>
                 ))}
               </tr>
@@ -184,7 +184,7 @@ export function EvalCompare({
           </div>
           {diff.changes.length === 0 ? (
             <div className="flex items-center gap-1.5 text-tiny text-faint">
-              <Icon.evals.chosen size={ICON.xs} className="shrink-0 text-ok" />
+              <GreenTick />
               No case changed its outcome.
             </div>
           ) : (

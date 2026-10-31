@@ -547,12 +547,20 @@ console.log("\nthe tab's menus sit on a firm edge, and every tick in it is green
   check(boxes.length >= 2 && boxes.every((b) => /tick="ok"/.test(b)), `and every checked row ticks green (${boxes.length})`);
   check(!files.some((f) => /"text-ink" : "text-transparent"\}><Icon\.evals\.chosen/.test(f)), "no chosen row is ticked in ink");
   const ui = readFileSync("src/components/ui/dropdown-menu.tsx", "utf8");
-  check(/strong: "border-grip"/.test(ui) && /ok: \{ on: "border-ok bg-ok text-bg"/.test(ui), "strong is §01's strongest border, and the green tick is the success colour");
+  check(/strong: "border-grip"/.test(ui) && /ok: \{ shape: "h-3\.5 w-3\.5 rounded-full", on: "border-ok bg-ok text-elevated"/.test(ui),
+    "strong is §01's strongest border, and a checked row's tick is white on a green circle");
   check(/edge = "default"/.test(ui) && /tick = "ink"/.test(ui), "and every other surface keeps its own until it asks");
 
-  const { Chosen, EVAL_SELECT } = await import("./evalUi.tsx");
-  check(/text-ok/.test(markup(createElement(Chosen, { on: true }))) && /text-transparent/.test(markup(createElement(Chosen, { on: false }))),
-    "a chosen row's tick is green, and an unchosen row keeps its space");
+  const { Chosen, EVAL_SELECT, GreenTick } = await import("./evalUi.tsx");
+  // WHITE ON A GREEN CIRCLE, every tick in the tab (the product owner, 2026-10-31).
+  const tick = markup(createElement(GreenTick));
+  check(/rounded-full bg-ok text-elevated/.test(tick) && /<svg/.test(tick), "a tick is white on a green circle", tick.slice(0, 160));
+  check(markup(createElement(Chosen, { on: true })) === tick && /h-3\.5 w-3\.5/.test(markup(createElement(Chosen, { on: false }))),
+    "a chosen row wears it, and an unchosen row keeps its space");
+  const builder = readFileSync("src/components/DatasetBuilder.tsx", "utf8");
+  check(/d\.id === selectedDatasetId\s*\? <GreenTick \/>\s*: <Icon\.evals\.datasetView/.test(builder) && !/<Chosen on=\{d\.id === selectedDatasetId\}/.test(builder),
+    "the open dataset's tick stands on the left, where its mark was, and not again on the right");
+  check(!files.some((f) => /text-ok[^"]*"\s*\/>/.test(f) && /Icon\.evals\.(?:chosen|confirm|match|ranOk)[^>]*text-ok/.test(f)), "no tick is drawn as a bare green glyph");
   check(/\bborder-grip\b/.test(EVAL_SELECT), "a select box has the strong border too", EVAL_SELECT);
 
   const { EvalFace } = await import("./EvalsPanel.tsx");
@@ -560,9 +568,9 @@ console.log("\nthe tab's menus sit on a firm edge, and every tick in it is green
   const e = { id: "e1", dataset_id: "d1", agent_id: "liven", rubric_id: "r", status: "completed", budget_usd: 1, judge_cost_usd: 0,
     targets: [], started_at: new Date().toISOString(), ended_at: null, error: null, dataset_name: "Screening cases", dataset_gone: false };
   const done = markup(createElement(EvalFace, { e: e as never, dataset: "Screening cases", models: "" }));
-  check(done.toLowerCase().includes(`color:${STATUS.ok.toLowerCase()}`), "a finished eval's tick is green in the picker", done.slice(0, 200));
+  check(/aria-label="completed"[^>]*class="[^"]*rounded-full bg-ok text-elevated/.test(done), "a finished eval's tick is white on green in the picker", done.slice(0, 200));
   const stopped = markup(createElement(EvalFace, { e: { ...e, status: "cancelled" } as never, dataset: "Screening cases", models: "" }));
-  check(!stopped.toLowerCase().includes(`color:${STATUS.ok.toLowerCase()}`), "and a stopped one is not");
+  check(!/aria-label="cancelled"[^>]*bg-ok/.test(stopped) && /aria-label="cancelled"/.test(stopped), "and a stopped one keeps the shared vocabulary's mark");
   const { StatusGlyph } = await import("./StatusGlyph.tsx");
   check(!markup(createElement(StatusGlyph, { phase: "done" })).toLowerCase().includes(STATUS.ok.toLowerCase()),
     "while the shared glyph still draws done in neutral everywhere else");

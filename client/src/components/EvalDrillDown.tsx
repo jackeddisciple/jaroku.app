@@ -16,7 +16,7 @@ import { useUiStore } from "../store/uiStore.ts";
 import { useEvalStore } from "../store/evalStore.ts";
 import { modelName, useProviderStore } from "../store/providerStore.ts";
 import { ProviderMark } from "../lib/icons.tsx";
-import { FACT_TONE, ModelLabel, Pill, SectionFold, type PillTone } from "./evalUi.tsx";
+import { FACT_TONE, MatchMark, ModelLabel, Pill, RanOkMark, SectionFold, type PillTone } from "./evalUi.tsx";
 import { Alert } from "./ui/alert.tsx";
 import { Button } from "./ui/button.tsx";
 import { ToggleGroup, ToggleGroupItem } from "./ui/toggle-group.tsx";
@@ -244,7 +244,7 @@ export function CellDetail({
         <ModelLabel provider={cell.provider} model={cell.model} className="text-label text-ink" />
         {cellLook(cell.status)
           ? <span className={cellLook(cell.status)!.tone}>{cellLook(cell.status)!.label}</span>
-          : <Pill icon={Icon.evals.ranOk} tone="ok">{cell.status}</Pill>}
+          : <Pill icon={RanOkMark} tone="ok">{cell.status}</Pill>}
         {/* The floor marker, where the number is. `cost_complete` has ridden the per-leg rollup
             since the dashboard was written and never reached the cell — so a cost that was an
             undercount rendered, and exported, as a clean measurement. A "≥" is the smallest
@@ -291,7 +291,7 @@ export function CellDetail({
               tone="text-reviewed"
               label="Expected"
               aside={cell.matches === true
-                ? <Pill icon={Icon.evals.match} tone="ok" className="ml-auto normal-case tracking-normal">matches</Pill>
+                ? <Pill icon={MatchMark} tone="ok" className="ml-auto normal-case tracking-normal">matches</Pill>
                 : cell.matches === false
                   ? <Pill icon={Icon.evals.noMatch} tone="err" className="ml-auto normal-case tracking-normal">does not match</Pill>
                   : null}
