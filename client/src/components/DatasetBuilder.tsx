@@ -149,7 +149,7 @@ function ExampleRow({
       spellCheck={false}
       autoCorrect="off"
       autoCapitalize="off"
-      className="w-full resize-none bg-elevated text-ink rounded-input border border-edge px-2 py-1 text-caption outline-none focus:shadow-focusring"
+      className="w-full resize-none bg-elevated text-ink rounded-input border border-grip px-2 py-1 text-caption outline-none focus:shadow-focusring"
     />
   );
   /**
@@ -158,9 +158,12 @@ function ExampleRow({
    */
   const extra = (which: "expected" | "notes", text: string) => {
     const Mark = which === "expected" ? Icon.evals.expected : Icon.evals.note;
+    // WHAT A CASE EXPECTS IS PART OF THE DATASET, so its mark is the dataset's teal; a note is the
+    // author's aside and stays grey, in italics, as a comment does beside a line of code.
+    const tone = which === "expected" ? "text-reviewed" : "text-faint";
     return editing === which ? (
       <div className="flex items-start gap-1.5">
-        <Mark size={ICON.xs} className="mt-1.5 shrink-0 text-faint" />
+        <Mark size={ICON.xs} className={`mt-1.5 shrink-0 ${tone}`} />
         {editor}
       </div>
     ) : (
@@ -168,17 +171,19 @@ function ExampleRow({
         type="button"
         onClick={() => begin(which)}
         title={which === "expected" ? "Expected output — click to edit" : "Note — click to edit"}
-        className="-mx-2 flex w-full items-start gap-1.5 rounded-control px-2 py-0.5 text-left text-caption text-muted transition-colors hover:bg-active/50"
+        className={`-mx-2 flex w-full items-start gap-1.5 rounded-control px-2 py-0.5 text-left text-caption transition-colors hover:bg-active/60 ${which === "notes" ? "italic text-faint" : "text-muted"}`}
       >
-        <Mark size={ICON.xs} className="mt-0.5 shrink-0 text-faint" />
+        <Mark size={ICON.xs} className={`mt-0.5 shrink-0 not-italic ${tone}`} />
         <span className="min-w-0 whitespace-pre-wrap break-words">{text}</span>
       </button>
     );
   };
 
   return (
-    <div className="group flex gap-3 px-3 py-2.5 transition-colors hover:bg-active/30 focus-within:bg-active/30">
-      <span className="text-faint text-tiny tabular-nums pt-1 w-6 shrink-0 text-right select-none">
+    // AN EDITOR'S LINE: its number in the gutter, a wash under the pointer, and while it is being
+    // edited the ink bar down its left edge that marks the line the cursor is on.
+    <div className={`group relative flex gap-2.5 px-3 py-2 transition-colors hover:bg-active/40 ${editing ? "bg-elevated shadow-[inset_2px_0_0] shadow-ink" : ""}`}>
+      <span className={`w-6 shrink-0 select-none pt-1 text-right text-tiny tabular-nums ${editing ? "text-ink" : "text-faint"}`}>
         {index + 1}
       </span>
       <div className="min-w-0 flex-1 space-y-0.5">
@@ -189,7 +194,7 @@ function ExampleRow({
             type="button"
             onClick={() => begin("input")}
             title="Click to edit"
-            className="block w-full text-left text-caption rounded-control px-2 py-1 -mx-2 hover:bg-active/50 transition-colors whitespace-pre-wrap break-words text-ink"
+            className="block w-full text-left text-caption rounded-control px-2 py-1 -mx-2 hover:bg-active/60 transition-colors whitespace-pre-wrap break-words text-ink"
           >
             {/* FOLDED WHEN LONG. Unfolded, one case filled the panel and the others were a scroll away. */}
             <span className={folded ? "clamp-lines" : "block"} style={folded ? ({ "--clamp": 4 } as CSSProperties) : undefined}>
@@ -201,7 +206,7 @@ function ExampleRow({
           <button
             type="button"
             onClick={() => setUnfolded((v) => !v)}
-            className="inline-flex items-center gap-1 rounded-xs px-2 text-tiny text-faint transition-colors hover:text-ink focus-visible:outline-none focus-visible:shadow-focusring"
+            className="-mx-1 inline-flex items-center gap-1 rounded-control px-1 py-0.5 text-tiny text-muted transition-colors hover:bg-active hover:text-ink focus-visible:outline-none focus-visible:shadow-focusring"
           >
             {unfolded ? <Icon.evals.fold size={ICON.xs} /> : <Icon.evals.unfold size={ICON.xs} />}
             {unfolded ? "show less" : "show more"}
@@ -213,7 +218,12 @@ function ExampleRow({
         {view.expected && (example.expected || editing === "expected") && extra("expected", example.expected ?? "")}
         {view.notes && (example.notes || editing === "notes") && extra("notes", example.notes ?? "")}
       </div>
-      <div className="flex shrink-0 items-start gap-0.5 self-start">
+      {/* THE LINE'S OWN ACTIONS FLOAT OVER ITS CORNER, as an editor's list shows a row's actions —
+          they no longer hold a column of their own, which narrowed every case's text by three marks
+          that were invisible until the pointer arrived. Click-through while hidden, so a click on the
+          words can never land on an unseen Remove; gone while the case is being edited. */}
+      {editing === null && (
+      <div className="pointer-events-none absolute right-2 top-1.5 flex items-start gap-0.5 rounded-control bg-panel/95 p-0.5 opacity-0 transition-opacity group-focus-within:pointer-events-auto group-focus-within:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100">
         {!example.expected && editing !== "expected" && (
           <button
             type="button"
@@ -253,6 +263,7 @@ function ExampleRow({
           <Icon.evals.removeCase size={ICON.xs} />
         </button>
       </div>
+      )}
     </div>
   );
 }
@@ -977,20 +988,22 @@ export function DatasetBuilder() {
             {/* §4.2's case list. A dataset's examples arrive with the dataset — `examplesOf` reads
                 what the payload carried, and there is no cursor — so the length is a total. The
                 search and the view menu sit on its header, as an editor's list puts them. */}
-            <div className="sticky top-0 z-10 flex min-h-10 items-center gap-2 bg-bg py-1.5">
+            {/* THE LIST'S HEADER, pinned while the list scrolls under it: its name and total, the search
+                box, and the view menu — an editor's explorer header. */}
+            <div className="sticky top-0 z-10 flex min-h-11 items-center gap-2 bg-bg py-1.5">
               <SectionHeader name="Cases" count={examples.length} icon={Icon.evals.cases} className="shrink-0" />
               {/* SEARCH, for a list of long cases. The numbers stay each case's own, so "case 7" is case 7. */}
               {examples.length > 5 ? (
                 <div className="relative min-w-0 flex-1">
                   <Icon.evals.search size={ICON.xs} className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-faint" />
-                  <input
+                  <Input
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
                     onKeyDown={(e) => { if (e.key === "Escape") setQuery(""); }}
                     placeholder="Find a case"
                     aria-label="Find a case"
                     spellCheck={false}
-                    className="h-7 w-full rounded-input border border-edge bg-elevated pl-7 pr-7 text-tiny text-ink placeholder:text-faint outline-none focus:shadow-focusring"
+                    className="pl-7 pr-7 text-tiny"
                   />
                   {query && (
                     <button
@@ -1005,7 +1018,7 @@ export function DatasetBuilder() {
                   )}
                 </div>
               ) : <span className="flex-1" />}
-              {needle && <span className="shrink-0 text-tiny tabular-nums text-faint">{shownCases.length} of {examples.length}</span>}
+              {needle && <Pill tone={shownCases.length ? FACT_TONE.dataset : "neutral"} title="Cases with what was typed in them">{shownCases.length} of {examples.length}</Pill>}
               <ViewMenu view={view} onChange={setView} />
             </div>
             {/* THE CASES AS ONE LIST IN THE TRACE'S CARD, a hairline between each — they were rows of
@@ -1017,10 +1030,10 @@ export function DatasetBuilder() {
                 ))}
               </div>
             ) : (
-              <div className="mb-3 flex items-center gap-2 rounded-card border border-hair bg-panel px-3 py-3 text-tiny text-faint">
+              <Alert className="mb-3 py-3 text-faint">
                 <Icon.evals.search size={ICON.xs} className="shrink-0" />
                 No case has “{query.trim()}” in it.
-              </div>
+              </Alert>
             )}
           </>
         )}

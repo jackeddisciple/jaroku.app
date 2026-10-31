@@ -88,6 +88,12 @@ console.log("\nthe builder, rendered");
     "a case's empty lines wait to be reached for — out of the layout, not an invisible line — and are in the page for a keyboard", addExpected);
   check(words.includes("Add case") && /aria-label="Give the new case an expected output"/.test(html),
     "a case is added by name, and can be given its expected output as it is written");
+  // THE ACTIONS FLOAT OVER THE LINE'S CORNER rather than holding a column of their own, which narrowed
+  // every case's text by three invisible marks — and they let a click through until they are shown.
+  const cluster = /<div class="([^"]*)"><button[^>]*aria-label="Add an expected output to case 1"/.exec(html)?.[1] ?? "";
+  check(/\babsolute\b/.test(cluster) && /\bpointer-events-none\b/.test(cluster)
+    && /group-hover:pointer-events-auto/.test(cluster) && /group-focus-within:pointer-events-auto/.test(cluster),
+    "a case's marks take no width, and catch no click until the case is pointed at or focused", cluster);
 }
 
 console.log("\na dataset can leave the tab, be found in, and keep its notes");
