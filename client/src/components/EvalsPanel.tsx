@@ -39,7 +39,8 @@ import {
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu.tsx";
 import { modelName, useProviderStore } from "../store/providerStore.ts";
-import { primaryBtnSm, secondaryBtn, tabBtn, textBtn } from "./buttons.ts";
+import { primaryBtnSm, secondaryBtn, textBtn } from "./buttons.ts";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs.tsx";
 import { Tip } from "./ui/tooltip.tsx";
 import { ICON, STATUS, TYPE } from "../lib/tokens.ts";
 import { Icon, type IconComponent } from "../lib/icons/registry.ts";
@@ -409,7 +410,9 @@ export function EvalProgressBar({ progress }: { progress: EvalProgress }) {
         cancelled > 0 ? `${cancelled} cancelled` : null,
       ].filter(Boolean).join(" · ");
   return (
-    <div className="flex shrink-0 items-center gap-3 px-6 pt-3">
+    // A STRIP UNDER THE TABS, as an editor shows a view's work in progress: answered runs in green,
+    // failed in red, cancelled in grey, and what is in flight amber — the one thing here that moves.
+    <div className="flex shrink-0 items-center gap-3 border-b border-hair bg-panel px-4 py-2">
       <div
         role="progressbar"
         aria-label="Eval progress"
@@ -417,9 +420,9 @@ export function EvalProgressBar({ progress }: { progress: EvalProgress }) {
         aria-valuemax={total}
         aria-valuenow={done}
         aria-valuetext={scoring ? "every run finished, scoring the answers" : `${done} of ${total} runs finished`}
-        className="flex h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-active"
+        className="flex h-1 min-w-0 flex-1 overflow-hidden rounded-full bg-active"
       >
-        <span className="h-full bg-muted" style={{ width: share(succeeded) }} />
+        <span className="h-full bg-ok" style={{ width: share(succeeded) }} />
         <span className="h-full bg-err" style={{ width: share(failed) }} />
         <span className="h-full bg-faint" style={{ width: share(cancelled) }} />
         {!scoring && (
@@ -618,13 +621,15 @@ export function EvalsPanel() {
   };
 
   return (
-    <div className="flex h-full flex-col bg-bg">
+    // THE TWO VIEWS ARE shadcn's TABS (Radix underneath): the tab strip is a real tablist whose panels
+    // it controls, the arrow keys move between the two, and the view on screen is the store's.
+    <Tabs value={mode} onValueChange={(v) => setMode(v as Mode)} className="flex h-full flex-col bg-bg">
       <EvalUndoToast />
-      {/* HEADED AS THE TRACE IS (`TraceHeader`): the panel's name and, while an eval runs, its pill on
-          the first line; whose evals these are, and on which dataset, on the second. It was a row of
-          two glyphs with a word beside them, the only panel on the rail that did not say what it was. */}
-      <div className="shrink-0 px-6 pt-3">
-        <div className="flex min-h-6 items-center gap-3">
+      {/* HEADED AS AN EDITOR'S PANEL IS: its name in the title bar, with an eval's pill at the bar's end
+          while one runs; where you are as a breadcrumb — the agent, then the dataset open in it — and
+          the panel's views as its tabs, all on the panel's own ground over the content's. */}
+      <header className="shrink-0 border-b border-hair bg-panel">
+        <div className="flex h-9 items-center gap-3 px-4">
           <span className={`flex min-w-0 items-center gap-1.5 ${TYPE.panelLabel}`}>
             <Icon.evals.panel size={ICON.xs} className="shrink-0" />
             <span className="truncate">Evals</span>
@@ -639,49 +644,43 @@ export function EvalsPanel() {
             </span>
           )}
         </div>
-        <div className="mt-1 flex min-w-0 items-center gap-1.5 text-tiny text-muted">
+        <nav aria-label="Where this is" className="flex min-w-0 items-center gap-1.5 px-4 pb-1.5 text-caption">
           <span className="flex min-w-0 shrink items-center gap-1.5 text-label text-ink" title={agentName ?? undefined}>
-            <Icon.evals.agent size={ICON.sm} className="shrink-0 text-faint" />
+            <Icon.evals.agent size={ICON.sm} className="shrink-0 text-stateful" />
             <span className="truncate">{agentName}</span>
           </span>
           {openDataset && (
-            <Tip label="The dataset open in this tab">
-              <FactPill icon={Icon.evals.datasetView} tone={FACT_TONE.dataset} className="min-w-[1.75rem] shrink-[1000]">
-                <span className="truncate">{openDataset.name}</span>
-              </FactPill>
-            </Tip>
+            <>
+              <Icon.evals.crumb size={ICON.xs} className="shrink-0 text-faint" />
+              <Tip label="The dataset open in this tab">
+                <FactPill icon={Icon.evals.datasetView} tone={FACT_TONE.dataset} className="min-w-[1.75rem] shrink-[1000]">
+                  <span className="truncate">{openDataset.name}</span>
+                </FactPill>
+              </Tip>
+            </>
           )}
-        </div>
-      </div>
-      {/* THE TWO VIEWS AS THE TRACE'S RUN VIEWS ARE DRAWN — a tab strip, each with how many things it
-          holds when that is a total. It was a pair of glyphs, a database and a chart, that only a
-          tooltip named. */}
-      <div role="tablist" aria-label="Eval views" className="mt-2 flex shrink-0 items-center gap-0.5 border-b border-hair px-5">
-        {VIEWS.map((v) => (
-          <button
-            key={v.id}
-            type="button"
-            role="tab"
-            aria-selected={mode === v.id}
-            onClick={() => setMode(v.id)}
-            title={v.title}
-            className={tabBtn(mode === v.id, "sm")}
-          >
-            <v.Mark size={ICON.xs} />
-            {v.label}
-            {counts[v.id] !== undefined && <span className="tabular-nums text-faint">{counts[v.id]}</span>}
-          </button>
-        ))}
-      </div>
+        </nav>
+        {/* EACH VIEW WITH HOW MANY THINGS IT HOLDS, when that is a total — a badge, as an editor
+            counts its problems, and in ink on the tab that is open. */}
+        <TabsList aria-label="Eval views" className="border-b-0 px-2">
+          {VIEWS.map((v) => (
+            <TabsTrigger key={v.id} value={v.id} title={v.title}>
+              <v.Mark size={ICON.xs} />
+              {v.label}
+              {counts[v.id] !== undefined && (
+                <Badge tone={mode === v.id ? "ink" : "neutral"} className="h-4 px-1.5">{counts[v.id]}</Badge>
+              )}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+      </header>
       {running && <EvalProgressBar progress={progress} />}
 
-      {mode === "dataset" ? (
-        <div className="flex-1 min-h-0 flex flex-col">
-          <div className="flex-1 min-h-0"><DatasetBuilder /></div>
-          <EvalRunBar />
-        </div>
-      ) : (
-        <div className="flex-1 min-h-0 overflow-y-auto px-6 pb-4 pt-3">
+      <TabsContent value="dataset" className="flex min-h-0 flex-1 flex-col">
+        <div className="flex-1 min-h-0"><DatasetBuilder /></div>
+        <EvalRunBar />
+      </TabsContent>
+      <TabsContent value="results" className="min-h-0 flex-1 overflow-y-auto px-4 pb-4 pt-3">
           <EvalRefusal />
           {/* WHICH EVAL, AND AGAINST WHICH — two menus and the scope, in one row. This was three rows
               of near-identical chips: a strip of timestamps, a second strip to pick a comparison from,
@@ -820,8 +819,7 @@ export function EvalsPanel() {
               hint="Pick providers under the dataset and run it — quality, cost and latency land here side by side."
             />
           )}
-        </div>
-      )}
-    </div>
+      </TabsContent>
+    </Tabs>
   );
 }

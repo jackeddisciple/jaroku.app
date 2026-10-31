@@ -440,16 +440,17 @@ console.log("\nthe panel is headed as the trace is, and its two views are tabs t
   const panel = (): string => markup(createElement(TooltipProvider, null, createElement(EvalsPanel)));
   const html = panel();
   check(text(html).startsWith("Evals Liven Screening cases"), "it names itself, the agent and the open dataset first", text(html).slice(0, 80));
-  check(/role="tablist" aria-label="Eval views"/.test(html), "the two views are a tab strip", html.slice(0, 200));
+  // shadcn's Tabs: a tablist whose tabs control their panels, the open one a panel of its own.
+  check(/role="tablist"[^>]*aria-label="Eval views"/.test(html) && /role="tabpanel"/.test(html), "the two views are a tab strip", html.slice(0, 200));
   // Each tab is its mark, its word and — when it is a total — its count.
   const tab = (h: string, name: string): string =>
     (h.match(/<button[^>]*role="tab"[\s\S]*?<\/button>/g) ?? []).find((b) => b.includes(`</svg>${name}`)) ?? "";
   check(/aria-selected="true"/.test(tab(html, "Dataset")) && /<svg/.test(tab(html, "Dataset"))
-    && /Dataset<span class="tabular-nums text-faint">3<\/span>/.test(tab(html, "Dataset")), "Dataset is open and counts its three cases", tab(html, "Dataset"));
+    && /Dataset<span data-slot="badge"[^>]*>3<\/span>/.test(tab(html, "Dataset")), "Dataset is open and counts its three cases", tab(html, "Dataset"));
   check(/aria-selected="false"/.test(tab(html, "Results")) && /Results<\/button>$/.test(tab(html, "Results")),
     "and Results, whose list is still a window, carries no count", tab(html, "Results"));
   seed(useEvalStore, { evalLists: { [evalListKey("liven", "d1")]: { evals: [summary], complete: true, window: 50 } } } as never);
-  check(/Results<span class="tabular-nums text-faint">1<\/span>/.test(tab(panel(), "Results")), "once the list is whole, it is counted");
+  check(/Results<span data-slot="badge"[^>]*>1<\/span>/.test(tab(panel(), "Results")), "once the list is whole, it is counted");
   check(!/role="progressbar"/.test(html) && !/bg-run\/10/.test(html), "with nothing running there is no bar and no pill");
 }
 

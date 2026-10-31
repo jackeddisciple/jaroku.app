@@ -742,7 +742,7 @@ export function DatasetBuilder() {
           how many cases it holds, and a new one at its foot — and every action on it is a mark whose
           words are its tooltip, with Delete set apart at the row's end. It was a wrapping row of
           chips over a second row of grey squares. */}
-      <div className="flex shrink-0 items-center gap-1 border-b border-hair px-6 py-2">
+      <div className="flex shrink-0 items-center gap-1 border-b border-hair px-4 py-2">
         {renaming !== null && selected ? (
           <form
             className="flex min-w-0 flex-1 items-center gap-1"
@@ -869,14 +869,14 @@ export function DatasetBuilder() {
           the trace's card. Under the dataset actions and above the examples, because it is the
           standard those examples will be scored against. */}
       {selected && (
-        <section aria-label="Scoring" className="mx-6 mb-2 mt-3 shrink-0 rounded-card border border-hair bg-panel">
+        <section aria-label="Scoring" className="mx-4 mb-2 mt-3 shrink-0 rounded-card border border-hair bg-panel">
           <CheckMenu dataset={selected} />
           <RubricEditor key={selected.id} datasetId={selected.id} />
         </section>
       )}
 
       {(error || importNote) && (
-        <div className="mx-6 mb-2 flex shrink-0 items-center gap-2 rounded-card border border-hair bg-panel px-3 py-2 text-tiny" role={error ? "alert" : "status"}>
+        <div className="mx-4 mb-2 flex shrink-0 items-center gap-2 rounded-card border border-hair bg-panel px-3 py-2 text-tiny" role={error ? "alert" : "status"}>
           {error
             ? <Icon.evals.refused size={ICON.sm} className="shrink-0 text-err" />
             : <Icon.evals.importCsv size={ICON.sm} className="shrink-0 text-faint" />}
@@ -894,7 +894,7 @@ export function DatasetBuilder() {
       )}
 
       {/* examples */}
-      <div className="flex-1 min-h-0 overflow-y-auto px-6">
+      <div className="flex-1 min-h-0 overflow-y-auto px-4">
         {!selected ? (
           <EmptyState
             icon={DatabaseIcon}
@@ -964,7 +964,7 @@ export function DatasetBuilder() {
       {/* add — A COMPOSER, as the chat's is: the box, and under it what else the case can carry and the
           one button that adds it. */}
       {selected && (
-        <div className="shrink-0 border-t border-hair px-6 py-3">
+        <div className="shrink-0 border-t border-hair px-4 py-3">
           <div className="rounded-input border border-edge bg-elevated transition-shadow focus-within:shadow-focusring">
             {/* A BOX, NOT A LINE, and nothing in it is "corrected". A one-line input with the system's
                 autocorrect turned `---` into an em dash and straight quotes into curly ones — and for an

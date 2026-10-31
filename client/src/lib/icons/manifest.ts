@@ -367,6 +367,8 @@ export const MANIFEST = {
     // two views — the dataset as the database it is, the results as the chart they become.
     panel: "FileValidationIcon",
     agent: "Robot02Icon",
+    // The step between the agent and its dataset on the panel's breadcrumb — an editor's path.
+    crumb: "ArrowRight01Icon",
     datasetView: "DatabaseIcon",
     resultsView: "ChartColumnIcon",
     // Choosing what Results shows: which eval (its history), against which (a compare), from which

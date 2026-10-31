@@ -32,7 +32,8 @@ export const SOFT_ICON_XS = buttonVariants({ variant: "soft", size: "icon-xs" })
  */
 export const EVAL_SELECT = cn(
   buttonVariants({ variant: "outline", size: "sm" }),
-  "min-w-0 justify-start gap-1.5 px-2 text-caption hover:border-muted/60 data-[state=open]:border-muted/60 data-[state=open]:shadow-focusring",
+  // `shrink`: shadcn's button never shrinks, and a select is the one thing in a toolbar that must.
+  "min-w-0 shrink justify-start gap-1.5 px-2 text-caption hover:border-muted/60 data-[state=open]:border-muted/60 data-[state=open]:shadow-focusring",
 );
 
 /**

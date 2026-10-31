@@ -289,7 +289,7 @@ export function EvalRunBar() {
   return (
     // THE RUN AS THE TAB'S FOOTER: its own surface under a hairline, so what will run and what it
     // will cost read as one place rather than as more rows of the dataset above them.
-    <div className="shrink-0 space-y-2.5 border-t border-hair bg-panel px-6 py-3">
+    <div className="shrink-0 space-y-2.5 border-t border-hair bg-panel px-4 py-3">
       {/* WHICH MODELS, AS A PICKER AND THE ONES PICKED. The catalogue is a menu of checks grouped by
           provider, each behind its mark; what is chosen sits beside it as pills, each with its effort
           and a way off. It was every model as a chip, provider by provider, two or three rows deep. */}
