@@ -383,9 +383,11 @@ console.log("\na dataset with one eval still offers the agent's evals on every d
   } as never);
   const html = markup(createElement(TooltipProvider, null, createElement(EvalsPanel)));
   // Two marks, each named by what it lists — the dataset's evals chosen, every dataset's beside it.
-  check(/role="radiogroup" aria-label="Which evals to list"/.test(html)
-    && /aria-label="Show only this dataset[^"]*evals" role="radio" aria-checked="true"/.test(html)
-    && /aria-label="Show this agent[^"]*evals on every dataset[^"]*" role="radio" aria-checked="false"/.test(html),
+  // shadcn's ToggleGroup: a radiogroup of radios, whatever order Radix writes their attributes in.
+  const radio = (label: RegExp): string => (html.match(/<button[^>]*>/g) ?? []).find((b) => label.test(b) && /role="radio"/.test(b)) ?? "";
+  check(/<div[^>]*role="radiogroup"[^>]*aria-label="Which evals to list"/.test(html)
+    && /aria-checked="true"/.test(radio(/aria-label="Show only this dataset[^"]*evals"/))
+    && /aria-checked="false"/.test(radio(/aria-label="Show this agent[^"]*evals on every dataset[^"]*"/)),
     "the switch to every dataset is there with only one eval", text(html).slice(0, 200));
   check(/aria-label="Choose which eval to show"/.test(html) && text(html).includes("Screening cases"),
     "and the eval on screen is one menu, naming when it ran and on what");

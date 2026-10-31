@@ -24,7 +24,6 @@ import { absTime, relTime } from "../lib/format.ts";
 import { evalDuration, verdict } from "../lib/evalView.ts";
 import { EmptyState } from "./EmptyState.tsx";
 import { DatabaseIcon } from "./panelIcons.tsx";
-import { Segmented, type SegmentOption } from "./Segmented.tsx";
 import { Chosen, EVAL_SELECT, FACT_TONE, FactPill, ModelLabel, SOFT_ICON, SOFT_ICON_XS, type PillTone } from "./evalUi.tsx";
 import { cn } from "../lib/utils.ts";
 import { Badge } from "./ui/badge.tsx";
@@ -39,8 +38,11 @@ import {
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu.tsx";
 import { modelName, useProviderStore } from "../store/providerStore.ts";
-import { primaryBtnSm, secondaryBtn, textBtn } from "./buttons.ts";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs.tsx";
+import { ToggleGroup, ToggleGroupItem } from "./ui/toggle-group.tsx";
+import { Alert } from "./ui/alert.tsx";
+import { Button } from "./ui/button.tsx";
+import { Input } from "./ui/input.tsx";
 import { Tip } from "./ui/tooltip.tsx";
 import { ICON, STATUS, TYPE } from "../lib/tokens.ts";
 import { Icon, type IconComponent } from "../lib/icons/registry.ts";
@@ -95,13 +97,17 @@ export function ResultsHeader({ results, live, actions }: {
   // identify it as round chips on the second — each behind its own mark, so the row is read by its
   // marks before its words — and the models it compared as a third, each behind its provider's mark.
   return (
-    <div className="pb-3">
-      <div className="flex min-h-7 flex-wrap items-center gap-x-3 gap-y-1.5">
-        <span className="flex min-w-0 flex-1 items-center gap-2" title={results.datasetName ?? undefined}>
-          <Icon.evals.datasetView size={ICON.sm} className="shrink-0 text-faint" />
+    // AN EDITOR'S DOCUMENT HEADER: what this is and how it ended, the facts that identify it, and what
+    // it compared — set off from the figures under it by a hairline.
+    <div className="mb-3 border-b border-hair pb-3">
+      <div className="flex min-h-8 flex-wrap items-center gap-x-3 gap-y-1.5">
+        {/* THE NAME KEEPS ITS LINE: on a narrow panel the outcome and the actions wrap under it rather
+            than squeezing it to its first word. */}
+        <span className="flex min-w-[9rem] flex-[1_1_12rem] items-center gap-2" title={results.datasetName ?? undefined}>
+          <Icon.evals.datasetView size={ICON.sm} className="shrink-0 text-reviewed" />
           <span className="min-w-0 truncate text-title text-ink">{results.datasetName ?? "a deleted dataset"}</span>
         </span>
-        <span className="flex shrink-0 items-center gap-2">
+        <span className="ml-auto flex shrink-0 items-center gap-2">
           <EvalOutcomePill status={status} detail={liveHere ? `${live.done} of ${live.total}` : null} />
           {actions}
         </span>
@@ -121,14 +127,18 @@ export function ResultsHeader({ results, live, actions }: {
           </Tip>
         )}
       </div>
-      <div className="mt-1.5 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-caption text-muted" aria-label="Models compared">
-        {legs.map((t) => <ModelLabel key={`${t.provider} ${t.model}`} provider={t.provider} model={t.model} effort={t.effort} />)}
+      <div className="mt-2 flex min-w-0 flex-wrap items-center gap-1.5 text-caption text-ink" aria-label="Models compared">
+        {legs.map((t) => (
+          <span key={`${t.provider} ${t.model}`} className="inline-flex h-6 max-w-full items-center rounded-control border border-edge bg-elevated px-2">
+            <ModelLabel provider={t.provider} model={t.model} effort={t.effort} />
+          </span>
+        ))}
       </div>
       {results.stopReason && status !== "completed" && status !== "running" && (
-        <div className="mt-2 flex items-start gap-1.5 text-tiny text-muted">
-          <Icon.evals.refused size={ICON.xs} className="mt-px shrink-0 text-faint" />
-          <span>{results.stopReason}</span>
-        </div>
+        <Alert tone="info" className="mt-2 items-start py-1.5">
+          <Icon.evals.refused size={ICON.xs} className="mt-px shrink-0" />
+          <span className="min-w-0 flex-1">{results.stopReason}</span>
+        </Alert>
       )}
     </div>
   );
@@ -192,36 +202,34 @@ export function EvalActions({ results }: { results: EvalResults }) {
   return (
     <span className="flex flex-wrap items-center gap-1 text-tiny" role="group" aria-label="Eval actions">
       {again > 0 && !retrying && (
-        <button
-          type="button"
+        <Button
+          size="sm"
           onClick={() => (spentOut ? setRetrying(true) : sendRetryEval(results.evalId, results.agentId, totals.budgetUsd))}
-          className={`${primaryBtnSm} focus-visible:outline-none focus-visible:shadow-focusring`}
           title={`Retry ${again} cell${again === 1 ? "" : "s"} — the failed, timed-out and cancelled ones, inside this eval`}
         >
           <Icon.graph.retry size={ICON.sm} />
           Retry {again}
-        </button>
+        </Button>
       )}
       {retrying && parsed && (
         <span className="flex flex-wrap items-center gap-1.5">
           <span className="text-muted">Its ceiling is spent — retry with Stop at $</span>
-          <input
+          <Input
             value={ceiling || suggestedCeiling(need)}
             onChange={(e) => setCeiling(e.target.value)}
             aria-label="New ceiling for the retry, in dollars"
             inputMode="decimal"
-            className="w-16 rounded-input border border-edge bg-elevated px-1.5 py-0.5 tabular-nums text-ink outline-none focus:shadow-focusring"
+            className="w-16 px-1.5 text-tiny tabular-nums"
           />
-          <button
-            type="button"
+          <Button
+            size="sm"
             disabled={"error" in parsed}
             title={"error" in parsed ? parsed.error : undefined}
             onClick={() => { if ("usd" in parsed) sendRetryEval(results.evalId, results.agentId, parsed.usd); setRetrying(false); }}
-            className={primaryBtnSm}
           >
             Retry
-          </button>
-          <button type="button" onClick={() => setRetrying(false)} className={TEXT_ACTION}>Cancel</button>
+          </Button>
+          <Button variant="ghost" size="xs" onClick={() => setRetrying(false)}>Cancel</Button>
         </span>
       )}
       {datasetHere && (
@@ -240,15 +248,13 @@ export function EvalActions({ results }: { results: EvalResults }) {
   );
 }
 
-/** A small text action, as the trace draws one — `textBtn`. */
-const TEXT_ACTION = textBtn;
 
 /**
  * A notice on Results — a refusal, the judge's state — as one construction: a card in the trace's
  * surface, its sentence, and what can be done about it. They were three differently spaced lines of
  * small text, one of them red, stacked over the table.
  */
-const NOTICE = "mb-3 flex flex-wrap items-center gap-2 rounded-card border border-hair bg-panel px-3 py-2 text-tiny";
+const NOTICE = "mb-3";
 
 /**
  * What the server refused, on Results as well as on Dataset.
@@ -262,13 +268,13 @@ export function EvalRefusal() {
   const setError = useEvalStore((s) => s.setError);
   if (!error) return null;
   return (
-    <div className={NOTICE} role="alert">
-      <Icon.evals.refused size={ICON.sm} className="shrink-0 text-err" />
-      <span className="min-w-0 flex-1 text-err">{error}</span>
+    <Alert tone="destructive" className={NOTICE} role="alert">
+      <Icon.evals.refused size={ICON.sm} className="shrink-0" />
+      <span className="min-w-0 flex-1">{error}</span>
       <button type="button" onClick={() => setError(null)} title="Dismiss" aria-label="Dismiss" className={SOFT_ICON_XS}>
         <Icon.global.dismissNotice size={ICON.xs} />
       </button>
-    </div>
+    </Alert>
   );
 }
 
@@ -301,42 +307,38 @@ export function JudgeLine() {
   if (judge.enabled) {
     if (judge.source !== "own-key" || !judge.ownKey) return null;
     return (
-      <div className={NOTICE}>
-        <Icon.evals.judge size={ICON.sm} className="shrink-0 text-faint" />
-        <span className="min-w-0 flex-1 text-muted">Quality is judged on this workspace's Anthropic key.</span>
+      <Alert className={NOTICE}>
+        <Icon.evals.judge size={ICON.sm} className="shrink-0 text-bespoke" />
+        <span className="min-w-0 flex-1">Quality is judged on this workspace's Anthropic key.</span>
         {canSwitch && (
-          <button type="button" onClick={() => sendSetJudgeOwnKey(false)} className={TEXT_ACTION}>
+          <Button variant="ghost" size="xs" onClick={() => sendSetJudgeOwnKey(false)}>
             Turn off
-          </button>
+          </Button>
         )}
-      </div>
+      </Alert>
     );
   }
   return (
-    <div className={NOTICE} role="status">
-      <Icon.evals.judge size={ICON.sm} className="shrink-0 text-faint" />
-      <span className="min-w-0 flex-1 text-muted">Quality isn't scored — the judge is off.</span>
+    <Alert className={NOTICE} role="status">
+      <Icon.evals.judge size={ICON.sm} className="shrink-0 text-bespoke" />
+      <span className="min-w-0 flex-1">Quality isn't scored — the judge is off.</span>
       {!judge.keyPresent ? (
-        <button
-          type="button"
-          onClick={() => useUiStore.getState().openSecretsForProvider("anthropic")}
-          className={secondaryBtn}
-        >
+        <Button variant="secondary" size="xs" onClick={() => useUiStore.getState().openSecretsForProvider("anthropic")}>
           Add an Anthropic key in Secrets →
-        </button>
+        </Button>
       ) : canSwitch ? (
-        <button
-          type="button"
+        <Button
+          variant="secondary"
+          size="xs"
           onClick={() => sendSetJudgeOwnKey(true)}
           title="Score answers with this workspace's Anthropic key. It is used for the judge and nothing else."
-          className={secondaryBtn}
         >
           Judge with my Anthropic key
-        </button>
+        </Button>
       ) : (
         <span className="text-faint">An admin can turn on judging with the workspace's Anthropic key.</span>
       )}
-    </div>
+    </Alert>
   );
 }
 
@@ -478,7 +480,7 @@ export function EvalFace({ e, dataset, models, chosen = false }: {
  * Which evals the picker lists, as two marks — one dataset, or the stack of all of them. "Every
  * dataset" is how a deleted dataset's evals are reached. The words are the tooltips.
  */
-const SCOPES: SegmentOption<"dataset" | "all">[] = [
+const SCOPES: { value: "dataset" | "all"; label: string; icon: IconComponent }[] = [
   { value: "dataset", label: "Show only this dataset's evals", icon: Icon.evals.scopeDataset },
   { value: "all", label: "Show this agent's evals on every dataset, including deleted ones", icon: Icon.evals.scopeAll },
 ];
@@ -681,19 +683,20 @@ export function EvalsPanel() {
         <EvalRunBar />
       </TabsContent>
       <TabsContent value="results" className="min-h-0 flex-1 overflow-y-auto px-4 pb-4 pt-3">
-          <EvalRefusal />
           {/* WHICH EVAL, AND AGAINST WHICH — two menus and the scope, in one row. This was three rows
               of near-identical chips: a strip of timestamps, a second strip to pick a comparison from,
               and `older…`. Shown with a single eval too: the scope switch is the only way to a deleted
               dataset's evals, and hiding it until this dataset had two left them out of reach. */}
           {(evals.length > 0 || allDatasets || (hasDatasets && selectedDatasetId)) && (
-            <div className="flex flex-wrap items-center gap-1.5 pb-3">
+            // AN EDITOR'S VIEW TOOLBAR, pinned while the results scroll under it, so which eval this
+            // is — and against which — stays in sight down a long list of cases.
+            <div className="sticky top-0 z-10 -mx-4 -mt-3 mb-3 flex flex-wrap items-center gap-1.5 border-b border-hair bg-bg px-4 py-2">
               {evals.length > 0 && (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <button
                       type="button"
-                      className={cn(EVAL_SELECT, "max-w-full")}
+                      className={cn(EVAL_SELECT, "h-8 min-w-[10rem] max-w-full flex-1")}
                       aria-label="Choose which eval to show"
                       title="The eval on screen — choose another"
                     >
@@ -740,7 +743,7 @@ export function EvalsPanel() {
                   <DropdownMenuTrigger asChild>
                     <button
                       type="button"
-                      className={cn(EVAL_SELECT, comparing && "border-muted/60 bg-panel")}
+                      className={cn(EVAL_SELECT, "h-8", comparing && "border-muted/60 bg-panel")}
                       aria-label="Compare with an earlier eval"
                       title="Line this eval up against an earlier one: each model's figures, and every case whose outcome changed"
                     >
@@ -778,25 +781,33 @@ export function EvalsPanel() {
               )}
               {/* WHICH HISTORY. Only offered while there is a dataset to narrow to. */}
               {hasDatasets && selectedDatasetId && (
-                <Segmented
-                  options={SCOPES}
+                <ToggleGroup
                   value={allDatasets ? "all" : "dataset"}
-                  onChange={(v) => { setAllDatasets(v === "all"); setShown(12); }}
-                  ariaLabel="Which evals to list"
+                  onValueChange={(v) => { setAllDatasets(v === "all"); setShown(12); }}
+                  aria-label="Which evals to list"
                   className="ml-auto"
-                />
+                >
+                  {SCOPES.map((o) => (
+                    <ToggleGroupItem key={o.value} value={o.value} aria-label={o.label} title={o.label}>
+                      <o.icon size={ICON.sm} />
+                    </ToggleGroupItem>
+                  ))}
+                </ToggleGroup>
               )}
             </div>
           )}
 
+          <EvalRefusal />
           {results ? (
             <>
               <ResultsHeader results={results} live={progress} actions={<EvalActions results={results} />} />
               {/* THE ANSWER, IN A SENTENCE, before the figures it is drawn from — who leads, on what, by
                   how much. Left out when there is nothing to compare or nothing it could honestly say. */}
               {verdictOf(results) && (
-                <div className="mb-3 flex items-start gap-2.5 rounded-card border border-hair bg-panel px-3 py-2.5">
-                  <Icon.evals.verdict size={ICON.sm} className="mt-px shrink-0 text-ink" />
+                // WHO LEADS, as a callout with the leader's green edge — the trophy is the one mark in
+                // the panel that says somebody won.
+                <div className="mb-3 flex items-start gap-2.5 rounded-card border border-hair border-l-2 border-l-ok bg-panel px-3 py-2.5">
+                  <Icon.evals.verdict size={ICON.sm} className="mt-px shrink-0 text-ok" />
                   <p className={TYPE.body}>{verdictOf(results)}</p>
                 </div>
               )}
