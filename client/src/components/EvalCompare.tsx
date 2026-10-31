@@ -9,6 +9,8 @@ import { Icon, type IconComponent } from "../lib/icons/registry.ts";
 import { useNarrowerThan } from "../lib/useNarrower.ts";
 import { IconButton } from "./IconButton.tsx";
 import { FACT_TONE, ModelLabel, Pill } from "./evalUi.tsx";
+import { Alert } from "./ui/alert.tsx";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table.tsx";
 import type { EvalResults, ProviderMetrics } from "../types.ts";
 
 /**
@@ -71,7 +73,7 @@ export function CompareCards({ models }: { models: ModelDelta[] }) {
     <div className="space-y-2">
       {models.map((m) => (
         <div key={`${m.provider} ${m.model}`} className="rounded-control border border-hair bg-elevated px-2.5 py-2">
-          <div className="pb-1.5 text-caption text-ink"><ModelName m={m} /></div>
+          <div className="-mx-2.5 mb-1.5 border-b border-hair px-2.5 pb-1.5 text-caption text-ink"><ModelName m={m} /></div>
           <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-tiny">
             {figures(m).map(([label, Mark, value]) => (
               <div key={label} className="contents">
@@ -116,8 +118,10 @@ export function EvalCompare({
   const better = diff.changes.filter((c) => c.better === true).length;
   const worse = diff.changes.filter((c) => c.better === false).length;
   return (
-    <section ref={box} className="mb-4 rounded-card border border-hair bg-panel" aria-label="Compared with an earlier eval">
-      <div className="flex min-h-10 items-center gap-2 border-b border-hair px-3 py-1.5">
+    // A DIFF VIEW, as an editor opens one: a header naming what this is compared with and how many
+    // cases moved each way, then each model's figures then and now, then every case that moved.
+    <section ref={box} className="mb-4 overflow-hidden rounded-card border border-hair bg-panel" aria-label="Compared with an earlier eval">
+      <div className="flex min-h-10 flex-wrap items-center gap-2 border-b border-hair bg-elevated px-3 py-1.5">
         <Icon.evals.compare size={ICON.sm} className="shrink-0 text-faint" />
         <span className={`shrink-0 ${TYPE.sectionLabel}`}>Compared with</span>
         {/* WHICH EVAL, not only when: two from the same afternoon both read "4d ago". */}
@@ -135,53 +139,57 @@ export function EvalCompare({
       <div className="space-y-3 px-3 py-2.5">
         {/* A CAVEAT IS A CAUTION, said in the info blue — amber is spent only on what is running. */}
         {diff.caveats.length > 0 && (
-          <div className="space-y-1">
+          <Alert tone="info" className="flex-col items-stretch gap-1">
             {diff.caveats.map((c) => (
-              <div key={c} className="flex items-start gap-1.5 text-tiny text-warn">
+              <div key={c} className="flex items-start gap-1.5">
                 <Icon.evals.caveat size={ICON.xs} className="mt-px shrink-0" />
                 <span>{c}</span>
               </div>
             ))}
-          </div>
+          </Alert>
         )}
         {narrow ? <CompareCards models={diff.models} /> : (
-        <div className="overflow-x-auto">
-          <table className="w-full border-separate border-spacing-0 text-caption">
-            <thead>
-              <tr className={TYPE.sectionLabel}>
-                <th className="pb-1.5 pr-3 text-left font-normal">
+        <div className="overflow-hidden rounded-control border border-hair bg-elevated">
+          <Table>
+            <TableHeader>
+              <tr>
+                <TableHead className="pr-3">
                   <span className="inline-flex items-center gap-1"><Icon.evals.models size={ICON.badge} />Model</span>
-                </th>
+                </TableHead>
                 {figures(diff.models[0] ?? { provider: "", model: "", before: null, after: null } as ModelDelta).map(([label, Mark], i, all) => (
-                  <th key={label} className={`${i === all.length - 1 ? "pl-2" : "px-2"} pb-1.5 text-right font-normal`}>
+                  <TableHead key={label} className={`${i === all.length - 1 ? "pl-2" : "px-2"} text-right`}>
                     <span className="inline-flex items-center justify-end gap-1"><Mark size={ICON.badge} className={Mark === Icon.evals.ranOk ? "text-ok" : undefined} />{label}</span>
-                  </th>
+                  </TableHead>
                 ))}
               </tr>
-            </thead>
-            <tbody>
-              {diff.models.map((m, r) => (
-                <tr key={`${m.provider} ${m.model}`}>
-                  <td className={`py-1.5 pr-3 whitespace-nowrap text-ink ${r ? "border-t border-hair" : ""}`}><ModelName m={m} /></td>
+            </TableHeader>
+            <TableBody>
+              {diff.models.map((m) => (
+                <TableRow key={`${m.provider} ${m.model}`}>
+                  <TableCell className="pr-3 whitespace-nowrap text-ink"><ModelName m={m} /></TableCell>
                   {figures(m).map(([label, , value], i, all) => (
-                    <td key={label} className={`${i === all.length - 1 ? "pl-2" : "px-2"} py-1.5 text-right ${r ? "border-t border-hair" : ""}`}>{value}</td>
+                    <TableCell key={label} className={`${i === all.length - 1 ? "pl-2" : "px-2"} text-right`}>{value}</TableCell>
                   ))}
-                </tr>
+                </TableRow>
               ))}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         </div>
         )}
         <div>
           <div className={`flex items-center gap-1.5 pb-1 ${TYPE.sectionLabel}`}>
             <Icon.evals.facetChanged size={ICON.xs} className="text-faint" />
             What changed
-            <span className="text-tiny tabular-nums normal-case tracking-normal text-faint">{diff.changes.length}</span>
+            <Pill className="h-4 px-1.5 normal-case tracking-normal">{diff.changes.length}</Pill>
           </div>
           {diff.changes.length === 0 ? (
-            <div className="text-tiny text-faint">No case changed its outcome.</div>
+            <div className="flex items-center gap-1.5 text-tiny text-faint">
+              <Icon.evals.chosen size={ICON.xs} className="shrink-0 text-ok" />
+              No case changed its outcome.
+            </div>
           ) : (
-            <ul className="space-y-0.5 text-tiny">
+            // THE CHANGES AS AN EDITOR'S PROBLEMS LIST: one line each, its mark first, opened by a press.
+            <ul className="divide-y divide-hair overflow-hidden rounded-control border border-hair bg-elevated text-tiny">
               {diff.changes.map((c) => {
                 // UP, DOWN OR ACROSS, in the colour of whether that is better: the list is read by its marks.
                 const Mark = c.better === null ? Icon.evals.moved : c.better ? Icon.evals.rose : Icon.evals.fell;
@@ -192,7 +200,7 @@ export function EvalCompare({
                       onClick={() => onPickCase?.(c.exampleId, c.model)}
                       disabled={!onPickCase}
                       title={onPickCase ? "Open this case's answer in the cases below" : undefined}
-                      className="-mx-1 flex w-[calc(100%+0.5rem)] min-w-0 items-center gap-2 rounded-control px-1 py-1 text-left transition-colors hover:bg-active focus-visible:outline-none focus-visible:shadow-focusring disabled:cursor-default disabled:hover:bg-transparent"
+                      className="flex w-full min-w-0 items-center gap-2 px-2.5 py-1.5 text-left transition-colors hover:bg-active/50 focus-visible:outline-none focus-visible:shadow-focusring disabled:cursor-default disabled:hover:bg-transparent"
                     >
                       <span className={`shrink-0 ${c.better === null ? "text-muted" : c.better ? "text-ok" : "text-err"}`}><Mark size={ICON.xs} /></span>
                       <span className="w-12 shrink-0 tabular-nums text-faint">case {c.index}</span>

@@ -10,6 +10,7 @@ import { useEvalStore } from "../store/evalStore.ts";
 import { undoPendingDelete } from "../lib/evalUndo.ts";
 import { Icon } from "../lib/icons/registry.ts";
 import { ICON } from "../lib/tokens.ts";
+import { Button } from "./ui/button.tsx";
 
 export function EvalUndoToast() {
   const pending = useEvalStore((s) => s.pendingDelete);
@@ -24,7 +25,7 @@ export function EvalUndoToast() {
   return createPortal(
     <div
       key={`${pending.kind}-${pending.id}-${pending.at}`}
-      className="pointer-events-auto flex max-w-xs animate-slide-in items-center gap-2 rounded-card border border-edge bg-elevated py-1 pl-2.5 pr-1.5 text-tiny text-muted shadow-overlay motion-reduce:animate-none"
+      className="pointer-events-auto flex max-w-xs animate-slide-in items-center gap-2 rounded-card border border-grip bg-elevated py-1 pl-2.5 pr-1 text-tiny text-muted shadow-overlay motion-reduce:animate-none"
       role="status"
       aria-live="polite"
     >
@@ -33,14 +34,11 @@ export function EvalUndoToast() {
         ? <Icon.evals.deleteDataset size={ICON.xs} className="shrink-0 text-faint" />
         : <Icon.evals.removeCase size={ICON.xs} className="shrink-0 text-faint" />}
       <span className="min-w-0 truncate text-ink">{what}</span>
-      <button
-        type="button"
-        onClick={undoPendingDelete}
-        className="ml-auto inline-flex shrink-0 items-center gap-1 rounded-control px-2 py-0.5 text-tiny text-muted transition-colors hover:bg-active active:bg-chrome hover:text-ink focus-visible:outline-none focus-visible:shadow-focusring"
-      >
+      {/* THE WAY BACK, on its own soft square — shadcn's button, as the panel's other actions are. */}
+      <Button variant="soft" size="xs" onClick={undoPendingDelete} className="ml-auto text-ink">
         <Icon.evals.undo size={ICON.xs} />
         Undo
-      </button>
+      </Button>
     </div>,
     stack,
   );
