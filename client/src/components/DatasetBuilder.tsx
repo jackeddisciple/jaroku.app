@@ -35,7 +35,6 @@ import { ICON, TYPE } from "../lib/tokens.ts";
 import { EmptyState } from "./EmptyState.tsx";
 import { SectionHeader } from "./SectionHeader.tsx";
 import { DatabaseIcon } from "./panelIcons.tsx";
-import { primaryBtnSm, textBtn } from "./buttons.ts";
 import { IconButton } from "./IconButton.tsx";
 import { Chosen, EVAL_SELECT, FACT_TONE, Pill, SOFT_DANGER_SM, SOFT_ICON, SOFT_ICON_SM, SOFT_ICON_XS } from "./evalUi.tsx";
 import { cn } from "../lib/utils.ts";
@@ -44,6 +43,7 @@ import { Alert } from "./ui/alert.tsx";
 import { Button } from "./ui/button.tsx";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collapsible.tsx";
 import { Input, Textarea } from "./ui/input.tsx";
+import { Kbd } from "./ui/kbd.tsx";
 import { Separator } from "./ui/separator.tsx";
 import {
   DropdownMenu,
@@ -1043,7 +1043,7 @@ export function DatasetBuilder() {
           one button that adds it. */}
       {selected && (
         <div className="shrink-0 border-t border-hair px-4 py-3">
-          <div className="rounded-input border border-edge bg-elevated transition-shadow focus-within:shadow-focusring">
+          <div className="rounded-input border border-grip bg-elevated transition-shadow focus-within:shadow-focusring">
             {/* A BOX, NOT A LINE, and nothing in it is "corrected". A one-line input with the system's
                 autocorrect turned `---` into an em dash and straight quotes into curly ones — and for an
                 agent that splits a job description from a résumé on `---`, a hand-typed case silently
@@ -1066,7 +1066,7 @@ export function DatasetBuilder() {
                 finding the new case in the list and opening its second line. */}
             {newExpected !== null && (
               <div className="flex items-start gap-1.5 border-t border-hair px-2.5 py-1.5">
-                <Icon.evals.expected size={ICON.xs} className="mt-1 shrink-0 text-faint" />
+                <Icon.evals.expected size={ICON.xs} className="mt-1 shrink-0 text-reviewed" />
                 <textarea
                   value={newExpected}
                   onChange={(e) => setNewExpected(e.target.value)}
@@ -1083,34 +1083,39 @@ export function DatasetBuilder() {
               </div>
             )}
             <div className="flex items-center gap-1 px-1.5 pb-1.5">
-              <button
-                type="button"
+              {/* AN EXPECTED OUTPUT IS PART OF THE DATASET, so its toggle wears the dataset's teal while it
+                  is on — a pressed toggle, not a second fill of the hover grey. */}
+              <Button
+                variant="ghost"
+                size="xs"
                 onClick={() => setNewExpected(newExpected === null ? "" : null)}
                 disabled={!connected}
                 aria-pressed={newExpected !== null}
                 aria-label="Give the new case an expected output"
                 title={newExpected === null ? "Give the new case an expected output — optional" : "Leave the expected output off"}
-                className={`${textBtn} inline-flex items-center gap-1 ${newExpected !== null ? "bg-active text-ink" : ""}`}
+                className={newExpected !== null ? "bg-reviewed/10 text-reviewed hover:bg-reviewed/15 hover:text-reviewed" : ""}
               >
                 <Icon.evals.expected size={ICON.xs} />
                 Expected
-              </button>
-              <button type="button" onClick={() => fileRef.current?.click()} className={`${textBtn} inline-flex items-center gap-1`} title="Import examples from a CSV">
+              </Button>
+              <Button variant="ghost" size="xs" onClick={() => fileRef.current?.click()} title="Import examples from a CSV">
                 <Icon.evals.importCsv size={ICON.xs} />
                 CSV
-              </button>
-              <span className="ml-auto pr-1 text-tiny text-faint" title="Enter adds the case; Shift+Enter is a new line">⏎</span>
+              </Button>
+              {/* THE KEY THAT ADDS IT, as a keycap — an editor's shortcut hint. */}
+              <span className="ml-auto flex items-center gap-1 pr-1 text-tiny text-faint" title="Enter adds the case; Shift+Enter is a new line">
+                <Kbd>⏎</Kbd>
+              </span>
               {/* THE BAR'S ONE DECISION, so the one filled button — with its word. */}
-              <button
-                type="button"
+              <Button
+                size="sm"
                 onClick={addExample}
                 disabled={!connected || !newInput.trim()}
                 title={!connected ? "Not connected" : !newInput.trim() ? "Type an input first" : "Add this case"}
-                className={`${primaryBtnSm} shrink-0`}
               >
                 <Icon.evals.addExample size={ICON.sm} />
                 Add case
-              </button>
+              </Button>
             </div>
           </div>
         </div>

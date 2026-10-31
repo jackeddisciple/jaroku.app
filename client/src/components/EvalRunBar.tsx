@@ -23,7 +23,6 @@ import { sendCancelEval, sendEstimateEval, sendStartEval } from "../lib/socket.t
 import { fmtCost } from "../lib/format.ts";
 import { effortName, effortStops } from "../lib/effortLevels.ts";
 import { ProviderMark } from "../lib/icons.tsx";
-import { primaryBtnSm, textBtn } from "./buttons.ts";
 import type { EvalEstimate, EvalTarget, ProviderModel, ProviderStatus } from "../types.ts";
 import { Icon } from "../lib/icons/registry.ts";
 import { ICON, TYPE } from "../lib/tokens.ts";
@@ -31,6 +30,9 @@ import { IconButton } from "./IconButton.tsx";
 import { Chosen, EVAL_SELECT, FACT_TONE, ModelLabel, Pill, SOFT_ICON_XS } from "./evalUi.tsx";
 import { badgeVariants } from "./ui/badge.tsx";
 import { cn } from "../lib/utils.ts";
+import { Alert } from "./ui/alert.tsx";
+import { Button } from "./ui/button.tsx";
+import { Input } from "./ui/input.tsx";
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -175,10 +177,10 @@ export function EstimateDetail({ estimate }: { estimate: EvalEstimate }) {
 
       {/* WOULD IT BE REFUSED. Said here, before Run, in the words the refusal would use. */}
       {refusal && (
-        <div className="flex items-start gap-1.5 text-tiny text-err" role="alert">
+        <Alert tone="destructive" role="alert" className="items-start">
           <Icon.evals.refused size={ICON.xs} className="mt-px shrink-0" />
-          <span>{refusal}</span>
-        </div>
+          <span className="min-w-0 flex-1">{refusal}</span>
+        </Alert>
       )}
     </>
   );
@@ -305,7 +307,7 @@ export function EvalRunBar() {
             >
               <Icon.evals.models size={ICON.xs} className="shrink-0 text-faint" />
               Models
-              <span className="tabular-nums text-faint">{targets.length}</span>
+              <Pill tone={targets.length ? "ink" : "neutral"} className="h-4 px-1.5">{targets.length}</Pill>
               <Icon.evals.menu size={ICON.xs} className="shrink-0 text-faint" />
             </button>
           </DropdownMenuTrigger>
@@ -359,7 +361,8 @@ export function EvalRunBar() {
           const pick = (effort: string | null) =>
             setTargets((cur) => cur.map((x) => (key(x) === key(t) ? { ...x, effort } : x)));
           return (
-            <span key={key(t)} className="inline-flex h-7 max-w-full items-center gap-1 rounded-control border border-hair bg-elevated pl-2 pr-0.5 text-caption text-ink">
+            // A CHOSEN MODEL AS A TAG: its mark and name, its effort, and its own way off.
+            <span key={key(t)} className="inline-flex h-7 max-w-full items-center gap-1 rounded-control border border-edge bg-elevated pl-2 pr-1 text-caption text-ink">
               <ModelLabel provider={t.provider} model={t.model} />
               {choices.length > 0 && (
                 <DropdownMenu>
@@ -410,46 +413,47 @@ export function EvalRunBar() {
         {/* THE MODELS NO KEY RUNS, as one mark and a count that leads to Secrets — said in the bar too,
             so nobody has to open the menu to learn that more of the catalogue is there. */}
         {missing.count > 0 && (
-          <button
-            type="button"
+          <Button
+            variant="ghost"
+            size="xs"
             onClick={openSecrets}
             title={`Add a key for ${missing.labels.join(", ")} in Secrets — ${missing.count} more model${missing.count === 1 ? "" : "s"} to compare on`}
-            className={`${textBtn} inline-flex items-center gap-1`}
           >
             <Icon.evals.needKey size={ICON.xs} />
             +{missing.count}
-          </button>
+          </Button>
         )}
       </div>
 
       {/* the estimate — shown only when money is involved, and always as a range */}
       {confirming && (
-        <div className="space-y-2 rounded-card border border-hair bg-elevated px-3 py-2.5">
+        // THE ESTIMATE AS A CARD OVER THE BAR — the question the next press asks, with its own edge.
+        <div className="space-y-2 rounded-card border border-edge bg-elevated px-3 py-2.5">
           {!estimate ? (
             // A refusal in place of the estimate, rather than "estimating…" for ever.
             error ? (
-              <div className="flex items-start gap-1.5 text-tiny text-err" role="alert">
+              <Alert tone="destructive" role="alert" className="items-start">
                 <Icon.evals.refused size={ICON.xs} className="mt-px shrink-0" />
-                <span>{error}</span>
-              </div>
+                <span className="min-w-0 flex-1">{error}</span>
+              </Alert>
             ) : (
               <div className="flex items-center gap-1.5 text-tiny text-muted">
-                <Icon.evals.estimate size={ICON.xs} className="shrink-0 text-faint" />
+                <Icon.evals.estimate size={ICON.xs} className="shrink-0 animate-stream-pulse text-faint motion-reduce:animate-none" />
                 estimating…
               </div>
             )
           ) : (
             <>
-              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-tiny">
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-tiny">
                 <span className={`inline-flex items-center gap-1.5 ${TYPE.sectionLabel}`}>
                   <Icon.evals.estimate size={ICON.xs} className="text-faint" />
                   Estimate
                 </span>
-                <span className="text-muted">
+                <Pill icon={Icon.evals.runs} tone={FACT_TONE.runs} title="Cases × models — one run of the agent each">
                   {estimate.examples} example{estimate.examples === 1 ? "" : "s"} ×{" "}
                   {estimate.targets} provider{estimate.targets === 1 ? "" : "s"} ={" "}
                   {estimate.totalRuns} run{estimate.totalRuns === 1 ? "" : "s"}
-                </span>
+                </Pill>
               </div>
               {/* A RANGE, never a point value — this is a projection, not a quote. The figure the box
                   is opened for, so it is the largest type in the bar; it was amber, which means running. */}
@@ -469,48 +473,43 @@ export function EvalRunBar() {
 
               {/* STOP AT, ON ONE LINE. The explanation that wrapped between the field and the buttons
                   moved under them, with whatever this ceiling means against this estimate. */}
-              <div className="flex items-center gap-2 border-t border-hair pt-2">
+              <div className="flex flex-wrap items-center gap-2 border-t border-hair pt-2">
                 <Icon.evals.ceiling size={ICON.xs} className="shrink-0 text-faint" />
                 <label className="whitespace-nowrap text-tiny text-muted" htmlFor="eval-ceiling">Stop at</label>
                 <span className="relative">
                   <span className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-tiny text-faint">$</span>
-                  <input
+                  <Input
                     id="eval-ceiling"
                     value={ceiling}
                     onChange={(e) => { setCeiling(e.target.value); setCeilingTyped(true); }}
                     aria-label="Stop at, in dollars"
                     aria-invalid={"error" in parsedCeiling}
                     inputMode="decimal"
-                    className={`h-7 w-24 bg-elevated text-ink rounded-input border pl-5 pr-2 text-tiny tabular-nums outline-none focus:shadow-focusring ${
-                      "error" in parsedCeiling ? "border-err" : "border-edge"
-                    }`}
+                    className="w-24 pl-5 text-tiny tabular-nums"
                   />
                 </span>
-                <button
-                  type="button"
-                  onClick={() => { setConfirming(false); setEstimate(null); }}
-                  className={`${textBtn} ml-auto`}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={confirmRun}
-                  disabled={"error" in parsedCeiling || refusal !== null}
-                  title={refusal ?? ("error" in parsedCeiling ? parsedCeiling.error : undefined)}
-                  className={`${primaryBtnSm} whitespace-nowrap`}
-                >
-                  <Icon.evals.run size={ICON.sm} />
-                  Run for real
-                </button>
+                <span className="ml-auto flex items-center gap-1.5">
+                  <Button variant="ghost" size="sm" onClick={() => { setConfirming(false); setEstimate(null); }}>
+                    Cancel
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={confirmRun}
+                    disabled={"error" in parsedCeiling || refusal !== null}
+                    title={refusal ?? ("error" in parsedCeiling ? parsedCeiling.error : undefined)}
+                  >
+                    <Icon.evals.run size={ICON.sm} />
+                    Run for real
+                  </Button>
+                </span>
               </div>
               {"error" in parsedCeiling && <div className="text-tiny text-err" role="alert">{parsedCeiling.error}</div>}
               {/* A CAUTION, in the info blue: amber is spent only on what is running. */}
               {warning && (
-                <div className="flex items-start gap-1.5 text-tiny text-warn" role="status">
+                <Alert tone="info" role="status" className="items-start">
                   <Icon.evals.caveat size={ICON.xs} className="mt-px shrink-0" />
-                  <span>{warning}</span>
-                </div>
+                  <span className="min-w-0 flex-1">{warning}</span>
+                </Alert>
               )}
               {/* Says what the ceiling actually does. It is checked against real spend
                   before anything is DISPATCHED, so runs already in flight finish and pay
@@ -528,7 +527,10 @@ export function EvalRunBar() {
 
       {/* run control */}
       {!confirming && (
-        <div className="flex items-center gap-2.5 text-caption">
+        // A STATUS BAR'S ROW: what will run and what it is billed by on the left, the one decision at
+        // the right — and it WRAPS, so on a narrow panel the button drops under the facts rather than
+        // being cut off at the panel's edge.
+        <div className="flex flex-wrap items-center gap-x-2.5 gap-y-2 text-caption">
           <Pill icon={Icon.evals.runs} tone={FACT_TONE.runs} size="md" title="Cases × models — one run of the agent each">
             {examples.length} × {targets.length} = {examples.length * targets.length} run
             {examples.length * targets.length === 1 ? "" : "s"}
@@ -542,9 +544,9 @@ export function EvalRunBar() {
               billed per token
             </span>
           )}
-          <span className="ml-auto" />
           {running ? (
             <IconButton variant="soft"
+              className="ml-auto"
               icon={Icon.evals.cancel}
               // One eval per workspace, so this agent's running eval may be a teammate's. Say so before
               // somebody stops it.
@@ -557,16 +559,16 @@ export function EvalRunBar() {
             // construction for the next thing to do. §8: A GATE'S LABEL NAMES WHAT THE PRESS DOES. Every
             // eval sits behind a spend ceiling, so this opens the estimate rather than dispatching, and
             // "Run eval" would promise money moving that the next screen has not asked about yet.
-            <button
-              type="button"
+            <Button
+              size="sm"
+              className="ml-auto"
               onClick={beginRun}
               disabled={estimateBlocked !== null}
               title={estimateBlocked ? `Estimate the cost of this eval — ${estimateBlocked}` : "Estimate the cost of this eval"}
-              className={`${primaryBtnSm} shrink-0 focus-visible:outline-none focus-visible:shadow-focusring`}
             >
               <Icon.evals.estimate size={ICON.sm} />
               Estimate cost
-            </button>
+            </Button>
           )}
         </div>
       )}
