@@ -217,7 +217,7 @@ export function CellDetail({
     <div ref={box} className="mt-2.5 space-y-3 border-t border-hair pt-2.5">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-tiny">
         <span className="flex items-center" role="group" aria-label="Step through this example's responses">
-          <IconButton
+          <IconButton variant="soft"
             icon={Icon.evals.prevResponse}
             label="Previous response"
             size={ICON.xs}
@@ -225,7 +225,7 @@ export function CellDetail({
             disabledReason={responses < 2 ? "This case has only one response" : null}
             onClick={() => onStep(-1)}
           />
-          <IconButton
+          <IconButton variant="soft"
             icon={Icon.evals.nextResponse}
             label="Next response"
             size={ICON.xs}

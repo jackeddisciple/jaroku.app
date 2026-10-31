@@ -90,6 +90,22 @@ console.log("\nthe destructive treatment is the error tone, never amber");
   check("...and never for amber", !/text-warn|text-run|amber/.test(html));
 }
 
+console.log("\na soft icon button keeps its square at rest, and is the same control otherwise");
+{
+  // THE EVALS PANEL'S (2026-10-31): the square that only appeared under the pointer stays. What must
+  // not change with it is everything this suite is about — the name, the tooltip, the 32px target.
+  const cls = (html: string): string => html.match(/class="([^"]*)"/)?.[1] ?? "";
+  const soft = renderToStaticMarkup(createElement(IconButton, { icon: Icon.evals.renameDataset, label: "Rename this dataset", variant: "soft" }));
+  check("its ground is there before any hover", /(?:^| )bg-active(?: |$)/.test(cls(soft)), cls(soft));
+  check("...and darkens under the pointer", /hover:bg-chrome/.test(cls(soft)), cls(soft));
+  check("...still named and titled by one string", soft.includes('aria-label="Rename this dataset"') && soft.includes('title="Rename this dataset"'));
+  check("...still a 32px target", /min-width:32px/.test(soft) && /min-height:32px/.test(soft));
+  const softDanger = renderToStaticMarkup(createElement(IconButton, { icon: Icon.evals.deleteDataset, label: "Delete this dataset", variant: "soft", danger: true }));
+  check("a soft removal is red on approach and never amber", /hover:text-err/.test(softDanger) && !/text-warn|text-run\b|amber/.test(softDanger));
+  const ghost = renderToStaticMarkup(createElement(IconButton, { icon: Icon.evals.renameDataset, label: "Rename this dataset" }));
+  check("and the default still shows no ground until it is reached for", !/(?:^| )bg-active(?: |$)/.test(cls(ghost)) && /hover:bg-active/.test(cls(ghost)), cls(ghost));
+}
+
 console.log("\nno call site passes an empty label, and none rolls its own icon-only button");
 {
   const files = sourceFiles().filter(

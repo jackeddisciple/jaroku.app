@@ -28,7 +28,7 @@ import type { EvalEstimate, EvalTarget, ProviderModel, ProviderStatus } from "..
 import { Icon } from "../lib/icons/registry.ts";
 import { ICON, TYPE } from "../lib/tokens.ts";
 import { IconButton } from "./IconButton.tsx";
-import { FACT_TONE, ModelLabel, Pill } from "./evalUi.tsx";
+import { FACT_TONE, ModelLabel, Pill, SOFT_ICON_XS } from "./evalUi.tsx";
 import { badgeVariants } from "./ui/badge.tsx";
 import { cn } from "../lib/utils.ts";
 import {
@@ -398,7 +398,7 @@ export function EvalRunBar() {
                 disabled={running}
                 aria-label={`Take ${name} off this eval`}
                 title={locked ?? `Take ${name} off this eval`}
-                className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-control text-faint transition-colors hover:bg-active hover:text-ink focus-visible:outline-none focus-visible:shadow-focusring disabled:cursor-not-allowed disabled:opacity-40"
+                className={cn(SOFT_ICON_XS, "h-5 w-5 rounded-sm")}
               >
                 <Icon.evals.removeModel size={ICON.xs} />
               </button>
@@ -543,7 +543,7 @@ export function EvalRunBar() {
           )}
           <span className="ml-auto" />
           {running ? (
-            <IconButton
+            <IconButton variant="soft"
               icon={Icon.evals.cancel}
               // One eval per workspace, so this agent's running eval may be a teammate's. Say so before
               // somebody stops it.

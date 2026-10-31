@@ -35,9 +35,10 @@ import { ICON, TYPE } from "../lib/tokens.ts";
 import { EmptyState } from "./EmptyState.tsx";
 import { SectionHeader } from "./SectionHeader.tsx";
 import { DatabaseIcon } from "./panelIcons.tsx";
-import { iconBtn, primaryBtnSm, selectBtn, textBtn } from "./buttons.ts";
+import { primaryBtnSm, selectBtn, textBtn } from "./buttons.ts";
 import { IconButton } from "./IconButton.tsx";
-import { FACT_TONE, Pill } from "./evalUi.tsx";
+import { FACT_TONE, Pill, SOFT_ICON_SM, SOFT_ICON_XS } from "./evalUi.tsx";
+import { cn } from "../lib/utils.ts";
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -58,7 +59,7 @@ import { Icon } from "../lib/icons/registry.ts";
  * fifty cases is fifty cases rather than fifty rows of controls, and Tab still finds every one.
  */
 const CASE_ACTION =
-  "self-start inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-control text-faint opacity-0 transition-opacity hover:bg-active hover:text-ink group-hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:shadow-focusring";
+  "self-start inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-control bg-active text-faint opacity-0 transition-[opacity,background-color,color] hover:bg-chrome hover:text-ink group-hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:shadow-focusring";
 
 /** How the case list is drawn — what a person can turn off to read a long dataset faster. */
 interface CaseView {
@@ -241,7 +242,7 @@ function ExampleRow({
           title="Remove this case"
           aria-label={`Remove case ${index + 1}`}
           // Red on approach, as every removal is — the one tone swapped, not a second hover colour added.
-          className={CASE_ACTION.replace("hover:text-ink", "hover:text-err")}
+          className={CASE_ACTION.replace("hover:bg-chrome hover:text-ink", "hover:bg-err/10 hover:text-err")}
         >
           <Icon.evals.removeCase size={ICON.xs} />
         </button>
@@ -440,7 +441,7 @@ function RubricEditor({ datasetId }: { datasetId: string }) {
                 <span className="w-9 shrink-0 text-right text-tiny tabular-nums text-faint" title="This criterion's share of the overall score">
                   {weight !== null && total > 0 ? `${Math.round((weight / total) * 100)}%` : "—"}
                 </span>
-                <IconButton
+                <IconButton variant="soft"
                   icon={Icon.evals.removeCriterion}
                   label={`Remove criterion ${i + 1}`}
                   size={ICON.xs}
@@ -509,7 +510,7 @@ function RubricEditor({ datasetId }: { datasetId: string }) {
                   onClick={() => setDraft(null)}
                   title="Revert to the saved rubric"
                   aria-label="Revert to the saved rubric"
-                  className={iconBtn}
+                  className={SOFT_ICON_SM}
                 >
                   <Icon.evals.revertRubric size={ICON.xs} />
                 </button>
@@ -604,7 +605,7 @@ function ViewMenu({ view, onChange }: { view: CaseView; onChange: (v: CaseView) 
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <button type="button" className={iconBtn} aria-label="How the cases are shown" title="How the cases are shown">
+        <button type="button" className={SOFT_ICON_SM} aria-label="How the cases are shown" title="How the cases are shown">
           <Icon.evals.viewOptions size={ICON.sm} />
         </button>
       </DropdownMenuTrigger>
@@ -761,8 +762,8 @@ export function DatasetBuilder() {
               aria-label="Dataset name"
               className={`h-7 min-w-0 flex-1 rounded-input border bg-elevated px-2 text-caption text-ink outline-none focus-visible:shadow-focusring ${renameError ? "border-err" : "border-edge"}`}
             />
-            <IconButton icon={Icon.evals.confirm} label="Rename" size={ICON.sm} onClick={submitRename} />
-            <IconButton icon={Icon.evals.dismiss} label="Keep the old name" size={ICON.sm} onClick={() => { setRenaming(null); setRenameError(null); }} />
+            <IconButton variant="soft" icon={Icon.evals.confirm} label="Rename" size={ICON.sm} onClick={submitRename} />
+            <IconButton variant="soft" icon={Icon.evals.dismiss} label="Keep the old name" size={ICON.sm} onClick={() => { setRenaming(null); setRenameError(null); }} />
             {renameError && <span className="shrink-0 text-tiny text-err" role="alert">{renameError}</span>}
           </form>
         ) : datasets.length > 0 ? (
@@ -805,7 +806,7 @@ export function DatasetBuilder() {
           // NO NAME: the server picks one this agent does not have. Numbering from the count here gave
           // two "Test set 3"s after a delete. Agent names are not used — they are generated from prompts
           // and run long, and the agent is already established by the sidebar.
-          <IconButton
+          <IconButton variant="soft"
             icon={Icon.evals.newDataset}
             label="New dataset"
             size={ICON.sm}
@@ -816,9 +817,9 @@ export function DatasetBuilder() {
         {selected && renaming === null && (
           <>
             <span aria-hidden className="mx-1 h-4 w-px shrink-0 bg-hair" />
-            <IconButton icon={Icon.evals.renameDataset} label="Rename this dataset" size={ICON.sm} onClick={() => setRenaming(selected.name)} />
-            <IconButton icon={Icon.evals.importCsv} label="Import examples from a CSV" size={ICON.sm} onClick={() => fileRef.current?.click()} />
-            <IconButton
+            <IconButton variant="soft" icon={Icon.evals.renameDataset} label="Rename this dataset" size={ICON.sm} onClick={() => setRenaming(selected.name)} />
+            <IconButton variant="soft" icon={Icon.evals.importCsv} label="Import examples from a CSV" size={ICON.sm} onClick={() => fileRef.current?.click()} />
+            <IconButton variant="soft"
               icon={Icon.evals.exportCsv}
               label="Export these cases as a CSV"
               size={ICON.sm}
@@ -829,7 +830,7 @@ export function DatasetBuilder() {
                 useUiStore.getState().showToast(`Saved to Downloads as ${filename}`, "ok");
               }}
             />
-            <IconButton
+            <IconButton variant="soft"
               icon={Icon.evals.duplicateDataset}
               label="Duplicate this dataset"
               size={ICON.sm}
@@ -838,7 +839,7 @@ export function DatasetBuilder() {
             />
             <span className="ml-auto" />
             {/* UNDOABLE FOR FIVE SECONDS rather than gone in one click — see lib/evalUndo.ts. */}
-            <IconButton
+            <IconButton variant="soft"
               icon={Icon.evals.deleteDataset}
               label="Delete this dataset"
               size={ICON.sm}
@@ -884,7 +885,7 @@ export function DatasetBuilder() {
             onClick={() => { setError(null); setImportNote(null); }}
             title="Dismiss"
             aria-label="Dismiss"
-            className={`${iconBtn} shrink-0`}
+            className={SOFT_ICON_XS}
           >
             <Icon.global.dismissNotice size={ICON.xs} />
           </button>
@@ -931,7 +932,7 @@ export function DatasetBuilder() {
                       onClick={() => setQuery("")}
                       aria-label="Clear the search"
                       title="Clear the search"
-                      className="absolute right-1 top-1/2 inline-flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-xs text-faint transition-colors hover:text-ink focus-visible:outline-none focus-visible:shadow-focusring"
+                      className={cn(SOFT_ICON_XS, "absolute right-1 top-1/2 h-5 w-5 -translate-y-1/2 rounded-xs")}
                     >
                       <Icon.evals.clearSearch size={ICON.xs} />
                     </button>

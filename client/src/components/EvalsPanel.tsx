@@ -25,7 +25,7 @@ import { evalDuration, verdict } from "../lib/evalView.ts";
 import { EmptyState } from "./EmptyState.tsx";
 import { DatabaseIcon } from "./panelIcons.tsx";
 import { Segmented, type SegmentOption } from "./Segmented.tsx";
-import { FACT_TONE, FactPill, ModelLabel, type PillTone } from "./evalUi.tsx";
+import { FACT_TONE, FactPill, ModelLabel, SOFT_ICON, SOFT_ICON_XS, type PillTone } from "./evalUi.tsx";
 import { Badge } from "./ui/badge.tsx";
 import {
   DropdownMenu,
@@ -38,7 +38,7 @@ import {
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu.tsx";
 import { modelName, useProviderStore } from "../store/providerStore.ts";
-import { iconBtn, markBtn, primaryBtnSm, secondaryBtn, selectBtn, tabBtn, textBtn } from "./buttons.ts";
+import { primaryBtnSm, secondaryBtn, selectBtn, tabBtn, textBtn } from "./buttons.ts";
 import { Tip } from "./ui/tooltip.tsx";
 import { ICON, TYPE } from "../lib/tokens.ts";
 import { Icon, type IconComponent } from "../lib/icons/registry.ts";
@@ -153,7 +153,7 @@ export function EvalActions({ results }: { results: EvalResults }) {
   const exportMenu = (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <button type="button" className={markBtn} aria-label="Export these results" title="Export these results">
+        <button type="button" className={SOFT_ICON} aria-label="Export these results" title="Export these results">
           <Icon.evals.exportCsv size={ICON.sm} />
         </button>
       </DropdownMenuTrigger>
@@ -226,7 +226,7 @@ export function EvalActions({ results }: { results: EvalResults }) {
         <button
           type="button"
           onClick={runAgain}
-          className={markBtn}
+          className={SOFT_ICON}
           aria-label="Run again"
           title="Run again — the same models, and the estimate for a new eval of this dataset as it is now"
         >
@@ -263,7 +263,7 @@ export function EvalRefusal() {
     <div className={NOTICE} role="alert">
       <Icon.evals.refused size={ICON.sm} className="shrink-0 text-err" />
       <span className="min-w-0 flex-1 text-err">{error}</span>
-      <button type="button" onClick={() => setError(null)} title="Dismiss" aria-label="Dismiss" className={`${iconBtn} shrink-0`}>
+      <button type="button" onClick={() => setError(null)} title="Dismiss" aria-label="Dismiss" className={SOFT_ICON_XS}>
         <Icon.global.dismissNotice size={ICON.xs} />
       </button>
     </div>

@@ -129,7 +129,7 @@ export function EvalCompare({
         <span className="ml-auto flex shrink-0 items-center gap-1">
           {better > 0 && <Pill icon={Icon.evals.rose} tone="ok" title={`${better} case${better === 1 ? "" : "s"} did better`}>{better}</Pill>}
           {worse > 0 && <Pill icon={Icon.evals.fell} tone="err" title={`${worse} case${worse === 1 ? "" : "s"} did worse`}>{worse}</Pill>}
-          <IconButton icon={Icon.evals.clearComparison} label="Stop comparing" size={ICON.xs} onClick={onClose} />
+          <IconButton variant="soft" icon={Icon.evals.clearComparison} label="Stop comparing" size={ICON.xs} onClick={onClose} />
         </span>
       </div>
       <div className="space-y-3 px-3 py-2.5">

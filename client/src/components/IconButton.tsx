@@ -25,6 +25,8 @@
 import { HIT_TARGET } from "./icons.ts";
 import { ICON } from "../lib/tokens.ts";
 import type { IconComponent } from "../lib/icons/registry.ts";
+import { cn } from "../lib/utils.ts";
+import { buttonVariants } from "./ui/button.tsx";
 
 export interface IconButtonProps {
   /** The mark, from the registry. Never a generated component imported directly — see I4. */
@@ -93,6 +95,13 @@ export interface IconButtonProps {
    * a button is a button until something says otherwise.
    */
   role?: string;
+  /**
+   * `soft` KEEPS THE SQUARE. The default (`ghost`) shows its ground only under the pointer, which is
+   * right in a dense row of marks; a soft button sits on its grey square at rest and darkens under the
+   * pointer — shadcn's `soft` button (`ui/button.tsx`). The Evals panel's (2026-10-31, the product
+   * owner's call); every other surface keeps the ghost until it moves. Still 32px, still one label.
+   */
+  variant?: "ghost" | "soft";
 }
 
 export function IconButton({
@@ -108,6 +117,7 @@ export function IconButton({
   className,
   role,
   tabIndex,
+  variant = "ghost",
 }: IconButtonProps) {
   const disabled = disabledReason !== null && disabledReason !== undefined;
   // A CHOSEN SEGMENT IS HELD DOWN, NOT ACCENTED. `active` is a toggle that is on and takes the
@@ -124,6 +134,16 @@ export function IconButton({
         : active
           ? "text-accent hover:bg-active"
           : "text-muted hover:text-ink hover:bg-active";
+
+  // THE SOFT SQUARE, from shadcn's button — red on approach for a removal, held down while pressed.
+  const soft = variant === "soft"
+    ? cn(
+        buttonVariants({ variant: danger ? "destructive" : "soft", size: "icon" }),
+        "focus-visible:outline-none focus-visible:shadow-focusring disabled:opacity-40 disabled:cursor-not-allowed",
+        active || checked === true ? "bg-chrome text-ink" : "",
+        className,
+      )
+    : null;
 
   return (
     <button
@@ -143,7 +163,7 @@ export function IconButton({
         onClick?.(event);
       }}
       style={{ minWidth: HIT_TARGET, minHeight: HIT_TARGET }}
-      className={[
+      className={soft ?? [
         "inline-flex items-center justify-center rounded-control transition-colors",
         "focus-visible:outline-none focus-visible:shadow-focusring",
         "disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent",

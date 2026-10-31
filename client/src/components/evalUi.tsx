@@ -11,8 +11,18 @@ import { ICON } from "../lib/tokens.ts";
 import { cn } from "../lib/utils.ts";
 import { modelName, useProviderStore } from "../store/providerStore.ts";
 import { Badge, type BadgeTone } from "./ui/badge.tsx";
+import { buttonVariants } from "./ui/button.tsx";
 
 export type PillTone = BadgeTone;
+
+/**
+ * An icon-only button's square, KEPT AT REST — shadcn's `soft` button — for the ones that cannot be an
+ * `IconButton` (`variant="soft"`): a menu's trigger, which Radix needs to be the plain `<button>` under
+ * `DropdownMenuTrigger asChild`, and the small marks inside a chip or a field. 32, 28 and 24 pixels.
+ */
+export const SOFT_ICON = buttonVariants({ variant: "soft", size: "icon" });
+export const SOFT_ICON_SM = buttonVariants({ variant: "soft", size: "icon-sm" });
+export const SOFT_ICON_XS = buttonVariants({ variant: "soft", size: "icon-xs" });
 
 /**
  * WHICH COLOUR EACH KIND OF FACT WEARS, everywhere in the tab — so an agent is the same indigo in the
