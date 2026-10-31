@@ -8,7 +8,7 @@ import { ICON, TYPE } from "../lib/tokens.ts";
 import { Icon, type IconComponent } from "../lib/icons/registry.ts";
 import { useNarrowerThan } from "../lib/useNarrower.ts";
 import { IconButton } from "./IconButton.tsx";
-import { ModelLabel, Pill } from "./evalUi.tsx";
+import { FACT_TONE, ModelLabel, Pill } from "./evalUi.tsx";
 import type { EvalResults, ProviderMetrics } from "../types.ts";
 
 /**
@@ -53,7 +53,7 @@ function ModelName({ m }: { m: ModelDelta }) {
   return (
     <span className="inline-flex min-w-0 items-center gap-1.5">
       <ModelLabel provider={m.provider} model={m.model} />
-      {!m.before && <Pill>new</Pill>}
+      {!m.before && <Pill tone="info">new</Pill>}
       {!m.after && <Pill>not in this eval</Pill>}
     </span>
   );
@@ -122,7 +122,7 @@ export function EvalCompare({
         <span className={`shrink-0 ${TYPE.sectionLabel}`}>Compared with</span>
         {/* WHICH EVAL, not only when: two from the same afternoon both read "4d ago". */}
         <span className="min-w-0 truncate text-tiny text-muted" title={`The eval ${relTime(against.startedAt)} on ${against.datasetName ?? "a deleted dataset"}`}>
-          <Pill icon={Icon.evals.when} tone="ink" className="mr-1.5 align-middle">{relTime(against.startedAt)}</Pill>
+          <Pill icon={Icon.evals.when} tone={FACT_TONE.when} className="mr-1.5 align-middle">{relTime(against.startedAt)}</Pill>
           <span className="text-faint">on </span>
           {against.datasetName ?? "a deleted dataset"}
         </span>

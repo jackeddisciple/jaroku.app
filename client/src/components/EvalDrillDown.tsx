@@ -16,7 +16,7 @@ import { useUiStore } from "../store/uiStore.ts";
 import { useEvalStore } from "../store/evalStore.ts";
 import { modelName, useProviderStore } from "../store/providerStore.ts";
 import { ProviderMark } from "../lib/icons.tsx";
-import { ModelLabel, Pill } from "./evalUi.tsx";
+import { FACT_TONE, ModelLabel, Pill } from "./evalUi.tsx";
 import { fmtCost, fmtLatency } from "../lib/format.ts";
 import { CASE_FACETS, criterionLabel, criterionTable, facetCounts, rowIs, type CaseFacet } from "../lib/evalView.ts";
 import { useNarrowerThan } from "../lib/useNarrower.ts";
@@ -246,7 +246,7 @@ export function CellDetail({
         </Fact>
         <Fact Mark={Icon.evals.latency} title="How long this run took">{fmtLatency(cell.latencyMs)}</Fact>
         {cell.attempt > 0 && (
-          <Pill icon={Icon.evals.attempt} title="this job was retried after a transient failure">
+          <Pill icon={Icon.evals.attempt} tone={FACT_TONE.runs} title="this job was retried after a transient failure">
             attempt {cell.attempt + 1}
           </Pill>
         )}
@@ -412,7 +412,7 @@ export function CriterionBreakdown({ results }: { results: EvalResults }) {
                   <td className={`${cell(i === 0)} pl-3 pr-3`}>
                     <span className="text-ink">{r.label}</span>
                     {r.weight !== null && totalWeight > 0 && (
-                      <Pill title="This criterion's share of the overall score" className="ml-1.5 align-middle">
+                      <Pill tone={FACT_TONE.judge} title="This criterion's share of the overall score" className="ml-1.5 align-middle">
                         {Math.round((r.weight / totalWeight) * 100)}%
                       </Pill>
                     )}

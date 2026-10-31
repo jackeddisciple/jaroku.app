@@ -1329,6 +1329,9 @@ jobs:
           npm run test:eval-run-bar
           npm run test:eval-compare
           npm run test:eval-view
+          # shadcn's `cn()`, which the Evals panel's components are built with. tailwind-merge only
+          # knows Tailwind's default scales, so untaught it reads `text-tiny` as a colour and drops it.
+          npm run test:cn
           # No hook below a component's early return: React throws #310 and the window goes blank.
           npm run test:hook-order
           npm run test:secrets-store

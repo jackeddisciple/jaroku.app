@@ -202,7 +202,7 @@ console.log("\nthe table compares only what can be compared");
   check(words.includes("of $0.001 budget"), "the budget reads as typed", words);
   check(words.indexOf("Spent") < words.indexOf("Models") && words.includes("Judge") && words.includes("not scored"),
     "the eval's own figures lead the table, and judging that never ran is not scored rather than $0.00", words.slice(0, 220));
-  check(!/text-run/.test(html), "nothing on a stopped eval's table is amber — amber is for what is running");
+  check(!/text-run(?![a-z])/.test(html), "nothing on a stopped eval's table is amber — amber is for what is running");
   check(fmtBudget(0.2) === "$0.20" && fmtBudget(0.05) === "$0.05" && fmtBudget(1.5) === "$1.50" && fmtBudget(0.001) === "$0.001",
     `a budget is $0.20, not $0.2000 (${fmtBudget(0.2)}, ${fmtBudget(0.001)})`);
 }
@@ -460,9 +460,9 @@ console.log("\nan eval in flight is the trace's pill, and a bar of what it is ma
   const html = markup(createElement(EvalProgressBar, { progress: p }));
   check(/role="progressbar"[^>]*aria-valuemax="12"[^>]*aria-valuenow="7"/.test(html), "a progress bar, seven of twelve", html.slice(0, 300));
   check(text(html) === "2 in flight · 3 queued · 1 failed", "and its caption says what the rest are", text(html));
-  check(/bg-run/.test(html) && !/text-run/.test(html), "amber is spent on the jobs in flight, not on the words");
+  check(/bg-run(?![a-z])/.test(html) && !/text-run(?![a-z])/.test(html), "amber is spent on the jobs in flight, not on the words");
   const scoring = markup(createElement(EvalProgressBar, { progress: { ...p, done: 12, running: 0, queued: 0, status: "completed", scoring: true } }));
-  check(text(scoring) === "every run finished · scoring the answers" && !/bg-run/.test(scoring), "once the runs are done it says the judge is scoring, with nothing in flight", text(scoring));
+  check(text(scoring) === "every run finished · scoring the answers" && !/bg-run(?![a-z])/.test(scoring), "once the runs are done it says the judge is scoring, with nothing in flight", text(scoring));
 
   const pill = (status: string, extra: Record<string, unknown> = {}) => markup(createElement(EvalOutcomePill, { status, ...extra } as never));
   const live = pill("running", { detail: "7 of 12" });

@@ -25,7 +25,8 @@ import { evalDuration, verdict } from "../lib/evalView.ts";
 import { EmptyState } from "./EmptyState.tsx";
 import { DatabaseIcon } from "./panelIcons.tsx";
 import { Segmented, type SegmentOption } from "./Segmented.tsx";
-import { ModelLabel } from "./evalUi.tsx";
+import { FACT_TONE, FactPill, ModelLabel, type PillTone } from "./evalUi.tsx";
+import { Badge } from "./ui/badge.tsx";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -37,7 +38,7 @@ import {
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu.tsx";
 import { modelName, useProviderStore } from "../store/providerStore.ts";
-import { factChip, iconBtn, markBtn, primaryBtnSm, secondaryBtn, selectBtn, tabBtn, textBtn } from "./buttons.ts";
+import { iconBtn, markBtn, primaryBtnSm, secondaryBtn, selectBtn, tabBtn, textBtn } from "./buttons.ts";
 import { Tip } from "./ui/tooltip.tsx";
 import { ICON, TYPE } from "../lib/tokens.ts";
 import { Icon, type IconComponent } from "../lib/icons/registry.ts";
@@ -105,23 +106,16 @@ export function ResultsHeader({ results, live, actions }: {
       </div>
       <div className="mt-1.5 flex min-w-0 flex-wrap items-center gap-1.5 text-tiny text-muted">
         <Tip label="The agent, and the version of it this eval ran against">
-          <span className={`${factChip} inline-flex shrink-0 cursor-default items-center gap-1`} tabIndex={0}>
-            <Icon.evals.agent size={ICON.badge} />
+          <FactPill icon={Icon.evals.agent} tone={FACT_TONE.agent}>
             {agentName}{results.agentVersion != null ? ` v${results.agentVersion}` : ""}
-          </span>
+          </FactPill>
         </Tip>
         <Tip label={absTime(results.startedAt)}>
-          <span className={`${factChip} inline-flex shrink-0 cursor-default items-center gap-1`} tabIndex={0}>
-            <Icon.evals.when size={ICON.badge} />
-            {relTime(results.startedAt)}
-          </span>
+          <FactPill icon={Icon.evals.when} tone={FACT_TONE.when}>{relTime(results.startedAt)}</FactPill>
         </Tip>
         {duration && (
           <Tip label="How long the eval took, from its first run to its last">
-            <span className={`${factChip} inline-flex shrink-0 cursor-default items-center gap-1 tabular-nums`} tabIndex={0}>
-              <Icon.evals.duration size={ICON.badge} />
-              {duration}
-            </span>
+            <FactPill icon={Icon.evals.duration} tone={FACT_TONE.runs}>{duration}</FactPill>
           </Tip>
         )}
       </div>
@@ -352,11 +346,11 @@ export function JudgeLine() {
  * STOPPED — cancelled, or stopped itself at its ceiling — is the trace's info blue: not a success and
  * not a fault, which is the distinction `EVAL_WORD` exists to keep. The word stays this panel's own.
  */
-const PILL: Record<"done" | "live" | "stopped" | "failed", { tone: string; Mark: IconComponent }> = {
-  done: { tone: "bg-ok/10 text-ok", Mark: Icon.trace.finished },
-  live: { tone: "bg-run/10 text-run", Mark: Icon.trace.running },
-  stopped: { tone: "bg-warn/10 text-warn", Mark: Icon.trace.stopped },
-  failed: { tone: "bg-err/10 text-err", Mark: Icon.trace.failed },
+const PILL: Record<"done" | "live" | "stopped" | "failed", { tone: PillTone; Mark: IconComponent }> = {
+  done: { tone: "ok", Mark: Icon.trace.finished },
+  live: { tone: "run", Mark: Icon.trace.running },
+  stopped: { tone: "info", Mark: Icon.trace.stopped },
+  failed: { tone: "err", Mark: Icon.trace.failed },
 };
 const PILL_OF: Record<EvalRunStatus, keyof typeof PILL> = {
   queued: "live",
@@ -377,7 +371,7 @@ export function EvalOutcomePill({ status, word, detail }: {
   const kind = PILL_OF[status] ?? "failed";
   const { tone, Mark } = PILL[kind];
   return (
-    <span className={`flex h-6 shrink-0 items-center gap-1.5 rounded-pill px-2 text-tiny font-medium ${tone}`}>
+    <Badge tone={tone} size="md" className="gap-1.5 font-medium">
       {kind === "live" ? (
         <span aria-hidden className="h-1.5 w-1.5 shrink-0 animate-stream-pulse rounded-full bg-run motion-reduce:animate-none" />
       ) : (
@@ -385,7 +379,7 @@ export function EvalOutcomePill({ status, word, detail }: {
       )}
       {word ?? EVAL_WORD[status] ?? status}
       {detail && <span className="font-normal tabular-nums">· {detail}</span>}
-    </span>
+    </Badge>
   );
 }
 
@@ -647,10 +641,9 @@ export function EvalsPanel() {
           </span>
           {openDataset && (
             <Tip label="The dataset open in this tab">
-              <span className={`${factChip} inline-flex min-w-[1.75rem] shrink-[1000] cursor-default items-center gap-1 truncate`} tabIndex={0}>
-                <Icon.evals.datasetView size={ICON.badge} className="shrink-0" />
+              <FactPill icon={Icon.evals.datasetView} tone={FACT_TONE.dataset} className="min-w-[1.75rem] shrink-[1000]">
                 <span className="truncate">{openDataset.name}</span>
-              </span>
+              </FactPill>
             </Tip>
           )}
         </div>

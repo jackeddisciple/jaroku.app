@@ -37,7 +37,7 @@ import { SectionHeader } from "./SectionHeader.tsx";
 import { DatabaseIcon } from "./panelIcons.tsx";
 import { iconBtn, primaryBtnSm, selectBtn, textBtn } from "./buttons.ts";
 import { IconButton } from "./IconButton.tsx";
-import { Pill } from "./evalUi.tsx";
+import { FACT_TONE, Pill } from "./evalUi.tsx";
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -380,10 +380,10 @@ function RubricEditor({ datasetId }: { datasetId: string }) {
             <span className="text-tiny text-faint">loading…</span>
           ) : (
             <>
-              <Pill tone={isDefault ? "neutral" : "ink"} title={isDefault ? "The built-in rubric — this dataset has none of its own" : "This dataset's own rubric"}>
+              <Pill tone={isDefault ? "neutral" : FACT_TONE.judge} title={isDefault ? "The built-in rubric — this dataset has none of its own" : "This dataset's own rubric"}>
                 {isDefault ? "Built-in" : "Custom"}
               </Pill>
-              <Pill icon={Icon.evals.criteria} title="How many criteria each answer is scored on">{(rubric?.criteria ?? []).length}</Pill>
+              <Pill icon={Icon.evals.criteria} tone={FACT_TONE.judge} title="How many criteria each answer is scored on">{(rubric?.criteria ?? []).length}</Pill>
             </>
           )}
           {dirty && <Pill tone="info" title="Edited and not saved yet">unsaved</Pill>}

@@ -129,6 +129,7 @@
     "test:eval-run-bar": "tsx src/components/evalRunBar.test.ts",
     "test:eval-compare": "tsx src/lib/evalCompare.test.ts",
     "test:eval-view": "tsx src/lib/evalView.test.ts",
+    "test:cn": "tsx src/lib/utils.test.ts",
     "test:hook-order": "tsx src/components/hookOrder.test.ts",
     "test:thread-cost": "tsx src/lib/threadCost.test.ts",
     "test:thread-resume": "tsx src/lib/threadResume.test.ts",
@@ -169,6 +170,8 @@
     "@radix-ui/react-popover": "1.1.23",
     "@radix-ui/react-tooltip": "1.2.16",
     "@xyflow/react": "^12.11.2",
+    "class-variance-authority": "0.7.1",
+    "clsx": "2.1.1",
     "cmdk": "^1.1.1",
     "html-to-image": "1.11.13",
     "katex": "^0.18.7",
@@ -176,6 +179,7 @@
     "react-dom": "^19.0.0",
     "react-resizable-panels": "^2.1.7",
     "shiki": "^4.3.1",
+    "tailwind-merge": "2.6.1",
     "zustand": "^5.0.2"
   },
   "devDependencies": {

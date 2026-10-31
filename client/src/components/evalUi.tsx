@@ -1,48 +1,82 @@
 // The small pieces every view of the Evals tab is built from, so its five files draw a status, a
 // model and a fact one way rather than five.
+//
+// BUILT ON shadcn/ui's components (`components/ui/`), restyled to this app's tokens — the Evals panel
+// is the first surface drawn with them (2026-10-31), and these are the eval-only variants of them.
 
 import type { ReactNode } from "react";
 import { ProviderMark } from "../lib/icons.tsx";
 import type { IconComponent } from "../lib/icons/registry.ts";
 import { ICON } from "../lib/tokens.ts";
+import { cn } from "../lib/utils.ts";
 import { modelName, useProviderStore } from "../store/providerStore.ts";
+import { Badge, type BadgeTone } from "./ui/badge.tsx";
 
-export type PillTone = "neutral" | "ink" | "ok" | "err" | "info";
+export type PillTone = BadgeTone;
 
 /**
- * Each tone's ground and ink. The three status colours are spent on what they mean — a match, a
- * failure, a caution — and everything that is only a label stays in the neutral greys.
+ * WHICH COLOUR EACH KIND OF FACT WEARS, everywhere in the tab — so an agent is the same indigo in the
+ * header, the picker and the comparison, and colour reads as a kind before the word is read. The
+ * status colours are not here: they are spent on outcomes (`ok`, `err`, `info`, `run`) and nothing
+ * else. Time is neutral, because every row has one.
  */
-const PILL_TONE: Record<PillTone, string> = {
-  neutral: "bg-active text-muted",
-  ink: "bg-chrome text-ink",
-  ok: "bg-ok/10 text-ok",
-  err: "bg-err/10 text-err",
-  info: "bg-warn/10 text-warn",
-};
+export const FACT_TONE = {
+  /** Whose eval: the agent, and its version. */
+  agent: "indigo",
+  /** What it ran on: the dataset, its cases, how answers are checked. */
+  dataset: "teal",
+  /** How it was scored: the judge, the rubric, a criterion, a model's effort. */
+  judge: "purple",
+  /** How much ran: runs, retries, attempts, how long it took. */
+  runs: "pink",
+  /** When. */
+  when: "neutral",
+} as const satisfies Record<string, PillTone>;
 
-/** A label in a pill: a mark and a word or a figure, never a sentence. */
+/** A label in a pill: a mark and a word or a figure, never a sentence. shadcn's Badge underneath. */
 export function Pill({
   icon: Mark,
   tone = "neutral",
+  size = "sm",
   title,
   children,
   className = "",
 }: {
   icon?: IconComponent;
   tone?: PillTone;
+  size?: "sm" | "md";
   title?: string;
   children?: ReactNode;
   className?: string;
 }) {
   return (
-    <span
-      title={title}
-      className={`inline-flex h-5 shrink-0 items-center gap-1 whitespace-nowrap rounded-pill px-1.5 text-tiny tabular-nums ${PILL_TONE[tone]} ${className}`}
-    >
+    <Badge tone={tone} size={size} title={title} className={className}>
       {Mark && <Mark size={ICON.badge} />}
       {children}
-    </span>
+    </Badge>
+  );
+}
+
+/**
+ * A fact on a header's line — whose eval, when, how long — as a coloured pill that can be focused, so
+ * its tooltip is reachable by keyboard as well as by pointer.
+ */
+export function FactPill({
+  icon: Mark,
+  tone,
+  children,
+  className = "",
+}: {
+  icon: IconComponent;
+  tone: PillTone;
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <Badge tone={tone} tabIndex={0} className={cn("cursor-default", className)}>
+      <Mark size={ICON.badge} className="shrink-0" />
+      {children}
+    </Badge>
   );
 }
 
@@ -59,7 +93,7 @@ export function ModelLabel({
 }: {
   provider: string;
   model: string;
-  /** How hard this leg thought, when it was asked to — said after the name. */
+  /** How hard this leg thought, when it was asked to — a judge-coloured pill after the name. */
   effort?: string | null;
   className?: string;
 }) {
@@ -68,7 +102,7 @@ export function ModelLabel({
     <span className={`inline-flex min-w-0 items-center gap-1.5 ${className}`} title={`${provider} · ${model}`}>
       <span aria-hidden className="inline-flex shrink-0"><ProviderMark provider={provider} size={ICON.xs} /></span>
       <span className="min-w-0 truncate">{modelName(providerModels, model)}</span>
-      {effort && <span className="shrink-0 text-faint">({effort})</span>}
+      {effort && <Pill tone={FACT_TONE.judge} className="h-4 px-1">{effort}</Pill>}
     </span>
   );
 }

@@ -28,7 +28,9 @@ import type { EvalEstimate, EvalTarget, ProviderModel, ProviderStatus } from "..
 import { Icon } from "../lib/icons/registry.ts";
 import { ICON, TYPE } from "../lib/tokens.ts";
 import { IconButton } from "./IconButton.tsx";
-import { ModelLabel, Pill } from "./evalUi.tsx";
+import { FACT_TONE, ModelLabel, Pill } from "./evalUi.tsx";
+import { badgeVariants } from "./ui/badge.tsx";
+import { cn } from "../lib/utils.ts";
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -155,7 +157,8 @@ export function EstimateDetail({ estimate }: { estimate: EvalEstimate }) {
               <span className="ml-auto whitespace-nowrap tabular-nums text-ink">
                 {t.priced && t.lowUsd !== null && t.highUsd !== null ? `${fmtCost(t.lowUsd)}–${fmtCost(t.highUsd)}` : "unknown"}
               </span>
-              <Pill title={BASIS[t.basis]} tone={t.basis === "default" ? "info" : "neutral"}>
+              {/* MEASURED IS DATA, a borrowed model is a judgement call, a default is a caution. */}
+              <Pill title={BASIS[t.basis]} tone={t.basis === "default" ? "info" : t.basis === "measured" ? FACT_TONE.dataset : FACT_TONE.judge}>
                 {t.basis === "measured" ? `from ${t.sampleSize} run${t.sampleSize === 1 ? "" : "s"}` : t.basis === "other-model" ? "other model" : "default"}
               </Pill>
             </div>
@@ -365,7 +368,8 @@ export function EvalRunBar() {
                       disabled={running}
                       aria-label={`Reasoning effort for ${name}`}
                       title={locked ?? `How hard ${name} thinks on every case of this eval`}
-                      className="inline-flex h-5 shrink-0 items-center gap-1 rounded-pill bg-active px-1.5 text-tiny text-muted transition-colors hover:bg-chrome hover:text-ink focus-visible:outline-none focus-visible:shadow-focusring disabled:cursor-not-allowed disabled:opacity-60 data-[state=open]:bg-chrome"
+                      // HOW HARD IT THINKS IS PART OF HOW IT IS SCORED, so it wears the judge's colour.
+                      className={cn(badgeVariants({ tone: FACT_TONE.judge }), "hover:bg-bespoke/20 disabled:cursor-not-allowed disabled:opacity-60 data-[state=open]:bg-bespoke/20")}
                     >
                       <Icon.evals.effort size={ICON.badge} />
                       {choices.find((c) => c.value === (t.effort ?? null))?.label ?? "Default"}
@@ -454,7 +458,7 @@ export function EvalRunBar() {
                 </span>
                 <span className="text-tiny text-faint">roughly</span>
                 {estimate.judgeHighUsd > 0 && (
-                  <Pill icon={Icon.evals.judge} title="What scoring the answers is expected to cost — included in the range">
+                  <Pill icon={Icon.evals.judge} tone={FACT_TONE.judge} title="What scoring the answers is expected to cost — included in the range">
                     incl. {fmtCost(estimate.judgeLowUsd)}–{fmtCost(estimate.judgeHighUsd)} judge
                   </Pill>
                 )}
@@ -524,11 +528,10 @@ export function EvalRunBar() {
       {/* run control */}
       {!confirming && (
         <div className="flex items-center gap-2.5 text-caption">
-          <span className="inline-flex items-center gap-1.5 whitespace-nowrap tabular-nums text-faint" title="Cases × models — one run of the agent each">
-            <Icon.evals.runs size={ICON.xs} className="shrink-0" />
+          <Pill icon={Icon.evals.runs} tone={FACT_TONE.runs} size="md" title="Cases × models — one run of the agent each">
             {examples.length} × {targets.length} = {examples.length * targets.length} run
             {examples.length * targets.length === 1 ? "" : "s"}
-          </span>
+          </Pill>
           {unbuilt ? (
             <span className="min-w-0 text-tiny text-muted">{unbuilt}</span>
           ) : targets.length > 0 && (

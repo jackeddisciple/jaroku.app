@@ -103,7 +103,7 @@ console.log("\nthe model chips, rendered");
   check(words.includes("1 × 1 = 1 run"), "the models chosen for this agent are the ones counted, from the store", words);
   check(/<button[^>]*title="Estimate the cost of this eval[^"]*"[^>]*>(?:(?!<\/button>).)*Estimate cost<\/button>/s.test(idle),
     "the tab's primary action is the filled button, saying what it does");
-  check(!/text-run/.test(idle), "and nothing on an idle run bar is amber — amber is for what is running");
+  check(!/text-run(?![a-z])/.test(idle), "and nothing on an idle run bar is amber — amber is for what is running");
 
   seed(useEvalStore, {
     progressByEval: { e1: { evalId: "e1", total: 1, done: 0, running: 1, queued: 0, failed: 0, agentId: "liven", startedHere: true } },
