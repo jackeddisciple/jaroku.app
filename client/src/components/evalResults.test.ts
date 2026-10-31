@@ -552,10 +552,12 @@ console.log("\nthe tab's menus sit on a firm edge, and every tick in it is green
   check(/edge = "default"/.test(ui) && /tick = "ink"/.test(ui), "and every other surface keeps its own until it asks");
 
   const { Chosen, EVAL_SELECT, GreenTick } = await import("./evalUi.tsx");
-  // WHITE ON A GREEN CIRCLE, every tick in the tab (the product owner, 2026-10-31).
+  // BadgeCheckIcon, ITS BADGE GREEN AND ITS TICK WHITE — every tick in the tab (the product owner, 2026-10-31).
   const tick = markup(createElement(GreenTick));
-  check(/rounded-full bg-ok text-elevated/.test(tick) && /<svg/.test(tick), "a tick is white on a green circle", tick.slice(0, 160));
-  check(markup(createElement(Chosen, { on: true })) === tick && /h-3\.5 w-3\.5/.test(markup(createElement(Chosen, { on: false }))),
+  const layers = tick.match(/<svg[^>]*class="([^"]*)"/g) ?? [];
+  check(layers.length === 2 && /text-ok \[&(?:amp;)?_path\]:fill-current/.test(layers[0]!) && /text-elevated \[&(?:amp;)?_path:nth-child\(2\)\]:hidden/.test(layers[1]!)
+    && tick.includes('d="M9 12L11 14L15 10"'), "a tick is the badge check: a green filled badge under a white tick", tick.slice(0, 200));
+  check(markup(createElement(Chosen, { on: true })) === tick && /w-\[15px\]/.test(markup(createElement(Chosen, { on: false }))),
     "a chosen row wears it, and an unchosen row keeps its space");
   const builder = readFileSync("src/components/DatasetBuilder.tsx", "utf8");
   check(/d\.id === selectedDatasetId\s*\? <GreenTick \/>\s*: <Icon\.evals\.datasetView/.test(builder) && !/<Chosen on=\{d\.id === selectedDatasetId\}/.test(builder),
@@ -568,9 +570,9 @@ console.log("\nthe tab's menus sit on a firm edge, and every tick in it is green
   const e = { id: "e1", dataset_id: "d1", agent_id: "liven", rubric_id: "r", status: "completed", budget_usd: 1, judge_cost_usd: 0,
     targets: [], started_at: new Date().toISOString(), ended_at: null, error: null, dataset_name: "Screening cases", dataset_gone: false };
   const done = markup(createElement(EvalFace, { e: e as never, dataset: "Screening cases", models: "" }));
-  check(/aria-label="completed"[^>]*class="[^"]*rounded-full bg-ok text-elevated/.test(done), "a finished eval's tick is white on green in the picker", done.slice(0, 200));
+  check(/aria-label="completed"/.test(done) && /text-ok \[&(?:amp;)?_path\]:fill-current/.test(done), "a finished eval's tick is the green badge check in the picker", done.slice(0, 200));
   const stopped = markup(createElement(EvalFace, { e: { ...e, status: "cancelled" } as never, dataset: "Screening cases", models: "" }));
-  check(!/aria-label="cancelled"[^>]*bg-ok/.test(stopped) && /aria-label="cancelled"/.test(stopped), "and a stopped one keeps the shared vocabulary's mark");
+  check(!/fill-current/.test(stopped) && /aria-label="cancelled"/.test(stopped), "and a stopped one keeps the shared vocabulary's mark");
   const { StatusGlyph } = await import("./StatusGlyph.tsx");
   check(!markup(createElement(StatusGlyph, { phase: "done" })).toLowerCase().includes(STATUS.ok.toLowerCase()),
     "while the shared glyph still draws done in neutral everywhere else");

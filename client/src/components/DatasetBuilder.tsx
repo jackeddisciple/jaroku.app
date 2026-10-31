@@ -636,6 +636,7 @@ function ViewMenu({ view, onChange }: { view: CaseView; onChange: (v: CaseView) 
         {rows.map((r) => (
           <DropdownMenuCheckboxItem
                       tick="ok"
+                      indicator={<GreenTick size={14} />}
             key={r.key}
             checked={view[r.key]}
             onCheckedChange={(on) => onChange({ ...view, [r.key]: on === true })}

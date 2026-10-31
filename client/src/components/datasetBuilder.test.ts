@@ -85,7 +85,8 @@ console.log("\nthe builder, rendered");
   // THE OPEN DATASET'S TICK ON THE BAR, white on green, where the database mark was (2026-10-31) —
   // and the Check row keeps its own mark rather than a tick.
   const bar = /<button[^>]*aria-label="Choose a dataset"[^>]*>([\s\S]*?)<\/button>/.exec(html)?.[1] ?? "";
-  check(/^<span aria-hidden="true" class="[^"]*rounded-full bg-ok text-elevated/.test(bar), "the dataset bar shows the open dataset's tick first", bar.slice(0, 160));
+  check(/^<span aria-hidden="true" class="relative inline-flex shrink-0"[^>]*><svg[^>]*class="[^"]*text-ok \[&amp;_path\]:fill-current|^<span aria-hidden="true" class="relative inline-flex shrink-0"[^>]*><svg[^>]*class="[^"]*text-ok \[&_path\]:fill-current/.test(bar),
+    "the dataset bar shows the open dataset's badge tick first", bar.slice(0, 200));
   const checkRow = /role="group" aria-label="Check answers against expected">([\s\S]*?)<span class="text-tiny/.exec(html)?.[1] ?? "";
   check(!/bg-ok/.test(checkRow) && /<svg/.test(checkRow), "and the Check row keeps its own small mark", checkRow.slice(0, 120));
   // A CASE'S MISSING EXPECTED OUTPUT AND NOTE ARE MARKS, NOT LINES: shown on hover and on keyboard

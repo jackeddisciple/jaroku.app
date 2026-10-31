@@ -132,7 +132,9 @@ console.log("\nthe manifest parses, and it is the size the specification asks fo
   // `ArrowLeftRightIcon`, `HelpCircleIcon`, `RepeatIcon`, `QuoteDownIcon` AND `ArrowDownRight01Icon`;
   // the body's other twenty-one keys reuse marks already here.
   // 226 WITH `DatabaseAddIcon`, for a new dataset; the dataset's other twelve keys reuse marks here.
-  check("226 distinct marks", names.size === 226, `${names.size}`);
+  // 227 WITH `BadgeCheckIcon`, the Evals panel's one tick — `chosen`, `ranOk`, `match` and `confirm`
+  // drawn as a green badge with a white tick (2026-10-31). `Tick02Icon` stays for `viewedTick`.
+  check("227 distinct marks", names.size === 227, `${names.size}`);
   check("no key is declared twice", new Set(entries.map((e) => e.key)).size === entries.length);
 }
 

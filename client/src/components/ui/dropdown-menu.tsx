@@ -17,7 +17,7 @@
 // the pointer and the keyboard alike, so the fill is `data-[highlighted]` rather than `hover:` —
 // one state, whichever way somebody got there.
 
-import type { ComponentProps } from "react";
+import type { ComponentProps, ReactNode } from "react";
 import * as MenuPrimitive from "@radix-ui/react-dropdown-menu";
 import { ICON } from "../../lib/tokens.ts";
 import { CheckIcon } from "../panelIcons.tsx";
@@ -111,8 +111,9 @@ export function DropdownMenuRadioItem({ className = "", ...props }: ComponentPro
  * the same mark. `aria-checked` comes from Radix; the row keeps the menu open when `onSelect` says so.
  */
 /**
- * The box a checked row draws. `ink` is the app's `Checkbox`; `ok` is the Evals panel's tick — WHITE
- * ON A GREEN CIRCLE, and an empty circle with a firmer edge when off (the product owner, 2026-10-31).
+ * The box a checked row draws. `ink` is the app's `Checkbox`; `ok` is the Evals panel's — an empty
+ * circle with a firmer edge while off, and, on, whatever `indicator` the surface gives it (its own
+ * green badge tick, 2026-10-31) or a white tick on a green circle when it gives none.
  */
 const TICK = {
   ink: { shape: "h-3 w-3 rounded-xs", on: "border-accent bg-accent text-bg", off: "border-edge text-transparent" },
@@ -124,19 +125,22 @@ export function DropdownMenuCheckboxItem({
   children,
   checked,
   tick = "ink",
+  indicator,
   ...props
-}: ComponentProps<typeof MenuPrimitive.CheckboxItem> & { tick?: keyof typeof TICK }) {
+}: ComponentProps<typeof MenuPrimitive.CheckboxItem> & { tick?: keyof typeof TICK; indicator?: ReactNode }) {
   const on = checked === true;
   return (
     <MenuPrimitive.CheckboxItem className={`${ROW} ${ROW_SIZE.compact} ${ROW_TONE.default} ${className}`} checked={checked} {...props}>
-      <span
-        aria-hidden
-        className={`inline-flex ${TICK[tick].shape} shrink-0 items-center justify-center border transition-colors duration-fast ${
-          on ? TICK[tick].on : TICK[tick].off
-        }`}
-      >
-        <CheckIcon size={ICON.badge} />
-      </span>
+      {on && indicator ? indicator : (
+        <span
+          aria-hidden
+          className={`inline-flex ${TICK[tick].shape} shrink-0 items-center justify-center border transition-colors duration-fast ${
+            on ? TICK[tick].on : TICK[tick].off
+          }`}
+        >
+          <CheckIcon size={ICON.badge} />
+        </span>
+      )}
       {children}
     </MenuPrimitive.CheckboxItem>
   );

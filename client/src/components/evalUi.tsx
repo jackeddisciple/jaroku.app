@@ -41,18 +41,21 @@ export const EVAL_SELECT = cn(
 );
 
 /**
- * EVERY TICK IN THE TAB: a white tick on its own green circle (the product owner, 2026-10-31) — a
- * chosen row, a finished eval, a run that went through, an answer that matched, a saved rubric.
- * `size` is the circle's; the tick inside is two thirds of it. Decorative unless given a `title`.
+ * EVERY TICK IN THE TAB: `BadgeCheckIcon` with its badge filled green and its tick white (the product
+ * owner, 2026-10-31) — a chosen row, a finished eval, a run that went through, a match, a saved rubric.
+ *
+ * TWO LAYERS OF ONE MARK, because the mark draws its tick BEFORE its badge: filled, the badge would
+ * paint over the tick. So the lower copy fills every path green — the tick's own stroke vanishes into
+ * the badge — and the upper copy hides the badge and strokes only the tick, in white.
  */
 export function GreenTick({
-  size = 14,
+  size = 15,
   mark: Mark = Icon.evals.chosen,
   title,
   className,
 }: {
   size?: number;
-  /** Which registry key draws the tick — the place's own, so every key keeps its call site. */
+  /** Which registry key draws it — the place's own, so every key keeps its call site. */
   mark?: IconComponent;
   title?: string;
   className?: string;
@@ -60,18 +63,19 @@ export function GreenTick({
   return (
     <span
       {...(title ? { role: "img", "aria-label": title, title } : { "aria-hidden": true })}
-      className={cn("inline-flex shrink-0 items-center justify-center rounded-full bg-ok text-elevated", className)}
+      className={cn("relative inline-flex shrink-0", className)}
       style={{ width: size, height: size }}
     >
-      <Mark size={Math.max(8, Math.round(size * 0.66))} />
+      <Mark size={size} className="absolute inset-0 text-ok [&_path]:fill-current" />
+      <Mark size={size} className="absolute inset-0 text-elevated [&_path:nth-child(2)]:hidden" />
     </span>
   );
 }
 
-/** A `GreenTick` where a mark is expected — a column head, an `IconButton`, a pill — two pixels up. */
+/** A `GreenTick` where a mark is expected — a column head, an `IconButton`, a pill — a size up. */
 export const tickMark = (mark: IconComponent): IconComponent =>
   function TickMark({ size = ICON.xs, className }) {
-    return <GreenTick mark={mark} size={size + 2} className={className} />;
+    return <GreenTick mark={mark} size={size + 3} className={className} />;
   };
 export const RanOkMark = tickMark(Icon.evals.ranOk);
 export const MatchMark = tickMark(Icon.evals.match);
@@ -82,7 +86,7 @@ export const ConfirmMark = tickMark(Icon.evals.confirm);
  * so the words of every row start and end in one column.
  */
 export function Chosen({ on }: { on: boolean }) {
-  return on ? <GreenTick /> : <span aria-hidden className="inline-block h-3.5 w-3.5 shrink-0" />;
+  return on ? <GreenTick /> : <span aria-hidden className="inline-block h-[15px] w-[15px] shrink-0" />;
 }
 
 /**

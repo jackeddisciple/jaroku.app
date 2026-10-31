@@ -380,7 +380,7 @@ export const MANIFEST = {
     scopeDataset: "DatabaseIcon",
     scopeAll: "Layers01Icon",
     menu: "ArrowDown01Icon",
-    chosen: "Tick02Icon",
+    chosen: "BadgeCheckIcon",
     // An eval's facts and findings: when it ran, how long it took, the sentence that says who won,
     // the judge that scored it, and a stop or a refusal.
     when: "Calendar03Icon",
@@ -396,9 +396,10 @@ export const MANIFEST = {
     perRun: "DollarCircleIcon",
     latency: "DashboardSpeed01Icon",
     matches: "Target02Icon",
-    // A bare tick since 2026-10-31: the Evals panel draws every tick white on its own green circle
-    // (`GreenTick`), and a check-circle inside that circle would be two rings.
-    ranOk: "Tick02Icon",
+    // EVERY TICK IN THE EVALS PANEL IS A BADGE (2026-10-31, the product owner's call): `BadgeCheckIcon`,
+    // drawn by `GreenTick` with its badge filled green and its tick white. `chosen`, `match` and
+    // `confirm` below wear it too.
+    ranOk: "BadgeCheckIcon",
     spent: "Invoice01Icon",
     tokens: "TokenCircleIcon",
     // What a leg leads on, beside the figure it leads with: a crown, coins and a flash rather than
@@ -418,7 +419,7 @@ export const MANIFEST = {
     // attempt, the judge's own words, and a long text folded and unfolded.
     answer: "Message01Icon",
     expected: "Target02Icon",
-    match: "Tick02Icon",
+    match: "BadgeCheckIcon",
     noMatch: "XIcon",
     attempt: "RepeatIcon",
     rationale: "QuoteDownIcon",
@@ -436,7 +437,7 @@ export const MANIFEST = {
     // confirmed or dismissed, how answers are checked, the rubric's criteria added, keyed, removed
     // and saved, and the case list's search, view menu, notes and removal.
     newDataset: "DatabaseAddIcon",
-    confirm: "Tick02Icon",
+    confirm: "BadgeCheckIcon",
     dismiss: "XIcon",
     check: "TaskDone01Icon",
     criterionId: "KeyRoundIcon",

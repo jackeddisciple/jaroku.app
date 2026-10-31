@@ -27,7 +27,7 @@ import type { EvalEstimate, EvalTarget, ProviderModel, ProviderStatus } from "..
 import { Icon } from "../lib/icons/registry.ts";
 import { ICON, TYPE } from "../lib/tokens.ts";
 import { IconButton } from "./IconButton.tsx";
-import { Chosen, EVAL_SELECT, FACT_TONE, ModelLabel, Pill, SOFT_ICON_XS } from "./evalUi.tsx";
+import { Chosen, EVAL_SELECT, FACT_TONE, GreenTick, ModelLabel, Pill, SOFT_ICON_XS } from "./evalUi.tsx";
 import { badgeVariants } from "./ui/badge.tsx";
 import { cn } from "../lib/utils.ts";
 import { Alert } from "./ui/alert.tsx";
@@ -334,6 +334,7 @@ export function EvalRunBar() {
                   return (
                     <DropdownMenuCheckboxItem
                       tick="ok"
+                      indicator={<GreenTick size={14} />}
                       key={key(t)}
                       checked={on}
                       disabled={!g.usable && !on}
