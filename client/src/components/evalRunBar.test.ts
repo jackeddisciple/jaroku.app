@@ -88,6 +88,9 @@ console.log("\nthe model chips, rendered");
     targetsByAgent: { liven: [{ provider: "anthropic", model: "claude-sonnet-5" }] },
     progressByEval: {},
   } as never);
+  // Connected, so Estimate's tooltip says what it would price rather than why it cannot.
+  const { useTraceStore } = await import("../store/traceStore.ts");
+  seed(useTraceStore, { connection: "open" } as never);
   let words = text(markup(createElement(EvalRunBar)));
   // THE CATALOGUE IS A MENU, grouped by provider; what the bar draws is the models chosen.
   const { modelGroups } = await import("./EvalRunBar.tsx");
@@ -100,7 +103,13 @@ console.log("\nthe model chips, rendered");
     "models with no key are not drawn as greyed chips", words);
   const idle = markup(createElement(EvalRunBar));
   check(missing.count === 2 && words.includes("+2") && /title="Add a key for OpenAI, Meta in Secrets/.test(idle), "they are one link to Secrets instead", words);
-  check(words.includes("1 × 1 = 1 run"), "the models chosen for this agent are the ones counted, from the store", words);
+  // THE COUNT LIVES IN THE BUTTON'S TOOLTIP now, so the models and the button share one row (2026-10-31).
+  check(/title="Estimate the cost of this eval — 1 case × 1 model = 1 run, billed per token"/.test(idle) && !words.includes("1 × 1 = 1 run"),
+    "the models chosen for this agent are the ones counted, from the store — said in Estimate's tooltip", words);
+  // ONE ROW: the models' side wraps within itself, and Estimate holds the row's right end.
+  const row = idle.slice(idle.indexOf('aria-label="Models and the run"'));
+  check(row !== "" && /aria-label="Choose the models to compare"/.test(row) && /Estimate cost<\/button><\/div>/.test(row) && !/1 × 1 = 1 run/.test(text(idle)),
+    "and the models and Estimate cost sit on one row, with no count beside them");
   check(/<button[^>]*title="Estimate the cost of this eval[^"]*"[^>]*>(?:(?!<\/button>).)*Estimate cost<\/button>/s.test(idle),
     "the tab's primary action is the filled button, saying what it does");
   check(!/text-run(?![a-z])/.test(idle), "and nothing on an idle run bar is amber — amber is for what is running");

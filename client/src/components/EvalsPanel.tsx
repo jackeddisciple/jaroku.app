@@ -43,6 +43,7 @@ import { ToggleGroup, ToggleGroupItem } from "./ui/toggle-group.tsx";
 import { Alert } from "./ui/alert.tsx";
 import { Button } from "./ui/button.tsx";
 import { Input } from "./ui/input.tsx";
+import { useNarrowerThan } from "../lib/useNarrower.ts";
 import { Tip } from "./ui/tooltip.tsx";
 import { ICON, TYPE } from "../lib/tokens.ts";
 import { Icon, type IconComponent } from "../lib/icons/registry.ts";
@@ -500,6 +501,9 @@ const VIEWS: { id: "dataset" | "results"; label: string; title: string; Mark: Ic
 
 type Mode = "dataset" | "results";
 
+/** Narrower than this, the breadcrumb and two worded tabs cannot share a row; the tabs lose their words. */
+const HEAD_FOLD_PX = 420;
+
 export function EvalsPanel() {
   const activeAgentId = useBuildStore((s) => s.activeAgentId);
   const agentName = useBuildStore((s) => s.agents.find((a) => a.agent_id === s.activeAgentId)?.name ?? s.activeAgentId);
@@ -513,6 +517,9 @@ export function EvalsPanel() {
   const selectEval = useEvalStore((s) => s.selectEval);
   const resultsByEval = useEvalStore((s) => s.resultsByEval);
   const progress = useEvalStore((s) => liveEvalOf(s.progressByEval, activeAgentId));
+
+  /** How wide the breadcrumb's row is: too narrow for both, and the tabs fold to their marks. */
+  const [headRow, headNarrow] = useNarrowerThan<HTMLDivElement>(HEAD_FOLD_PX);
 
   // THIS AGENT'S HALF OF THE TAB, kept in the store: a trip to a cell's trace and back used to land
   // on Dataset, because the choice lived in a component that the trip unmounted.
@@ -638,7 +645,7 @@ export function EvalsPanel() {
           while one runs; where you are as a breadcrumb — the agent, then the dataset open in it — and
           the panel's views as its tabs, all on the panel's own ground over the content's. */}
       <header className="shrink-0 border-b border-hair bg-panel">
-        <div className="flex h-9 items-center gap-3 px-4">
+        <div className="flex h-8 items-center gap-3 px-4">
           <span className={`flex min-w-0 items-center gap-1.5 ${TYPE.panelLabel}`}>
             <Icon.evals.panel size={ICON.xs} className="shrink-0" />
             <span className="truncate">Evals</span>
@@ -653,35 +660,42 @@ export function EvalsPanel() {
             </span>
           )}
         </div>
-        <nav aria-label="Where this is" className="flex min-w-0 items-center gap-1.5 px-4 pb-1.5 text-caption">
-          <span className="flex min-w-0 shrink items-center gap-1.5 text-label text-ink" title={agentName ?? undefined}>
-            <Icon.evals.agent size={ICON.sm} className="shrink-0 text-stateful" />
-            <span className="truncate">{agentName}</span>
-          </span>
-          {openDataset && (
-            <>
-              <Icon.evals.crumb size={ICON.xs} className="shrink-0 text-faint" />
-              <Tip label="The dataset open in this tab">
-                <FactPill icon={Icon.evals.datasetView} tone={FACT_TONE.dataset} className="min-w-[1.75rem] shrink-[1000]">
-                  <span className="truncate">{openDataset.name}</span>
-                </FactPill>
-              </Tip>
-            </>
-          )}
-        </nav>
-        {/* EACH VIEW WITH HOW MANY THINGS IT HOLDS, when that is a total — a badge, as an editor
-            counts its problems, and in ink on the tab that is open. */}
-        <TabsList aria-label="Eval views" className="border-b-0 px-2">
-          {VIEWS.map((v) => (
-            <TabsTrigger key={v.id} value={v.id} title={v.title}>
-              <v.Mark size={ICON.xs} />
-              {v.label}
-              {counts[v.id] !== undefined && (
-                <Badge tone={mode === v.id ? "ink" : "neutral"} className="h-4 px-1.5">{counts[v.id]}</Badge>
-              )}
-            </TabsTrigger>
-          ))}
-        </TabsList>
+        {/* WHERE YOU ARE AND WHICH VIEW, ON ONE ROW (the product owner, 2026-10-31): the breadcrumb —
+            the agent, then the dataset open in it — on the left, and the panel's two views as its tabs at
+            the row's right end, as an editor puts a view's tabs beside its path. */}
+        <div ref={headRow} className="flex min-w-0 items-center gap-2 pl-4 pr-1.5">
+          <nav aria-label="Where this is" className="flex min-w-0 flex-1 items-center gap-1.5 text-caption">
+            <span className="flex min-w-0 shrink items-center gap-1.5 text-label text-ink" title={agentName ?? undefined}>
+              <Icon.evals.agent size={ICON.sm} className="shrink-0 text-stateful" />
+              <span className="truncate">{agentName}</span>
+            </span>
+            {openDataset && (
+              <>
+                <Icon.evals.crumb size={ICON.xs} className="shrink-0 text-faint" />
+                <Tip label="The dataset open in this tab">
+                  <FactPill icon={Icon.evals.datasetView} tone={FACT_TONE.dataset} className="min-w-[1.75rem] shrink-[1000]">
+                    <span className="truncate">{openDataset.name}</span>
+                  </FactPill>
+                </Tip>
+              </>
+            )}
+          </nav>
+          {/* EACH VIEW WITH HOW MANY THINGS IT HOLDS, when that is a total — a badge, as an editor
+              counts its problems, and in ink on the tab that is open. */}
+          <TabsList aria-label="Eval views" className="shrink-0 gap-0.5 border-b-0">
+            {VIEWS.map((v) => (
+              // NARROW, A TAB IS ITS MARK AND ITS COUNT — its word stays its name and its tooltip — so the
+              // breadcrumb beside it keeps room to say whose evals these are.
+              <TabsTrigger key={v.id} value={v.id} title={`${v.label} — ${v.title}`} aria-label={headNarrow ? v.label : undefined} className="px-2">
+                <v.Mark size={ICON.xs} />
+                {headNarrow ? null : v.label}
+                {counts[v.id] !== undefined && (
+                  <Badge tone={mode === v.id ? "ink" : "neutral"} className="h-4 px-1.5">{counts[v.id]}</Badge>
+                )}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </div>
       </header>
       {running && <EvalProgressBar progress={progress} />}
 

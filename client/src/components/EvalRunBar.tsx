@@ -281,6 +281,12 @@ export function EvalRunBar() {
   const locked = running ? "Locked while this eval runs — choose the next eval's models when it finishes" : null;
   const openSecrets = (): void => { if (missing.first) useUiStore.getState().openSecretsForProvider(missing.first); };
 
+  /** Cases × models — one run of the agent each — for the Estimate button's tooltip. */
+  const runs = examples.length * targets.length;
+  const runsSentence =
+    `${examples.length} case${examples.length === 1 ? "" : "s"} × ${targets.length} model${targets.length === 1 ? "" : "s"} = ` +
+    `${runs} run${runs === 1 ? "" : "s"}, billed per token`;
+
   const confirmRun = () => {
     if (!activeAgentId || !("usd" in parsedCeiling)) return;
     sendStartEval(selectedDatasetId, activeAgentId, targets, parsedCeiling.usd);
@@ -295,7 +301,10 @@ export function EvalRunBar() {
       {/* WHICH MODELS, AS A PICKER AND THE ONES PICKED. The catalogue is a menu of checks grouped by
           provider, each behind its mark; what is chosen sits beside it as pills, each with its effort
           and a way off. It was every model as a chip, provider by provider, two or three rows deep. */}
-      <div className="flex flex-wrap items-center gap-1.5">
+      {/* THE MODELS AND THE PRESS THAT PRICES THEM, ONE ROW (the product owner, 2026-10-31): the models
+          wrap within their own side when there are many, and the button holds the row's right end. */}
+      <div className="flex items-start gap-2" role="group" aria-label="Models and the run">
+      <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button
@@ -423,7 +432,41 @@ export function EvalRunBar() {
             +{missing.count}
           </Button>
         )}
+
       </div>
+        {/* THE ONE DECISION, ON THE MODELS' OWN ROW: what will run and the press that prices it, side by
+            side. The cases × models count it used to sit beside lives in its tooltip — and in the
+            estimate it opens, which says it again in full. */}
+        {!confirming && (running ? (
+          <IconButton variant="soft"
+            className="shrink-0"
+            icon={Icon.evals.cancel}
+            // One eval per workspace, so this agent's running eval may be a teammate's. Say so before
+            // somebody stops it.
+            label={progress?.startedHere ? "Cancel this eval" : "Cancel this eval — it was started elsewhere in this workspace"}
+            danger
+            onClick={() => progress && sendCancelEval(progress.evalId)}
+          />
+        ) : (
+          // THE TAB'S PRIMARY ACTION, AS THE ONE FILLED BUTTON WITH ITS WORD — the trace's own
+          // construction for the next thing to do. §8: A GATE'S LABEL NAMES WHAT THE PRESS DOES. Every
+          // eval sits behind a spend ceiling, so this opens the estimate rather than dispatching, and
+          // "Run eval" would promise money moving that the next screen has not asked about yet.
+          <Button
+            size="sm"
+            className="shrink-0"
+            onClick={beginRun}
+            disabled={estimateBlocked !== null}
+            title={`Estimate the cost of this eval — ${estimateBlocked ?? runsSentence}`}
+          >
+            <Icon.evals.estimate size={ICON.sm} />
+            Estimate cost
+          </Button>
+        ))}
+      </div>
+
+      {/* A DRAFT HAS NO CODE, said under the row rather than as a disabled button with no reason. */}
+      {unbuilt && !confirming && <div className="text-tiny text-muted">{unbuilt}</div>}
 
       {/* the estimate — shown only when money is involved, and always as a range */}
       {confirming && (
@@ -525,53 +568,6 @@ export function EvalRunBar() {
         </div>
       )}
 
-      {/* run control */}
-      {!confirming && (
-        // A STATUS BAR'S ROW: what will run and what it is billed by on the left, the one decision at
-        // the right — and it WRAPS, so on a narrow panel the button drops under the facts rather than
-        // being cut off at the panel's edge.
-        <div className="flex flex-wrap items-center gap-x-2.5 gap-y-2 text-caption">
-          <Pill icon={Icon.evals.runs} tone={FACT_TONE.runs} size="md" title="Cases × models — one run of the agent each">
-            {examples.length} × {targets.length} = {examples.length * targets.length} run
-            {examples.length * targets.length === 1 ? "" : "s"}
-          </Pill>
-          {unbuilt ? (
-            <span className="min-w-0 text-tiny text-muted">{unbuilt}</span>
-          ) : targets.length > 0 && (
-            // A FACT ABOUT THE BILL, NOT SOMETHING RUNNING — it was amber, the colour of in flight.
-            <span className="inline-flex items-center gap-1 whitespace-nowrap text-tiny text-muted">
-              <Icon.evals.cost size={ICON.xs} className="shrink-0 text-faint" />
-              billed per token
-            </span>
-          )}
-          {running ? (
-            <IconButton variant="soft"
-              className="ml-auto"
-              icon={Icon.evals.cancel}
-              // One eval per workspace, so this agent's running eval may be a teammate's. Say so before
-              // somebody stops it.
-              label={progress?.startedHere ? "Cancel this eval" : "Cancel this eval — it was started elsewhere in this workspace"}
-              danger
-              onClick={() => progress && sendCancelEval(progress.evalId)}
-            />
-          ) : (
-            // THE TAB'S PRIMARY ACTION, AS THE ONE FILLED BUTTON WITH ITS WORD — the trace's own
-            // construction for the next thing to do. §8: A GATE'S LABEL NAMES WHAT THE PRESS DOES. Every
-            // eval sits behind a spend ceiling, so this opens the estimate rather than dispatching, and
-            // "Run eval" would promise money moving that the next screen has not asked about yet.
-            <Button
-              size="sm"
-              className="ml-auto"
-              onClick={beginRun}
-              disabled={estimateBlocked !== null}
-              title={estimateBlocked ? `Estimate the cost of this eval — ${estimateBlocked}` : "Estimate the cost of this eval"}
-            >
-              <Icon.evals.estimate size={ICON.sm} />
-              Estimate cost
-            </Button>
-          )}
-        </div>
-      )}
     </div>
   );
 }

@@ -580,9 +580,10 @@ function CheckMenu({ dataset }: { dataset: Dataset }) {
   const current = dataset.check_mode ?? null;
   const chosen = CHECKS.find((c) => c.mode === current) ?? CHECKS[0]!;
   return (
-    // ONE ROW, AND ITS SENTENCE WRAPS UNDER IT when the panel is narrow rather than being cut off.
-    <div className="flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1 px-3 py-2 text-tiny" role="group" aria-label="Check answers against expected">
-      <GreenTick />
+    // THE CHECK AND ITS PICKER, AND NOTHING ELSE ON THE ROW (the product owner, 2026-10-31): what the
+    // chosen check does is the picker's tooltip, and each one's sentence is in its menu.
+    <div className="flex shrink-0 items-center gap-2 px-3 py-2 text-tiny" role="group" aria-label="Check answers against expected">
+      <Icon.evals.check size={ICON.xs} className="shrink-0 text-ok" />
       <span className={`${TYPE.sectionLabel} shrink-0`}>Check</span>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
@@ -609,7 +610,6 @@ function CheckMenu({ dataset }: { dataset: Dataset }) {
           </DropdownMenuRadioGroup>
         </DropdownMenuContent>
       </DropdownMenu>
-      <span className="min-w-0 flex-1 basis-44 leading-snug text-faint">{chosen.hint}</span>
     </div>
   );
 }
@@ -814,7 +814,11 @@ export function DatasetBuilder() {
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button type="button" className={cn(EVAL_SELECT, "h-8 max-w-[280px] flex-1")} aria-label="Choose a dataset" title="The dataset open in this tab — choose another">
-                <Icon.evals.datasetView size={ICON.xs} className="shrink-0 text-reviewed" />
+                {/* THE OPEN DATASET'S TICK ON THE BAR TOO, as on its row in the list (the product owner,
+                    2026-10-31) — the database mark only while none is chosen. */}
+                {selected
+                  ? <GreenTick />
+                  : <Icon.evals.datasetView size={ICON.xs} className="shrink-0 text-reviewed" />}
                 <span className="min-w-0 flex-1 truncate text-left">{selected?.name ?? "Choose a dataset"}</span>
                 {selected && <Pill tone={FACT_TONE.dataset} className="h-4 px-1.5">{examples.length}</Pill>}
                 <Icon.evals.menu size={ICON.xs} className="shrink-0 text-faint" />

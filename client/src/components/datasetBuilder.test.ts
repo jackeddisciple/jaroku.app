@@ -76,10 +76,18 @@ console.log("\nthe builder, rendered");
   const words = html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
   // ONE MENU OF THE FIVE CHECKS, saying the one in force and what it does; the rest are a press away.
   const { CHECKS } = await import("./DatasetBuilder.tsx");
-  check(/role="group" aria-label="Check answers against expected"/.test(html) && words.includes("Off") && words.includes("Expected outputs are only shown to the judge")
+  // The chosen check's sentence is its picker's tooltip — the row beside it holds nothing else (2026-10-31).
+  check(/role="group" aria-label="Check answers against expected"/.test(html) && words.includes("Off")
+    && /title="Off — Expected outputs are only shown to the judge"/.test(html) && !words.includes("Expected outputs are only shown to the judge")
     && ["Off", "Exact", "Contains", "Word", "Pattern"].every((l) => CHECKS.some((c) => c.label === l)),
     "a dataset says how its answers are checked against expected", words.slice(0, 300));
   check(/<section aria-label="Scoring"/.test(html) && words.includes("Judge rubric"), "the check and the judge's rubric are one scoring card");
+  // THE OPEN DATASET'S TICK ON THE BAR, white on green, where the database mark was (2026-10-31) —
+  // and the Check row keeps its own mark rather than a tick.
+  const bar = /<button[^>]*aria-label="Choose a dataset"[^>]*>([\s\S]*?)<\/button>/.exec(html)?.[1] ?? "";
+  check(/^<span aria-hidden="true" class="[^"]*rounded-full bg-ok text-elevated/.test(bar), "the dataset bar shows the open dataset's tick first", bar.slice(0, 160));
+  const checkRow = /role="group" aria-label="Check answers against expected">([\s\S]*?)<span class="text-tiny/.exec(html)?.[1] ?? "";
+  check(!/bg-ok/.test(checkRow) && /<svg/.test(checkRow), "and the Check row keeps its own small mark", checkRow.slice(0, 120));
   // A CASE'S MISSING EXPECTED OUTPUT AND NOTE ARE MARKS, NOT LINES: shown on hover and on keyboard
   // focus at the row's corner, so fifty cases are not fifty rows of grey invitations.
   const addExpected = /<button[^>]*aria-label="Add an expected output to case 1"[^>]*>/.exec(html)?.[0] ?? "";
