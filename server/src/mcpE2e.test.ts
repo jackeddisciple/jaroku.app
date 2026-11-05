@@ -897,6 +897,32 @@ console.log("\na replica holds the asks another replica raised, until they close
   check(/peerConfirms\.listFor\(/.test(index), "and a reconnecting tab is told about asks held elsewhere");
 }
 
+console.log("\nan advertised schema is normalised or refused at the door");
+{
+  const A = await workspace("shapes");
+  const named = (name: string, inputSchema: unknown) => ({ name, description: "Reads.", inputSchema });
+  const fixture = await startScriptedServer({
+    tools: [
+      named("read_bare", { type: "object" }),
+      named("read_untyped", { properties: { a: { type: "string" } } }),
+      named("read_list", { type: ["object", "null"], properties: {} }),
+      named("read_required", { type: "object", properties: { a: {} }, required: "a" }),
+      named("read_string", { type: "string" }),
+      named("read_array", { type: "array", items: {} }),
+    ],
+  });
+  await connect(A, { endpoint: fixture.url, label: "Shapes" });
+  const row = await registry.get(A, "shapes");
+  const schema = (name: string) => row?.tools.find((t) => t.name === name)?.input_schema as Record<string, unknown> | undefined;
+  check(schema("read_bare")?.["type"] === "object" && typeof schema("read_bare")?.["properties"] === "object", "a bare object gets properties");
+  check(schema("read_untyped")?.["type"] === "object", "an untyped schema with properties is an object");
+  check(schema("read_list")?.["type"] === "object", "a type list holding object is an object");
+  check(!("required" in (schema("read_required") ?? { required: 1 })), "a required that is not a list is dropped");
+  check(!schema("read_string"), "a tool whose arguments are not an object is refused");
+  check(!schema("read_array"), "and so is an array");
+  await fixture.close();
+}
+
 check(errors.length === 0, "no handler threw", String(errors[0] ?? ""));
 
 await db.close?.();

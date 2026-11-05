@@ -702,6 +702,18 @@ def _content_text(result: Any) -> str:
 # --- tool construction ------------------------------------------------------
 
 
+def _normalised_schema(schema: Any) -> dict[str, Any]:
+    if not isinstance(schema, dict) or not schema:
+        return {"type": "object", "properties": {}}
+    out = {**schema, "type": "object"}
+    if not isinstance(out.get("properties"), dict):
+        out["properties"] = {}
+    required = out.pop("required", None)
+    if isinstance(required, list):
+        out["required"] = [key for key in required if isinstance(key, str)]
+    return out
+
+
 class _ScopedTool(StructuredTool):
     def _to_args_and_kwargs(self, tool_input: Any, tool_call_id: Any = None) -> tuple[tuple, dict]:
         args, kwargs = super()._to_args_and_kwargs(tool_input, tool_call_id)
@@ -722,9 +734,7 @@ def _make_tool(server: dict[str, Any], spec: dict[str, Any]) -> StructuredTool:
     server_id = str(server.get("id") or "unknown")
     auth_env_key = server.get("auth_env_key")
     name = str(spec.get("name") or "")
-    schema = spec.get("input_schema")
-    if not isinstance(schema, dict) or not schema:
-        schema = {"type": "object", "properties": {}}
+    schema = _normalised_schema(spec.get("input_schema"))
     # The impact recorded at generation time, INCLUDING any override the user had set. Read
     # from the manifest rather than recomputed, so the gate cannot change its mind between
     # the plan somebody approved and the run that follows it.

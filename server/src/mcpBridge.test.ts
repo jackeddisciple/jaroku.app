@@ -217,6 +217,45 @@ print(json.dumps({"sent": sent}))
   }
 }
 
+console.log("\nany recorded schema builds a tool a model can be given");
+{
+  const shapes: Record<string, unknown> = {
+    "no properties": { type: "object" },
+    "a string": { type: "string" },
+    "an array": { type: "array", items: {} },
+    "properties with no type": { properties: { a: { type: "string" } } },
+    "anyOf": { anyOf: [{ type: "object", properties: { a: {} } }] },
+    "a ref": { $ref: "#/$defs/x", $defs: { x: { type: "object" } } },
+    "a null type": { type: null },
+    "a type list": { type: ["object", "null"], properties: { a: { type: "string" } } },
+    "required as a string": { type: "object", properties: { a: { type: "string" } }, required: "a" },
+    "properties as a string": { type: "object", properties: "nope" },
+  };
+  const built = await python(`
+from langchain_core.utils.function_calling import convert_to_openai_tool
+shapes = json.loads(${JSON.stringify(JSON.stringify(shapes))})
+out = {}
+B._run_call = lambda endpoint, token, tool, args: None
+B._result_text = lambda server, name, result: "ok"
+for label, schema in shapes.items():
+    manifest = {"servers": [{"id": "a", "endpoint": "https://a.test/mcp", "auth_env_key": None, "tools": [{"name": "read_page", "description": "r", "impact": "low", "impact_reason": "r", "input_schema": schema}]}]}
+    try:
+        tool = B.build_tools(manifest)[0]
+        keys = sorted(tool.args.keys())
+        parameters = convert_to_openai_tool(tool)["function"]["parameters"]
+        out[label] = {"args": keys, "type": parameters.get("type")}
+    except Exception as exc:
+        out[label] = {"raised": f"{type(exc).__name__}: {exc}"}
+print(json.dumps(out))
+`);
+  for (const label of Object.keys(shapes)) {
+    const row = built[label] as { args?: string[]; type?: unknown; raised?: string } | undefined;
+    check(row !== undefined && !row.raised, `${label}: tool.args does not raise`, row?.raised ?? String(built["crashed"] ?? ""));
+    check(row?.type === "object", `${label}: a model is told it takes an object`, JSON.stringify(row));
+  }
+  check(!(built["properties as a string"] as { args?: string[] })?.args?.includes("n"), "a string of properties is not read character by character");
+}
+
 console.log("\nthe runner's .env loader will not read a gate setting");
 {
   const envFile = join(dir, "reserved.env").replace(/\\/g, "/");

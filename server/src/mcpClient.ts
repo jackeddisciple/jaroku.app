@@ -107,6 +107,19 @@ function readAnnotations(raw: unknown): Record<string, unknown> | null {
   return Object.keys(kept).length > 0 ? kept : null;
 }
 
+function normalisedSchema(schema: Record<string, unknown>): Record<string, unknown> | null {
+  const type = schema["type"];
+  if (type !== undefined && type !== null && type !== "object" && !(Array.isArray(type) && type.includes("object"))) return null;
+  const properties = schema["properties"];
+  const { required, ...rest } = schema;
+  return {
+    ...rest,
+    type: "object",
+    properties: properties && typeof properties === "object" && !Array.isArray(properties) ? properties : {},
+    ...(Array.isArray(required) ? { required: required.filter((key) => typeof key === "string") } : {}),
+  };
+}
+
 function nestedDeeperThan(value: unknown, limit: number): boolean {
   const stack: { node: unknown; depth: number }[] = [{ node: value, depth: 0 }];
   while (stack.length > 0) {
@@ -275,6 +288,8 @@ function readTool(raw: unknown): AdvertisedTool | null {
   // truncated one would mean checking arguments against a schema the server never declared.
   if (usable && nestedDeeperThan(usable, MAX_SCHEMA_DEPTH)) return null;
   if (usable && Buffer.byteLength(JSON.stringify(usable), "utf8") > MAX_SCHEMA_BYTES) return null;
+  const normalised = usable && Object.keys(usable).length > 0 ? normalisedSchema(usable) : { type: "object", properties: {} };
+  if (!normalised) return null;
   return {
     name,
     description: typeof t["description"] === "string" ? cleanDescription(t["description"]) : null,
@@ -284,9 +299,7 @@ function readTool(raw: unknown): AdvertisedTool | null {
     // Python bridge building an args schema, the validator checking a generated call — has
     // one shape to handle. That is normalisation of a vacuous schema, not interpretation of
     // a meaningful one: anything that declares anything at all is passed through verbatim.
-    input_schema: usable && Object.keys(usable).length > 0
-      ? usable
-      : { type: "object", properties: {} },
+    input_schema: normalised,
     annotations: readAnnotations(t["annotations"]),
   };
 }
