@@ -16,6 +16,16 @@ const HERE = fileURLToPath(new URL(".", import.meta.url));
 const TRAY = readFileSync(`${HERE}McpConfirmModal.tsx`, "utf8");
 const APP = readFileSync(`${HERE}../App.tsx`, "utf8");
 
+console.log("\nthe tray and the rows say what is true");
+{
+  const PANEL = readFileSync(`${HERE}McpPanel.tsx`, "utf8");
+  check("the tray does not call every held tool classified high impact", !/`It was classified|"It was classified/.test(TRAY));
+  check("it gives the reason the host sent, whatever kind it is", /It asks first because \$\{request\.impactReason\}/.test(TRAY));
+  check("a tool someone lowered is not called read only", /tool\.overridden \? "no confirmation" : "read-only"/.test(PANEL));
+  check("the override badge uses one word for one state", /label="you set this"/.test(PANEL));
+  check("the control does not claim a tool is read only", !/treat as read-only/.test(PANEL));
+}
+
 console.log("\nthe tray exists wherever a run can be waiting");
 {
   const onboarding = /if \(onboardingNeeded\) return \([\s\S]*?\);/.exec(APP)?.[0] ?? "";

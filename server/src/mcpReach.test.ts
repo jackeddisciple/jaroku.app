@@ -315,6 +315,7 @@ async function main(): Promise<void> {
     check(set.status === 200, "Strict is accepted", String(set.status));
     const strict = await run(c, fixture, agent, "call:read_page", { threadId });
     check(strict.asked.map((a) => a["tool"]).join() === "read_page", "under Strict a read asks", JSON.stringify(strict.asked.map((a) => a["tool"])));
+    check(/^Strict mode/.test(String(strict.asked[0]?.["impactReason"])), "and it says Strict is why", String(strict.asked[0]?.["impactReason"]));
     await post(`/v1/conversations/${threadId}/settings`, { permission_mode: "smart" }, token, "PATCH", workspace);
     await sleep(300);
     const smart = await run(c, fixture, agent, "call:read_page", { threadId });

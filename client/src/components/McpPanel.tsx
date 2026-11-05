@@ -82,11 +82,14 @@ function ToolRow({ tool, serverId }: { tool: McpTool; serverId: string }) {
               // The badge's default neutral icon is an ✕, which next to the word "read-only"
               // reads as a negation rather than a description. Both of these are properties
               // of the tool, so both say what they are.
-              <StatusBadge state="neutral" variant="outline" label="read-only" icon={EyeIcon}
-                title="Classified as information retrieval — it runs without stopping to ask." />
+              <StatusBadge state="neutral" variant="outline"
+                label={tool.overridden ? "no confirmation" : "read-only"} icon={EyeIcon}
+                title={tool.overridden
+                  ? "You lowered this. It still does whatever it does; Jaroku just stops asking first."
+                  : "Classified as information retrieval — it runs without stopping to ask."} />
             )}
             {tool.overridden && (
-              <StatusBadge state="neutral" variant="outline" label={`you set this to ${tool.impact}`}
+              <StatusBadge state="neutral" variant="outline" label="you set this"
                 icon={UserCircleIcon}
                 title={`Jaroku classified it ${tool.computed_impact}.`} />
             )}
@@ -138,7 +141,7 @@ function ToolRow({ tool, serverId }: { tool: McpTool; serverId: string }) {
                     ? "Stop asking before this runs."
                     : "Ask before this runs, even though it was classified read-only."}
                 >
-                  {high ? "treat as read-only" : "treat as high impact"}
+                  {high ? "stop asking first" : "treat as high impact"}
                 </button>
               </>
             )}

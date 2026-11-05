@@ -83,7 +83,7 @@ export function buildManifest(tools: McpToolView[], servers: McpServerView[]): M
       // The EFFECTIVE impact, so a user's override travels with the agent. Recomputing at
       // call time would let a gate change its mind between approval and execution.
       impact: t.impact,
-      impact_reason: t.impact_reason,
+      impact_reason: t.overridden && t.impact === "high" ? "you marked it high impact" : t.impact_reason,
     });
     grouped.set(t.server_id, list);
   }

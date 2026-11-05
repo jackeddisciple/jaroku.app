@@ -213,6 +213,19 @@ console.log("\na redirect cannot reach anything the URL check would refuse");
   await internal.close();
 }
 
+console.log("\na tool a person raised does not claim the classifier's reason");
+{
+  const A = await workspace("reason");
+  const fixture = await startScriptedServer();
+  await connect(A, { endpoint: fixture.url, label: "Reason" });
+  await registry.setToolImpact(A, "reason", "read_page", "high");
+  const manifest = buildManifest(await registry.allTools(A), await registry.list(A));
+  const reasons = Object.fromEntries((manifest.servers[0]?.tools ?? []).map((t) => [t.name, t.impact_reason]));
+  check(reasons["read_page"] === "you marked it high impact", "the raised tool says who raised it", reasons["read_page"]);
+  check(/send/.test(reasons["send_message"] ?? ""), "the untouched tool keeps the classifier's reason", reasons["send_message"]);
+  await fixture.close();
+}
+
 console.log("\nrevoking takes the named refs out of the grant and nothing else");
 {
   const granted = ["a/send", "a/read", "b/delete"];

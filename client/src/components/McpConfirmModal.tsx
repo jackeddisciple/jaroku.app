@@ -271,9 +271,7 @@ function AskBody({ request, connected, answered, armed, onAnswered }: {
         <span className="text-ink">This runs on a third-party server Jaroku has not reviewed.</span>{" "}
         {/* THE REASON THE MANIFEST GAVE, or nothing. A placeholder here read "classified
             high-impact because it is classified high-impact". */}
-        {request.impactReason
-          ? `It was classified high-impact because ${request.impactReason}.`
-          : "It was classified high-impact."}
+        {request.impactReason ? `It asks first because ${request.impactReason}.` : "It asks first."}
       </p>
 
       {/* The body of the ask. Approving the tool happened at planning time; what has never been
