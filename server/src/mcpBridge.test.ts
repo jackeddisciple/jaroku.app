@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -119,6 +119,34 @@ console.log("\nthe host's scope governs the gate at run time");
 
   const broken = await python(`import os\nos.environ["JAROKU_MCP_SCOPE"] = "not json"\ntry:\n    B.build_tools(json.loads(${JSON.stringify(MANIFEST)}))\n    print(json.dumps({"raised": False}))\nexcept B.ManifestError:\n    print(json.dumps({"raised": True}))\n`);
   check(broken["raised"] === true, "an unreadable scope is refused rather than ignored", JSON.stringify(broken));
+}
+
+console.log("\nan eval's run can never call a high impact tool unasked");
+{
+  const evalShape = await python(`
+import os
+os.environ["JAROKU_RUN_ID"] = "eval-run"
+os.environ["JAROKU_MCP_CONFIRM"] = "require"
+os.environ.pop("JAROKU_CONTROL_DIR", None)
+called = []
+B._run_call = lambda endpoint, token, tool, args: called.append(tool)
+B._result_text = lambda server, name, result: "ok"
+tool = {t.name: t for t in B.build_tools(json.loads(${JSON.stringify(MANIFEST)}))}["send_message"]
+try:
+    tool.invoke({})
+    print(json.dumps({"called": called, "refused": False}))
+except B.ToolNotApproved:
+    print(json.dumps({"called": called, "refused": True}))
+`);
+  check(evalShape["refused"] === true, "with nobody able to answer, the call is refused", JSON.stringify(evalShape));
+  check((evalShape["called"] as string[] | undefined)?.length === 0, "...and nothing reaches the server");
+
+  const repoRoot = join(process.cwd(), "src");
+  const runner = readFileSync(join(repoRoot, "evalRunner.ts"), "utf8");
+  const index = readFileSync(join(repoRoot, "index.ts"), "utf8");
+  check(/JAROKU_MCP_CONFIRM: "require"/.test(runner), "the eval runner sets that on every job");
+  check(/runSetup: async[\s\S]{0,700}JAROKU_CONTROL_DIR: CHECKPOINT_DIR/.test(index), "and the app gives an eval's run the route to ask");
+  check(/JAROKU_RESUME_RUN_ID: runId,\s+JAROKU_RUN_ID: runId,\s+JAROKU_CONTROL_DIR: CHECKPOINT_DIR/.test(index), "and a resumed run keeps that route too");
 }
 
 rmSync(dir, { recursive: true, force: true });

@@ -5772,7 +5772,11 @@ evalRunner = new EvalRunner({
     const mcpScope = await mcpScopeEnv(ctx, projectDir);
     runWorkspaces.set(runId, ctx);
     liveRuns.set(runId, { workspaceId: ctx.workspaceId, agentId: job.agentId, kind: "eval", ended: false });
-    return { workspaceId: ctx.workspaceId, host: ctx, env: { ...credentials.env, ...mcpScope, JAROKU_AGENT_DIR: projectDir } };
+    return {
+      workspaceId: ctx.workspaceId,
+      host: ctx,
+      env: { ...credentials.env, ...mcpScope, JAROKU_AGENT_DIR: projectDir, JAROKU_CONTROL_DIR: CHECKPOINT_DIR },
+    };
   },
   releaseRun: (runId) => {
     liveRuns.delete(runId);
@@ -13640,6 +13644,8 @@ async function resumeRun(ctx: TenantContext, runId: string): Promise<void> {
     // This workspace's copy of the agent — see `agentProjectDir` and runAgent.
     ...(projectDir ? { JAROKU_AGENT_DIR: projectDir } : {}),
     JAROKU_RESUME_RUN_ID: runId,
+    JAROKU_RUN_ID: runId,
+    JAROKU_CONTROL_DIR: CHECKPOINT_DIR,
     // The same workspace the run was dispatched in — a resume continues the SAME thread, so it
     // has to compute the same thread id. See runAgent.
     JAROKU_WORKSPACE_ID: ctx.workspaceId,

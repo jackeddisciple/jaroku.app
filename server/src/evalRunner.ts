@@ -1009,6 +1009,7 @@ export class EvalRunner {
         env: {
           ...(setup.env ?? {}),
           JAROKU_RUN_ID: runId,
+          JAROKU_MCP_CONFIRM: "require",
           JAROKU_PROVIDER: payload.provider,
           JAROKU_MODEL: payload.model,
           // HOW HARD IT THINKS, per leg. An eval run carried only a provider and a model, so a model
