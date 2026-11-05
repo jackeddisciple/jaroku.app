@@ -3,6 +3,10 @@ import type { McpServerView, McpToolView } from "./mcpRegistry.ts";
 
 export const SCOPE_ENV = "JAROKU_MCP_SCOPE";
 
+export function isConfirmNonce(nonce: unknown): nonce is string {
+  return typeof nonce === "string" && /^[A-Za-z0-9_-]{1,64}$/.test(nonce);
+}
+
 export interface ScopedTool {
   impact: "high" | "low";
   reason?: string;

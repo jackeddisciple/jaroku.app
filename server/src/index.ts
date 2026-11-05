@@ -159,7 +159,7 @@ import { PrCommentsRepository } from "./db/repositories/prComments.ts";
 import { diffShapes, readShape } from "./semanticDiff.ts";
 import { inSubdirectory, repoPrefix } from "./githubPush.ts";
 import { MANIFEST_FILE, buildManifest, grantWithout, manifestRefs, withGrantOnly, withoutMcpCredentials, withoutMcpGrant, type Manifest } from "./mcpManifest.ts";
-import { SCOPE_ENV, runScope } from "./mcpScope.ts";
+import { SCOPE_ENV, isConfirmNonce, runScope } from "./mcpScope.ts";
 import type { McpImpact } from "./mcpStore.ts";
 import { fetchGoogleAvatar, putAvatar } from "./storage/avatars.ts";
 import { agentPrefix } from "./storage/keys.ts";
@@ -3150,8 +3150,8 @@ function noteToolRefused(p: PendingConfirm, outcome: "denied" | "timed_out"): vo
 }
 
 function handleHostedMcpConfirmRequest(runId: string, payload: Record<string, unknown>): void {
-  const nonce = typeof payload.nonce === "string" ? payload.nonce : "";
-  if (!nonce) return;
+  const nonce = payload.nonce;
+  if (!isConfirmNonce(nonce)) return;
   const runCtx = contextForRun(runId);
   const server = String(payload.server ?? "unknown");
   const tool = String(payload.tool ?? "unknown");
@@ -5972,8 +5972,10 @@ interface PendingConfirm {
 }
 const pendingConfirms = new Map<string, PendingConfirm>();
 const confirmKey = (runId: string, nonce: string): string => `${runId}.${nonce}`;
-const approvalFile = (runId: string, nonce: string): string =>
-  join(CHECKPOINT_DIR, `${runId}.${nonce}.approval`);
+const approvalFile = (runId: string, nonce: string): string => {
+  if (!isConfirmNonce(nonce)) throw new Error("that is not a confirmation nonce");
+  return join(CHECKPOINT_DIR, `${runId}.${nonce}.approval`);
+};
 
 /**
  * Answer the runner by writing the file it is polling for — the same file-based direction
@@ -12221,8 +12223,11 @@ onBothPools("control", ({ runId: slotRunId, ctrl }) => {
       // now, on a timer, so this goes out immediately and unconditionally — including for
       // eval runs, whose ordinary events are kept off the live channels. A silent eval that
       // stalls for two minutes and then reports a denial explains nothing.
-      const nonce = typeof ctrl.nonce === "string" ? ctrl.nonce : "";
-      if (!nonce) return;
+      const nonce = ctrl.nonce;
+      if (!isConfirmNonce(nonce)) {
+        console.warn(`[mcp] dropped a confirmation from run ${runId} with an unusable nonce`);
+        return;
+      }
       const server = String(ctrl.server ?? "unknown");
       const tool = String(ctrl.tool ?? "unknown");
       const scopedServers = runMcpServers.get(runId);
@@ -12285,8 +12290,7 @@ onBothPools("control", ({ runId: slotRunId, ctrl }) => {
     } else if (ctrl.ctrl === "tool_confirm_closed") {
       // The runner gave up waiting (or was denied) and has moved on. Close the ask so a
       // modal cannot linger over a question nobody is listening for any more.
-      const nonce = typeof ctrl.nonce === "string" ? ctrl.nonce : "";
-      if (nonce) clearConfirms(runId, "expired", nonce);
+      if (isConfirmNonce(ctrl.nonce)) clearConfirms(runId, "expired", ctrl.nonce);
     }
   } catch (err) {
     console.error("[debug] control handling failed:", (err as Error).message);

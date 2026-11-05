@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -17,7 +17,7 @@ import { McpStore } from "./mcpStore.ts";
 import { McpRegistry, type RegistrationResult } from "./mcpRegistry.ts";
 import { MCP_DISCOVER_CLASS, McpDiscoveryQueue, type McpDiscoveryPayload } from "./mcpDiscovery.ts";
 import { authEnvKeyFor } from "./envWriter.ts";
-import { runScope } from "./mcpScope.ts";
+import { isConfirmNonce, runScope } from "./mcpScope.ts";
 import { buildManifest, grantWithout, withGrantOnly, withoutMcpGrant } from "./mcpManifest.ts";
 import { AgentRepository } from "./db/repositories/agents.ts";
 import { startScriptedServer } from "../fixtures/mcp/scriptedServer.ts";
@@ -224,6 +224,18 @@ console.log("\na tool a person raised does not claim the classifier's reason");
   check(reasons["read_page"] === "you marked it high impact", "the raised tool says who raised it", reasons["read_page"]);
   check(/send/.test(reasons["send_message"] ?? ""), "the untouched tool keeps the classifier's reason", reasons["send_message"]);
   await fixture.close();
+}
+
+console.log("\na nonce can never name a path");
+{
+  for (const bad of ["x/../../../PWNED", "..\\..\\PWNED", "a/b", "a\\b", "..", "a.b", "", "a b", "a\u0000b", "x".repeat(65), 12, null]) {
+    check(!isConfirmNonce(bad), `refused: ${JSON.stringify(bad)?.slice(0, 40)}`);
+  }
+  check(isConfirmNonce("780fd3d8bf7d"), "the bridge's own shape is accepted");
+  const index = readFileSync(join(fileURLToPath(new URL(".", import.meta.url)), "index.ts"), "utf8");
+  const routes = readFileSync(join(fileURLToPath(new URL(".", import.meta.url)), "sandbox", "controlPlaneRoutes.ts"), "utf8");
+  check(/const approvalFile = [\s\S]{0,120}isConfirmNonce\(nonce\)/.test(index), "the path is only ever built from a checked nonce");
+  check(/if \(!isConfirmNonce\(body\.nonce\)\) throw badRequest/.test(routes), "and the hosted route refuses one before it is registered");
 }
 
 console.log("\nrevoking takes the named refs out of the grant and nothing else");

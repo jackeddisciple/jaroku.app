@@ -18,6 +18,7 @@ import { BackpressureTracker, describeViolation } from "./backpressure.ts";
 import { RunEventBus } from "./eventBus.ts";
 import { verifyRunToken, type RunTokenRevocationList } from "./runTokens.ts";
 import type { TraceIngestMetrics } from "./traceIngestMetrics.ts";
+import { isConfirmNonce } from "../mcpScope.ts";
 
 /** Per the spec: "the timeout still denies." 120s matches mcp_bridge.py's own default so a
  *  hosted run's confirmation gate behaves identically to the local one. */
@@ -206,7 +207,7 @@ async function handleControlLongPoll(req: HttpRequest, runId: string, deps: Cont
 async function handleMcpConfirm(req: HttpRequest, runId: string, deps: ControlPlaneDeps) {
   authenticate(req, runId, deps);
   const body = await req.json<{ nonce?: string; timeout_s?: number; [k: string]: unknown }>();
-  if (typeof body.nonce !== "string" || !body.nonce) throw badRequest("expected {nonce: string, ...}");
+  if (!isConfirmNonce(body.nonce)) throw badRequest("expected {nonce: string, ...}");
 
   deps.onMcpConfirmRequested?.(runId, body);
 
