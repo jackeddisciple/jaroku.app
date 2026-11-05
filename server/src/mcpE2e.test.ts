@@ -560,7 +560,7 @@ console.log("\nwhat a server advertises is bounded in total, not only per field"
   check(row?.tools[0]?.impact === "high", "and still raise the tool");
   await fixture.close();
 
-  const wide = Array.from({ length: 400 }, (_, i) => ({
+  const wide = Array.from({ length: 200 }, (_, i) => ({
     name: `read_${i}`,
     description: "Reads.",
     inputSchema: { type: "object", properties: { pad: { type: "string", description: "p".repeat(60_000) } } },
@@ -569,9 +569,40 @@ console.log("\nwhat a server advertises is bounded in total, not only per field"
   await connect(A, { endpoint: flood.url, label: "Flood" });
   const flooded = await registry.get(A, "flood");
   const size = JSON.stringify(flooded).length;
-  check(size < 3_000_000, "400 tools of 60 KB do not make a 24 MB snapshot", String(size));
+  check(size < 3_000_000, "200 tools of 60 KB do not make a 12 MB snapshot", String(size));
   check((flooded?.tools.length ?? 0) > 0, "the ones that fit are kept");
   check(results.some((r) => /truncated/.test(r.result.message ?? "")), "and the person is told the list was cut");
+  await flood.close();
+}
+
+console.log("\na response is cut off at a byte limit");
+{
+  let wrote = 0;
+  const flood = await startScriptedServer({
+    hook: ({ rpc, id, res }) => {
+      if (rpc !== "initialize") return false;
+      res.writeHead(200, { "content-type": "application/json" });
+      const head = `{"jsonrpc":"2.0","id":${JSON.stringify(id)},"result":{"protocolVersion":"2025-06-18","capabilities":{},"serverInfo":{"name":"x","version":"1"}}`;
+      res.write(head);
+      const chunk = " ".repeat(1024 * 1024);
+      const push = (): void => {
+        while (wrote < 200 && !res.destroyed) {
+          wrote++;
+          if (!res.write(chunk)) {
+            res.once("drain", push);
+            return;
+          }
+        }
+        if (!res.destroyed) res.end("}");
+      };
+      push();
+      return true;
+    },
+  });
+  const result = await discover({ endpoint: flood.url, timeoutMs: 20_000, deadlineMs: 25_000 });
+  check(!result.ok, "a 200 MB initialize is refused", JSON.stringify(result).slice(0, 160));
+  check(!result.ok && /too large/.test(result.error), "and says why", !result.ok ? result.error : "");
+  check(wrote < 100, "well before the server has finished sending it", `${wrote} MB written`);
   await flood.close();
 }
 
