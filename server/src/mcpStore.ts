@@ -355,6 +355,20 @@ export class McpStore {
     );
   }
 
+  async recordHandshake(
+    ctx: TenantContext,
+    id: string,
+    claim: Pick<McpServer, "server_name" | "server_version" | "protocol_version">,
+  ): Promise<boolean> {
+    const res = await this.q(ctx).run(
+      `UPDATE mcp_servers
+          SET server_name = ?, server_version = ?, protocol_version = ?, status = 'connected', last_error = NULL
+        WHERE id = ? AND workspace_id = ?`,
+      [claim.server_name, claim.server_version, claim.protocol_version, id, ctx.workspaceId],
+    );
+    return res.changes > 0;
+  }
+
   /** Records the env var NAME. The value never passes through this module. */
   async setServerAuthEnvKey(ctx: TenantContext, id: string, envKey: string | null): Promise<void> {
     await this.q(ctx).run(`UPDATE mcp_servers SET auth_env_key = ? WHERE id = ? AND workspace_id = ?`, [

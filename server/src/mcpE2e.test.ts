@@ -767,6 +767,28 @@ console.log("\ndisconnecting during a re-check stays disconnected");
   await fixture.close();
 }
 
+console.log("\na slow job does not undo a credential added while it ran");
+{
+  const A = await workspace("stale");
+  const fixture = await startScriptedServer();
+  await connect(A, { endpoint: fixture.url, label: "Stale" });
+  fixture.set({
+    hook: async ({ rpc }) => {
+      if (rpc === "tools/list") await new Promise((done) => setTimeout(done, 700));
+      return false;
+    },
+  });
+  await queue.enqueue(A, { kind: "rediscover", serverId: "stale" });
+  const running = drain();
+  await new Promise((done) => setTimeout(done, 250));
+  await registry.setCredential(A, "stale", "added-while-it-ran");
+  await running;
+  const row = await registry.get(A, "stale");
+  check(row?.auth_env_key === authEnvKeyFor("stale"), "the key name survives the job", String(row?.auth_env_key));
+  check(row?.configured === true, "and the panel still says a credential is stored");
+  await fixture.close();
+}
+
 check(errors.length === 0, "no handler threw", String(errors[0] ?? ""));
 
 await db.close?.();

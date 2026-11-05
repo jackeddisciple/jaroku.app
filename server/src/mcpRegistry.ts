@@ -506,14 +506,12 @@ export class McpRegistry {
       return { ok: false, server: await this.get(ctx, id), message };
     }
 
-    await this.store.upsertServer(ctx, {
-      ...server,
+    const recorded = await this.store.recordHandshake(ctx, id, {
       server_name: result.server_name,
       server_version: result.server_version,
       protocol_version: result.protocol_version,
-      status: "connected",
-      last_error: null,
     });
+    if (!recorded) return { ok: false, server: null, message: null };
     const storing = await this.storeTools(ctx, id, result);
     if (storing) return { ok: false, server: await this.get(ctx, id), message: storing };
     return { ok: true, server: await this.get(ctx, id), message: truncationNote(result) };
