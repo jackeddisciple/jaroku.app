@@ -158,7 +158,7 @@ import { CheckRunner } from "./checkRunner.ts";
 import { PrCommentsRepository } from "./db/repositories/prComments.ts";
 import { diffShapes, readShape } from "./semanticDiff.ts";
 import { inSubdirectory, repoPrefix } from "./githubPush.ts";
-import { MANIFEST_FILE, buildManifest, collisionRefusal, grantWithout, manifestRefs, withGrantOnly, withoutMcpCredentials, withoutMcpGrant, type Manifest } from "./mcpManifest.ts";
+import { MANIFEST_FILE, buildManifest, collisionRefusal, grantWithout, manifestRefs, projectCanCallMcp, withGrantOnly, withoutMcpCredentials, withoutMcpGrant, type Manifest } from "./mcpManifest.ts";
 import { SCOPE_ENV, isConfirmNonce, mcpRunCredentials, runScope, type RunScope } from "./mcpScope.ts";
 import type { McpImpact } from "./mcpStore.ts";
 import { fetchGoogleAvatar, putAvatar } from "./storage/avatars.ts";
@@ -2493,6 +2493,11 @@ async function setAgentTools(ctx: TenantContext, slug: string, refs: unknown, re
   const collision = collisionRefusal(manifest);
   if (collision) {
     refuseAgent(ctx, collision, slug);
+    return;
+  }
+  const projectFiles = await projects.readCurrent(ctx, agent.id, agent.current_version).catch(() => []);
+  if (granted.length > 0 && projectFiles.length > 0 && !projectCanCallMcp(projectFiles)) {
+    refuseAgent(ctx, `${slug} was generated without MCP tools, so a grant cannot reach it. Generate it again with these tools selected.`, slug);
     return;
   }
 

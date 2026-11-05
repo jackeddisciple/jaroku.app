@@ -23,7 +23,7 @@ import { discover } from "./mcpClient.ts";
 import { isConfirmNonce, mcpRunCredentials, runScope } from "./mcpScope.ts";
 import { parseControlLine } from "./processManager.ts";
 import { isSecretName, secretNameRefusal } from "./secrets/secretStore.ts";
-import { buildManifest, grantWithout, withGrantOnly, withoutMcpGrant } from "./mcpManifest.ts";
+import { buildManifest, grantWithout, projectCanCallMcp, withGrantOnly, withoutMcpGrant } from "./mcpManifest.ts";
 import { AgentRepository } from "./db/repositories/agents.ts";
 import { startScriptedServer, type ScriptedRequest } from "../fixtures/mcp/scriptedServer.ts";
 
@@ -830,6 +830,21 @@ console.log("\non the local store two workspaces on one server name keep their o
   await local.removeServer(A, "linear");
   await local.removeServer(B, "linear");
   await fixture.close();
+}
+
+console.log("\na grant is refused on a project that could never call it");
+{
+  const bridge = { path: "tools/mcp_bridge.py", content: "MCP_TOOLS = []\n" };
+  const wired = { path: "tools/__init__.py", content: "from .mcp_bridge import MCP_TOOLS\nTOOLS = [*MCP_TOOLS]\n" };
+  const unwired = { path: "tools/__init__.py", content: "TOOLS = []\n" };
+  const agent = { path: "agent.py", content: "x = 1\n" };
+  check(projectCanCallMcp([agent, bridge, wired]), "a project with the bridge wired in can");
+  check(!projectCanCallMcp([agent, unwired]), "one generated without it cannot");
+  check(!projectCanCallMcp([agent, bridge, unwired]), "nor one with the file and no wiring");
+  const index = readFileSync(join(fileURLToPath(new URL(".", import.meta.url)), "index.ts"), "utf8");
+  const fn = /async function setAgentTools\([\s\S]*?\n\}/.exec(index)?.[0] ?? "";
+  check(/granted\.length > 0[\s\S]{0,200}projectCanCallMcp/.test(fn), "and the command refuses before it writes the grant");
+  check(fn.indexOf("projectCanCallMcp") < fn.indexOf("agentRepo.setMcpTools"), "...before the column changes");
 }
 
 check(errors.length === 0, "no handler threw", String(errors[0] ?? ""));

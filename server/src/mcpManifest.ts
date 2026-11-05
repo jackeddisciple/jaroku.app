@@ -172,6 +172,11 @@ export function collisionRefusal(manifest: Manifest): string | null {
   return `an agent has one tool per name, and this grant holds ${detail} from two servers. Keep one of them.`;
 }
 
+export function projectCanCallMcp(files: readonly { path: string; content: string }[]): boolean {
+  const wiring = files.find((file) => file.path === "tools/__init__.py");
+  return files.some((file) => file.path === BRIDGE_FILE) && Boolean(wiring?.content.includes("MCP_TOOLS"));
+}
+
 export function grantWithout(granted: readonly string[], revoked: readonly string[]): string[] {
   const gone = new Set(revoked);
   return granted.filter((ref) => !gone.has(ref));
