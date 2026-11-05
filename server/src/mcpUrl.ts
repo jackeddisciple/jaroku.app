@@ -28,6 +28,46 @@ import { EgressPolicyError, isDeniedAddress, resolveAndPin, type EgressRule, typ
 
 export class McpUrlError extends Error {}
 
+const CREDENTIAL_PARAM =
+  /^(x[-_]?)?(api[-_]?key|apikey|key|token|access[-_]?token|auth[-_]?token|id[-_]?token|refresh[-_]?token|bearer|auth|authorization|secret|client[-_]?secret|password|passwd|pwd|sig|signature|jwt|credentials?)$/i;
+const USERINFO = /^([a-z][a-z0-9+.-]*:\/\/)[^/?#]*@/i;
+
+export const ENDPOINT_CREDENTIAL_REFUSAL =
+  "this endpoint has a credential in its URL, which Jaroku does not store. Give the plain URL and " +
+  "add the token separately: it is kept as a secret and sent as a bearer token.";
+
+function credentialParams(params: URLSearchParams): string[] {
+  return [...new Set(params.keys())].filter((name) => CREDENTIAL_PARAM.test(name));
+}
+
+export function endpointCarriesCredential(raw: string): boolean {
+  const text = raw.trim();
+  if (USERINFO.test(text)) return true;
+  let url: URL;
+  try {
+    url = new URL(text);
+  } catch {
+    return false;
+  }
+  if (url.username || url.password) return true;
+  return credentialParams(url.searchParams).length > 0 || credentialParams(new URLSearchParams(url.hash.slice(1))).length > 0;
+}
+
+export function withoutEndpointCredential(raw: string): string {
+  if (!endpointCarriesCredential(raw)) return raw;
+  const text = raw.trim();
+  try {
+    const url = new URL(text);
+    url.username = "";
+    url.password = "";
+    for (const name of credentialParams(url.searchParams)) url.searchParams.delete(name);
+    url.hash = "";
+    return url.toString();
+  } catch {
+    return text.replace(USERINFO, "$1").split(/[?#]/)[0] ?? "";
+  }
+}
+
 export const MCP_ALLOW_LOOPBACK_ENV = "JAROKU_MCP_ALLOW_LOOPBACK";
 
 /**
@@ -112,11 +152,9 @@ export interface ValidatedMcpUrl {
  * Throws `McpUrlError` (a message written here and safe to show) or `EgressPolicyError` (the
  * shared private-range refusal) on anything that must not be connected to.
  *
- * THE CREDENTIAL-IN-URL REFUSAL IS NOT HERE, and that is not an omission: `mcpClient.discover`
- * already refuses a URL carrying userinfo, before anything is sent, and deliberately does not
- * quote the URL back — because the error text lands in `mcp_servers.last_error`, on every
- * client's registry snapshot, and in the log. Repeating the check here would be a second place
- * for that rule to be got subtly wrong.
+ * THE CREDENTIAL-IN-URL REFUSAL IS NOT HERE, and that is not an omission: the registry refuses a
+ * URL carrying a credential before anything is stored, and `mcpClient.discover` refuses it again
+ * before anything is sent. Neither quotes the URL back.
  */
 export async function validateMcpUrl(
   raw: string,
@@ -127,7 +165,7 @@ export async function validateMcpUrl(
   try {
     url = new URL(raw);
   } catch {
-    throw new McpUrlError(`not a valid URL: ${String(raw).slice(0, 120)}`);
+    throw new McpUrlError("not a valid URL: it must start with http:// or https://");
   }
 
   if (url.protocol !== "http:" && url.protocol !== "https:") {

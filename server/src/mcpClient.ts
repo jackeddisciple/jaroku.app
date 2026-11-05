@@ -29,6 +29,7 @@
 
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import { endpointCarriesCredential } from "./mcpUrl.ts";
 import type { McpServerStatus } from "./mcpStore.ts";
 
 /** Per-request ceiling. Applies to the handshake and to each page of tools/list. */
@@ -280,12 +281,12 @@ export async function discover(opts: DiscoverOptions): Promise<DiscoveryResult> 
   try {
     url = new URL(opts.endpoint);
   } catch {
-    return { ok: false, status: "error", error: `not a valid URL: ${opts.endpoint}` };
+    return { ok: false, status: "error", error: "not a valid URL: it must start with http:// or https://" };
   }
   if (url.protocol !== "http:" && url.protocol !== "https:") {
     return { ok: false, status: "error", error: `unsupported transport "${url.protocol}" — only http(s) is supported` };
   }
-  if (url.username || url.password) {
+  if (endpointCarriesCredential(opts.endpoint)) {
     // Refused before anything is sent, and the endpoint is deliberately NOT quoted back.
     //
     // fetch() rejects a credentialed URL outright, so this can never connect — but the
@@ -297,7 +298,7 @@ export async function discover(opts: DiscoverOptions): Promise<DiscoveryResult> 
       ok: false,
       status: "error",
       error:
-        "this endpoint has a username or password in the URL, which cannot be used and would " +
+        "this endpoint has a username, password or key in the URL, which cannot be used and would " +
         "put a credential somewhere Jaroku does not store credentials. Give the plain URL and " +
         "add the token separately — it is written to runtime/.env and sent as a bearer token.",
     };

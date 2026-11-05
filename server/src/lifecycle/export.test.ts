@@ -83,6 +83,7 @@ await store.init();
 const objects = new FsObjectStore({ root: join(tmp, "objects"), signingKey: Buffer.alloc(32, 3) });
 
 const SECRET_VALUE = "sk-ant-DO-NOT-EXPORT-ME-0123456789";
+const URL_SECRET = "URL-KEY-DO-NOT-EXPORT-ME";
 
 async function workspace(): Promise<TenantContext> {
   const id = randomUUID();
@@ -121,6 +122,10 @@ await db.run(
   // and a schema this build spells differently is not what is being tested.
 });
 await db.run(
+  `INSERT INTO mcp_servers (workspace_id, id, label, endpoint, transport, status, created_at) VALUES (?, ?, ?, ?, 'http', 'connected', ?)`,
+  [mine.workspaceId, "legacy", "Legacy", `https://mcp.example.test/mcp?api_key=${URL_SECRET}`, new Date().toISOString()],
+);
+await db.run(
   `INSERT INTO secret_refs (workspace_id, name, provider, configured, created_at, updated_at)
    VALUES (?, ?, ?, 1, ?, ?)`,
   [mine.workspaceId, "ANTHROPIC_API_KEY", "anthropic", new Date().toISOString(), new Date().toISOString()],
@@ -157,6 +162,8 @@ const text = archive.toString("utf8");
 console.log("\nwhat is not in it");
 {
   check(!text.includes(SECRET_VALUE), "NO SECRET VALUE IS IN THE ARCHIVE");
+  check(!text.includes(URL_SECRET), "...and no key from an MCP endpoint's URL either");
+  check(text.includes("mcp.example.test/mcp"), "...while that endpoint itself is still exported");
   check(!text.includes("workspace_secrets.ndjson"), "...and the vault table is not exported at all");
   check(!text.includes("data/workspace_data_keys.ndjson"), "...nor the key that would decrypt it");
   check(text.includes('"workspace_data_keys"'), "...though the manifest names it as excluded, with the reason");

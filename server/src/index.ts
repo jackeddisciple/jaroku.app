@@ -5971,10 +5971,6 @@ async function handleMcpCommand(ctx: TenantContext, cmd: McpCommand): Promise<vo
           relay.broadcastMcp(ctx, { type: "error", message: "an endpoint is required" });
           return;
         }
-        // A handshake against someone else's server takes as long as it takes. Saying so
-        // is the difference between "connecting" and "the button did nothing".
-        relay.broadcastMcp(ctx, { type: "discovering", serverId: null, endpoint: cmd.endpoint });
-
         // THE ID AND THE CREDENTIAL ARE DECIDED HERE, SYNCHRONOUSLY; THE HANDSHAKE IS NOT.
         //
         // Both halves have to be, and for different reasons. The id has to be allocated against
@@ -5992,6 +5988,9 @@ async function handleMcpCommand(ctx: TenantContext, cmd: McpCommand): Promise<vo
           broadcastMcpServers();
           return;
         }
+        // A handshake against someone else's server takes as long as it takes. Saying so
+        // is the difference between "connecting" and "the button did nothing".
+        relay.broadcastMcp(ctx, { type: "discovering", serverId: null, endpoint: cmd.endpoint });
         await mcpDiscovery.enqueue(ctx, {
           kind: "add",
           serverId: prepared.id,

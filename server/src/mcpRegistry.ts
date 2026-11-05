@@ -23,7 +23,7 @@
 import { discover, type DiscoveryResult } from "./mcpClient.ts";
 import { authEnvKeyFor } from "./envWriter.ts";
 import type { SecretStore } from "./secrets/secretStore.ts";
-import { McpUrlError, validateMcpUrl } from "./mcpUrl.ts";
+import { ENDPOINT_CREDENTIAL_REFUSAL, McpUrlError, endpointCarriesCredential, validateMcpUrl } from "./mcpUrl.ts";
 import { EgressPolicyError, realResolver, type Resolver } from "./sandbox/egressPolicy.ts";
 import type { TenantContext } from "./db/tenant.ts";
 import { classify } from "./mcpImpact.ts";
@@ -293,6 +293,9 @@ export class McpRegistry {
   ): Promise<{ ok: boolean; id: string; authEnvKey: string | null; message: string | null }> {
     const endpoint = opts.endpoint.trim();
     if (!endpoint) return { ok: false, id: "", authEnvKey: null, message: "an endpoint is required" };
+    if (endpointCarriesCredential(endpoint)) {
+      return { ok: false, id: "", authEnvKey: null, message: ENDPOINT_CREDENTIAL_REFUSAL };
+    }
 
     const requested = opts.id?.trim() || slugifyServerId(opts.label?.trim() || endpoint);
     if (!SERVER_ID_RE.test(requested)) {
@@ -332,6 +335,9 @@ export class McpRegistry {
   async addServer(ctx: TenantContext, opts: AddServerOptions): Promise<RegistrationResult> {
     const endpoint = opts.endpoint.trim();
     if (!endpoint) return { ok: false, server: null, message: "an endpoint is required" };
+    if (endpointCarriesCredential(endpoint)) {
+      return { ok: false, server: null, message: ENDPOINT_CREDENTIAL_REFUSAL };
+    }
 
     const requested = opts.id?.trim() || slugifyServerId(opts.label?.trim() || endpoint);
     if (!SERVER_ID_RE.test(requested)) {

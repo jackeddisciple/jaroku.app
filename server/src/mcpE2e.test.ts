@@ -17,6 +17,7 @@ import { McpStore } from "./mcpStore.ts";
 import { McpRegistry, type RegistrationResult } from "./mcpRegistry.ts";
 import { MCP_DISCOVER_CLASS, McpDiscoveryQueue, type McpDiscoveryPayload } from "./mcpDiscovery.ts";
 import { authEnvKeyFor } from "./envWriter.ts";
+import { buildManifest } from "./mcpManifest.ts";
 import { startScriptedServer } from "../fixtures/mcp/scriptedServer.ts";
 
 let failures = 0;
@@ -119,6 +120,53 @@ console.log("\nthe same path with no token stays anonymous");
   check(row?.auth_env_key === null, "with no key on its row");
   check(row?.configured === false, "and no credential claimed");
   check(fixture.seen.every((r) => r.auth === null), "and nothing was presented to it");
+  await fixture.close();
+}
+
+console.log("\na credential in a URL goes nowhere");
+{
+  const A = await workspace("urlcreds");
+  const fixture = await startScriptedServer();
+  const dirty = [
+    fixture.url.replace("http://", "http://user:hunter2@"),
+    `${fixture.url}?api_key=SUPERSECRET123`,
+    `${fixture.url}?workspace=w1&token=SUPERSECRET123`,
+    `${fixture.url}#access_token=SUPERSECRET123`,
+    "https://user:hunter2@exa mple.com/mcp",
+  ];
+  for (const endpoint of dirty) {
+    const prepared = await registry.prepare(A, { endpoint, label: "Dirty" });
+    check(!prepared.ok, `refused before anything is stored: ${endpoint.replace(/\d+/g, "N").slice(0, 44)}`);
+    check(!/hunter2|SUPERSECRET123/.test(prepared.message ?? ""), "...and the refusal does not quote it", prepared.message ?? "");
+    const added = await registry.addServer(A, { endpoint, label: "Dirty" });
+    check(!added.ok && added.server === null, "...and a direct add writes no row");
+  }
+  check((await registry.list(A)).length === 0, "no row exists");
+  check(fixture.seen.length === 0, "and nothing was sent", String(fixture.seen.length));
+
+  const plain = await registry.prepare(A, { endpoint: `${fixture.url}?workspace=w1`, label: "Plain" });
+  check(plain.ok, "an ordinary query string is not a credential");
+
+  await store.upsertServer(A, {
+    id: "written", label: "Written", endpoint: `${fixture.url}?api_key=SUPERSECRET123`, transport: "http",
+    auth_env_key: null, server_name: null, server_version: null, protocol_version: null,
+    status: "connected", last_error: null, discovered_at: null,
+  });
+  const raw = await db.get<{ endpoint: string }>(`SELECT endpoint FROM mcp_servers WHERE id = ?`, ["written"]);
+  check(raw?.endpoint === fixture.url, "the store itself will not write one", raw?.endpoint);
+
+  await db.run(
+    `INSERT INTO mcp_servers (workspace_id, id, label, endpoint, transport, status, created_at) VALUES (?, ?, ?, ?, 'http', 'connected', ?)`,
+    [A.workspaceId, "legacy", "Legacy", `${fixture.url}?workspace=w1&api_key=SUPERSECRET123`, new Date().toISOString()],
+  );
+  const listed = JSON.stringify(await registry.list(A));
+  check(!listed.includes("SUPERSECRET123"), "a row written before this was fixed is not sent to a client");
+  check(listed.includes("workspace=w1"), "...and keeps the rest of its URL");
+  const healed = await db.get<{ endpoint: string }>(`SELECT endpoint FROM mcp_servers WHERE id = ?`, ["legacy"]);
+  check(!healed?.endpoint.includes("SUPERSECRET123"), "...and is scrubbed from the column once read");
+  const manifest = buildManifest(await registry.allTools(A), await registry.list(A));
+  check(!JSON.stringify(manifest).includes("SUPERSECRET123"), "...so it cannot reach a manifest");
+
   await fixture.close();
 }
 

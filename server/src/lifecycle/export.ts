@@ -42,6 +42,7 @@ import type { ObjectStore } from "../storage/objectStore.ts";
 import { workspacePrefix } from "../storage/keys.ts";
 import type { Presigned } from "../storage/presign.ts";
 import { tar, type TarEntry } from "./tar.ts";
+import { withoutEndpointCredential } from "../mcpUrl.ts";
 
 /**
  * An export id, validated before it becomes part of a key.
@@ -442,9 +443,11 @@ export class WorkspaceExporter {
     if (!/^[a-z_][a-z0-9_]*$/.test(table)) throw new Error(`not a table name: ${table}`);
     const where = INDIRECT_SCOPE[table] ?? `workspace_id = ?`;
     try {
-      return await this.deps.db
+      const rows = await this.deps.db
         .forWorkspace(ctx.workspaceId)
         .all<Record<string, unknown>>(`SELECT * FROM ${table} WHERE ${where}`, [ctx.workspaceId]);
+      if (table !== "mcp_servers") return rows;
+      return rows.map((row) => ({ ...row, endpoint: withoutEndpointCredential(String(row["endpoint"] ?? "")) }));
     } catch (err) {
       // A table this deployment does not have — an older database, a driver where a migration is
       // a comment. An export missing one table is worth having; an export that fails entirely

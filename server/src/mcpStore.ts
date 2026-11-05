@@ -40,6 +40,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { jsonFromColumn, type Db, type Queryable } from "./db/db.ts";
 import type { TenantContext } from "./db/tenant.ts";
+import { endpointCarriesCredential, withoutEndpointCredential } from "./mcpUrl.ts";
 
 // --- row shapes --------------------------------------------------------------
 
@@ -211,8 +212,16 @@ export class McpStore {
     return parsed === null || typeof parsed === "string" ? fallback : (parsed as T);
   }
 
-  private static hydrateServer(row: Record<string, unknown>): McpServer {
-    return row as unknown as McpServer;
+  private async hydrateServer(ctx: TenantContext, row: Record<string, unknown>): Promise<McpServer> {
+    const server = row as unknown as McpServer;
+    if (!endpointCarriesCredential(server.endpoint)) return server;
+    const endpoint = withoutEndpointCredential(server.endpoint);
+    await this.q(ctx).run(`UPDATE mcp_servers SET endpoint = ? WHERE id = ? AND workspace_id = ?`, [
+      endpoint,
+      server.id,
+      ctx.workspaceId,
+    ]);
+    return { ...server, endpoint };
   }
 
   private hydrateTool(row: Record<string, unknown>): McpTool {
@@ -230,7 +239,7 @@ export class McpStore {
       `SELECT ${SERVER_COLUMNS} FROM mcp_servers WHERE workspace_id = ? ORDER BY created_at ASC`,
       [ctx.workspaceId],
     );
-    return rows.map(McpStore.hydrateServer);
+    return Promise.all(rows.map((row) => this.hydrateServer(ctx, row)));
   }
 
   async getServer(ctx: TenantContext, id: string): Promise<McpServer | null> {
@@ -238,7 +247,7 @@ export class McpStore {
       `SELECT ${SERVER_COLUMNS} FROM mcp_servers WHERE id = ? AND workspace_id = ?`,
       [id, ctx.workspaceId],
     );
-    return row ? McpStore.hydrateServer(row) : null;
+    return row ? this.hydrateServer(ctx, row) : null;
   }
 
   /**
@@ -252,6 +261,7 @@ export class McpStore {
     const existing = await this.getServer(ctx, input.id);
     const row: McpServer = {
       ...input,
+      endpoint: withoutEndpointCredential(input.endpoint),
       created_at: input.created_at ?? existing?.created_at ?? nowIso(),
     };
     await this.q(ctx).run(
