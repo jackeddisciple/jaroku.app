@@ -2531,6 +2531,7 @@ async function setAgentTools(ctx: TenantContext, slug: string, refs: unknown, re
   }
 
   console.log(`[mcp] ${slug} scoped to ${granted.length} tool(s)`);
+  auditMcp(ctx, "mcp.grant.changed", slug, { tools: granted });
   await relay.broadcastAgents();
   relay.broadcastAgentFiles(ctx, slug);
   void relay.broadcastAgentGraph(ctx, slug);
@@ -3131,6 +3132,11 @@ function answerConfirm(ctx: TenantContext, pending: PendingConfirm, verdict: "ru
   writeApproval(pending.runId, pending.nonce, verdict);
   runEventBus.resolveMcpConfirm(pending.runId, pending.nonce, verdict);
   console.log(`[mcp] ${pending.server}/${pending.tool} — ${verdict}`);
+  auditMcp(ctx, verdict === "deny" ? "mcp.confirm.denied" : "mcp.confirm.allowed", pending.server, {
+    tool: pending.tool,
+    runId: pending.runId,
+    verdict,
+  });
   relay.broadcastMcp(ctx, { type: "confirmResolved", runId: pending.runId, nonce: pending.nonce, verdict });
   // A DENIAL IS RECORDED ON THE JOB — see `noteToolRefused`.
   if (verdict === "deny") noteToolRefused(pending, "denied");
@@ -6052,6 +6058,12 @@ function clearConfirms(runId: string, reason: string, nonce?: string): void {
   if (cleared > 0) scheduleListRefresh(contextForRun(runId));
 }
 
+function auditMcp(ctx: TenantContext, action: string, targetId: string, metadata: Record<string, unknown> = {}): void {
+  void identityRepo
+    .appendAudit(ctx, { action, targetType: "mcp_server", targetId, metadata })
+    .catch((err) => console.error(`[mcp] could not record ${action}:`, (err as Error)?.message ?? err));
+}
+
 function broadcastMcpServers(): void {
   void relay
     .broadcastMcpServers()
@@ -6104,6 +6116,7 @@ async function handleMcpCommand(ctx: TenantContext, cmd: McpCommand): Promise<vo
         // The endpoint may carry a path or query a user would not want echoed; log the id we
         // assigned and let the job's own completion log what happened to it.
         console.log(`[mcp] add ${prepared.id} queued`);
+        auditMcp(ctx, "mcp.server.connected", prepared.id, { host: new URL(cmd.endpoint.trim()).hostname });
         if (prepared.message) {
           relay.broadcastMcp(ctx, { type: "notice", message: prepared.message, serverId: prepared.id });
         }
@@ -6129,7 +6142,10 @@ async function handleMcpCommand(ctx: TenantContext, cmd: McpCommand): Promise<vo
         if (typeof cmd.serverId !== "string") return;
         const removed = await mcpRegistry.removeServer(ctx, cmd.serverId);
         await mcpDiscovery.forget(ctx, cmd.serverId);
-        if (removed) console.log(`[mcp] removed ${cmd.serverId}`);
+        if (removed) {
+          console.log(`[mcp] removed ${cmd.serverId}`);
+          auditMcp(ctx, "mcp.server.disconnected", cmd.serverId);
+        }
         broadcastMcpServers();
         if (!removed) {
           relay.broadcastMcp(ctx, { type: "error", message: `no server called "${cmd.serverId}"` });
@@ -6177,6 +6193,7 @@ async function handleMcpCommand(ctx: TenantContext, cmd: McpCommand): Promise<vo
         }
         // Log that a credential changed, never which value it changed to.
         console.log(`[mcp] ${cmd.serverId} credential ${token ? "set" : "cleared"}`);
+        auditMcp(ctx, token ? "mcp.credential.set" : "mcp.credential.cleared", cmd.serverId);
         // A stored credential is only useful if it works, so prove it immediately rather
         // than leaving the server sitting in auth_required until someone clicks refresh.
         relay.broadcastMcp(ctx, { type: "discovering", serverId: cmd.serverId, endpoint: result.server?.endpoint ?? "" });
@@ -6200,6 +6217,7 @@ async function handleMcpCommand(ctx: TenantContext, cmd: McpCommand): Promise<vo
         console.log(
           `[mcp] ${cmd.serverId}/${cmd.toolName} impact ${impact ? `overridden to ${impact}` : "override cleared"} (classifier says ${updated.computed_impact})`,
         );
+        auditMcp(ctx, "mcp.tool.impact_set", cmd.serverId, { tool: cmd.toolName, impact, classified: updated.computed_impact });
         broadcastMcpServers();
         return;
       }

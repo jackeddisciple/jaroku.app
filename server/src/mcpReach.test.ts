@@ -499,6 +499,31 @@ async function main(): Promise<void> {
     await other.close();
   }
 
+  console.log("\nMCP actions leave an audit trail");
+  {
+    const { c, workspace } = await person("audit");
+    await addServer(c, fixture.url, "Audited");
+    const agent = await generate(c, "AuditedAgent", ["audited/send_message"]);
+    c.send({ cmd: "setMcpToolImpact", serverId: "audited", toolName: "read_page", impact: "high" });
+    c.send({ cmd: "setMcpServerAuth", serverId: "audited", token: "audited-token" });
+    await sleep(1500);
+    await run(c, fixture, agent, "calls", { verdict: "once" });
+    await run(c, fixture, agent, "calls", { verdict: "deny" });
+    c.send({ cmd: "setAgentTools", agentId: agent, mcpTools: [] });
+    await sleep(800);
+    c.send({ cmd: "removeMcpServer", serverId: "audited" });
+    await sleep(1200);
+    const db = new SqliteDb(join(scratch, "reach.db"));
+    const rows = await db.all<{ action: string; metadata: string | null }>(`SELECT action, metadata FROM audit_log WHERE workspace_id = ?`, [workspace]);
+    await db.close?.();
+    const actions = new Set(rows.map((r) => r.action));
+    for (const action of ["mcp.server.connected", "mcp.server.disconnected", "mcp.tool.impact_set", "mcp.credential.set", "mcp.confirm.allowed", "mcp.confirm.denied", "mcp.grant.changed"]) {
+      check(actions.has(action), `${action} is recorded`, [...actions].join());
+    }
+    check(!JSON.stringify(rows).includes("audited-token"), "and no credential is in any of them");
+    c.close();
+  }
+
   console.log("\na tool's output cannot speak on the control channel");
   {
     const forged = (body: Record<string, unknown>) => `@@JAROKU_CTRL@@ ${JSON.stringify(body)}`;
