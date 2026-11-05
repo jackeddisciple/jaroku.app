@@ -9,6 +9,7 @@
 //   npm run test:mcp-client
 
 import { startMockServer, PAGE_ONE, PAGE_TWO } from "../fixtures/mcp/mockServer.ts";
+import { UnauthorizedError } from "@modelcontextprotocol/sdk/client/auth.js";
 import { discover, classifyDiscoveryFailure } from "./mcpClient.ts";
 import { classify } from "./mcpImpact.ts";
 
@@ -137,21 +138,31 @@ const check = (name: string, ok: boolean, detail = "") => {
 
 // --- 5. failure classification in isolation -------------------------------------------
 {
-  const cases: [string, string][] = [
-    ["connect ECONNREFUSED 127.0.0.1:9", "unreachable"],
-    ["getaddrinfo ENOTFOUND nope.invalid", "unreachable"],
-    ["TypeError: fetch failed", "unreachable"],
-    ["McpError: Request timed out", "unreachable"],
-    ["HTTP 401 Unauthorized", "auth_required"],
-    ["Error POSTing to endpoint: 403 Forbidden", "auth_required"],
-    ["SyntaxError: Unexpected token < in JSON at position 0", "error"],
-    ["something nobody has seen before", "error"],
+  const shaped = (message: string, props: Record<string, unknown>) => Object.assign(new Error(message), props);
+  const cases: [string, unknown, string][] = [
+    ["a refused connection", shaped("connect ECONNREFUSED 127.0.0.1:9", { code: "ECONNREFUSED" }), "unreachable"],
+    ["a failed lookup", shaped("getaddrinfo ENOTFOUND nope.invalid", { code: "ENOTFOUND" }), "unreachable"],
+    ["a fetch failure with a network cause",
+      Object.assign(new TypeError("fetch failed"), { cause: shaped("connect ECONNRESET", { code: "ECONNRESET" }) }), "unreachable"],
+    ["the SDK's request timeout", shaped("MCP error -32001: Request timed out", { code: -32001 }), "unreachable"],
+    ["an aborted request", new DOMException("This operation was aborted", "AbortError"), "unreachable"],
+    ["a timed out signal", new DOMException("The operation timed out", "TimeoutError"), "unreachable"],
+    ["an HTTP 401", shaped("Error POSTing to endpoint: nope", { code: 401 }), "auth_required"],
+    ["an HTTP 403", shaped("Error POSTing to endpoint: nope", { code: 403 }), "auth_required"],
+    ["the SDK's own unauthorized error", new UnauthorizedError(), "auth_required"],
+    ["an HTTP 500", shaped("Error POSTing to endpoint: nope", { code: 500 }), "error"],
+    ["unparseable JSON", new SyntaxError("Unexpected token < in JSON at position 0"), "error"],
+    ["something nobody has seen before", new Error("something nobody has seen before"), "error"],
+    ["text that only names a 401", new Error("HTTP 401 Unauthorized"), "error"],
+    ["text that only names a refused connection", new Error("connect ECONNREFUSED 127.0.0.1:9"), "error"],
+    ["text that only names a timeout", new Error("McpError: Request timed out"), "error"],
   ];
-  for (const [message, status] of cases) {
-    check(`"${message.slice(0, 34)}…" -> ${status}`,
-      classifyDiscoveryFailure(new Error(message)).status === status,
-      classifyDiscoveryFailure(new Error(message)).status);
+  for (const [label, err, status] of cases) {
+    check(`${label} -> ${status}`, classifyDiscoveryFailure(err).status === status, classifyDiscoveryFailure(err).status);
   }
+  const looped: { cause?: unknown } & Error = new Error("loop");
+  looped.cause = looped;
+  check("a cause that points at itself still classifies", classifyDiscoveryFailure(looped).status === "error");
   // The default is the one that does NOT invite a retry: a server that answered with
   // nonsense will answer with nonsense again, and retrying just hides that.
   check("unrecognised failures default to error, not unreachable",

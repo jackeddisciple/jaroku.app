@@ -17,6 +17,7 @@ import { McpStore } from "./mcpStore.ts";
 import { McpRegistry, type RegistrationResult } from "./mcpRegistry.ts";
 import { MCP_DISCOVER_CLASS, McpDiscoveryQueue, type McpDiscoveryPayload } from "./mcpDiscovery.ts";
 import { authEnvKeyFor } from "./envWriter.ts";
+import { discover } from "./mcpClient.ts";
 import { isConfirmNonce, mcpRunCredentials, runScope } from "./mcpScope.ts";
 import { parseControlLine } from "./processManager.ts";
 import { isSecretName, secretNameRefusal } from "./secrets/secretStore.ts";
@@ -480,6 +481,30 @@ console.log("\nbidi and invisible characters do not survive into a server's iden
   check(!hidden.test(row?.server_version ?? ""), "the version is clean", JSON.stringify(row?.server_version));
   check(!hidden.test(row?.tools[0]?.description ?? ""), "the description is clean", JSON.stringify(row?.tools[0]?.description));
   await fixture.close();
+}
+
+console.log("\na failure is classified by what happened, not by words in the body");
+{
+  const A = await workspace("status");
+  const statusOf = async (label: string, code: number, body: string) => {
+    const fixture = await startScriptedServer({
+      hook: ({ res }) => {
+        res.writeHead(code, { "content-type": "text/plain" }).end(body);
+        return true;
+      },
+    });
+    await connect(A, { endpoint: fixture.url, label });
+    const row = await registry.get(A, label);
+    await fixture.close();
+    return row?.status;
+  };
+  check((await statusOf("notfound", 404, "ticket 4012, unauthorized, forbidden, 503, timed out")) === "error", "a 404 mentioning 401 and 503 is an error");
+  check((await statusOf("teapot", 500, "access denied invalid_token 401")) === "error", "a 500 mentioning auth is an error");
+  check((await statusOf("badgateway", 502, "nothing useful")) === "unreachable", "a 502 is unreachable");
+  check((await statusOf("denied", 401, "nope")) === "auth_required", "a real 401 needs a credential");
+  check((await statusOf("forbidden", 403, "nope")) === "auth_required", "and so does a real 403");
+  const refused = await discover({ endpoint: "http://127.0.0.1:1/mcp", timeoutMs: 2000, deadlineMs: 3000 });
+  check(!refused.ok && refused.status === "unreachable", "a refused connection is unreachable", JSON.stringify(refused));
 }
 
 check(errors.length === 0, "no handler threw", String(errors[0] ?? ""));

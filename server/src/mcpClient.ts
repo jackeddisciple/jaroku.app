@@ -27,6 +27,7 @@
 // spawning a third-party binary on the user's machine, which is a much larger trust
 // decision than making an HTTP request and is not what this feature is for.
 
+import { UnauthorizedError } from "@modelcontextprotocol/sdk/client/auth.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { guardedFetch } from "./mcpFetch.ts";
@@ -157,26 +158,17 @@ export interface DiscoverOptions {
   deadlineMs?: number;
 }
 
-const lower = (s: string): string => s.toLowerCase();
-
 /**
  * Turn a thrown error into the status a user can act on.
- *
- * Same posture as evalRunner.isTransientFailure (`evalRunner.ts:62-84`): match on known
- * markers, and let the DEFAULT be the conservative answer. Here the conservative answer is
- * "error" rather than "unreachable", because "unreachable" invites a retry and a server
- * that answered us with nonsense will answer with nonsense again.
  */
 export function classifyDiscoveryFailure(err: unknown): {
   status: DiscoveryFailure["status"];
   error: string;
 } {
   const raw = boundedError(err instanceof Error ? `${err.name}: ${err.message}` : String(err));
-  const e = lower(raw);
+  const kind = failureKind(err);
 
-  const unauthorized = ["401", "403", "unauthorized", "unauthenticated", "forbidden",
-    "authentication", "invalid_token", "invalid token", "access denied"];
-  if (unauthorized.some((m) => e.includes(m))) {
+  if (kind === "auth") {
     return {
       status: "auth_required",
       // Deliberately names the OAuth limitation instead of failing vaguely. A server that
@@ -188,14 +180,30 @@ export function classifyDiscoveryFailure(err: unknown): {
     };
   }
 
-  const unreachable = ["econnrefused", "econnreset", "enotfound", "etimedout", "eai_again",
-    "ehostunreach", "enetunreach", "epipe", "fetch failed", "network", "socket hang up",
-    "timed out", "timeout", "requesttimeout", "aborted", "502", "503", "504"];
-  if (unreachable.some((m) => e.includes(m))) {
-    return { status: "unreachable", error: raw };
-  }
+  return { status: kind === "unreachable" ? "unreachable" : "error", error: raw };
+}
 
-  return { status: "error", error: raw };
+const NETWORK_ERRORS = new Set([
+  "ECONNREFUSED", "ECONNRESET", "ENOTFOUND", "ETIMEDOUT", "EAI_AGAIN", "EHOSTUNREACH", "ENETUNREACH",
+  "EPIPE", "ECONNABORTED", "ABORT_ERR",
+]);
+
+function failureKind(failure: unknown): "auth" | "unreachable" | "error" {
+  let err = failure;
+  for (let depth = 0; depth < 5 && err; depth++) {
+    if (err instanceof UnauthorizedError) return "auth";
+    const { code, name, message, cause } = err as { code?: unknown; name?: unknown; message?: unknown; cause?: unknown };
+    if (name === "AbortError" || name === "TimeoutError") return "unreachable";
+    if (typeof code === "number") {
+      if (code === 401 || code === 403) return "auth";
+      if ([408, 429, 502, 503, 504, -32000, -32001].includes(code)) return "unreachable";
+      return "error";
+    }
+    if (typeof code === "string" && NETWORK_ERRORS.has(code)) return "unreachable";
+    if (message === "discovery timed out while listing tools") return "unreachable";
+    err = cause;
+  }
+  return "error";
 }
 
 /**
