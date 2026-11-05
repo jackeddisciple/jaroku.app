@@ -18,7 +18,8 @@ import { McpRegistry, type RegistrationResult } from "./mcpRegistry.ts";
 import { MCP_DISCOVER_CLASS, McpDiscoveryQueue, type McpDiscoveryPayload } from "./mcpDiscovery.ts";
 import { authEnvKeyFor } from "./envWriter.ts";
 import { runScope } from "./mcpScope.ts";
-import { buildManifest, grantWithout, withoutMcpGrant } from "./mcpManifest.ts";
+import { buildManifest, grantWithout, withGrantOnly, withoutMcpGrant } from "./mcpManifest.ts";
+import { AgentRepository } from "./db/repositories/agents.ts";
 import { startScriptedServer } from "../fixtures/mcp/scriptedServer.ts";
 
 let failures = 0;
@@ -271,7 +272,8 @@ console.log("\nan override reaches an agent that already exists, and a server ca
     last_error: null, discovered_at: null, created_at: "", configured: false,
     tools: [live("read_page", "low", "high"), live("send_message", "high", "low"), live("was_destructive", "low", null), live("now_flagged", "high", null)],
   }];
-  const tools = runScope(manifest, servers).servers["alpha"]?.tools ?? {};
+  const everything = manifest.servers[0]!.tools.map((tool) => `alpha/${tool.name}`);
+  const tools = runScope(manifest, everything, servers).servers["alpha"]?.tools ?? {};
   check(tools["read_page"]?.impact === "high", "a raise applies to the existing agent");
   check(tools["read_page"]?.reason === "you marked it high impact", "...and says who raised it", tools["read_page"]?.reason);
   check(tools["send_message"]?.impact === "low", "a person's lowering applies too");
@@ -279,6 +281,32 @@ console.log("\nan override reaches an agent that already exists, and a server ca
   check(tools["gone_quiet"]?.impact === "low", "a tool the server stopped listing keeps its recorded impact");
   check(tools["now_flagged"]?.impact === "high", "the classifier raising a tool applies");
   check(tools["now_flagged"]?.reason === "classifier on now_flagged", "...with the classifier's reason");
+
+  console.log("\nthe column is the grant, whatever an old version's file says");
+  const revoked = runScope(manifest, [], servers);
+  check(Object.keys(revoked.servers).length === 0, "nothing granted gives a run nothing, even with a manifest full of tools");
+  const narrowed = runScope(manifest, ["alpha/read_page"], servers).servers["alpha"]?.tools ?? {};
+  check(Object.keys(narrowed).join() === "read_page", "a narrowed grant gives exactly that", Object.keys(narrowed).join());
+  const smuggled = runScope(manifest, ["alpha/read_page", "alpha/not_in_the_file"], servers).servers["alpha"]?.tools ?? {};
+  check(!("not_in_the_file" in smuggled), "and a grant cannot reach a tool the project's file never held");
+
+  const files = [{ path: "agent.py", content: "x\n" }, { path: "mcp_tools.json", content: JSON.stringify(manifest) }];
+  const restored = withGrantOnly(files, []);
+  check((JSON.parse(restored[1]!.content) as { servers: unknown[] }).servers.length === 0, "a restore writes a manifest that agrees with the column");
+  check(restored[0]!.content === "x\n", "...and leaves the restored code alone");
+  const partial = JSON.parse(withGrantOnly(files, ["alpha/read_page"])[1]!.content) as { servers: { tools: { name: string }[] }[] };
+  check(partial.servers[0]?.tools.map((t) => t.name).join() === "read_page", "...keeping what is still granted");
+
+  const slug = `disk_${randomUUID().slice(0, 6)}`;
+  const A = await workspace("disksync");
+  const agents = new AgentRepository(db);
+  const onDisk = { slug, display_name: slug, description: "", connectors: [], required_env: [], default_provider: "fake", hand_written: false, created_at: null };
+  await agents.upsertFromDisk(A, { ...onDisk, mcp_tools: ["alpha/send_message"] });
+  const row = await agents.bySlug(A, slug);
+  check(row?.mcp_tools.join() === "alpha/send_message", "a new directory's declared grant is taken once");
+  await agents.setMcpTools(A, row!.id, []);
+  await agents.upsertFromDisk(A, { ...onDisk, mcp_tools: ["alpha/send_message"] });
+  check((await agents.bySlug(A, slug))?.mcp_tools.length === 0, "and a restart's sync does not give a revoked tool back");
 }
 
 check(errors.length === 0, "no handler threw", String(errors[0] ?? ""));

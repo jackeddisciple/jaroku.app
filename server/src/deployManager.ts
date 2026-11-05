@@ -65,6 +65,7 @@ export type DeployStage =
   | "uploading" | "building" | "publishing" | "done";
 
 export interface DeployManagerDeps {
+  mcpScope?: (ctx: TenantContext, agentId: string, projectDir: string) => Promise<Record<string, string>>;
   runtimeDir: string;
   store: DeployStore;
   /** Which agents exist, and at which version. Needed to record what a deploy wrote. */
@@ -446,6 +447,14 @@ export class DeployManager {
       : resolveSecretValues(envKeys);
     const serveToken = req.publicEndpoint ? null : randomBytes(24).toString("base64url");
     const host = hostEnv({ provider: req.provider, model: req.model, serveToken });
+    Object.assign(
+      host.env,
+      await this.deps.mcpScope?.(
+        this.ctxOf(id),
+        req.agentId,
+        agentProjectDir(this.deps.runtimeDir, this.ctxOf(id).workspaceId, req.agentId),
+      ),
+    );
     // Credentials only. Scrubbing every host value used to redact the provider name and the
     // model id out of the build log, so an ordinary install line arrived as
     // `langchain-••••••••>=0.3.0` — a log the user cannot read, hiding nothing.

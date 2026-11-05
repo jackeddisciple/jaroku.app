@@ -662,7 +662,6 @@ export class AgentRepository {
                              THEN agents.display_name ELSE excluded.display_name END,
          description = excluded.description,
          connectors = excluded.connectors,
-         mcp_tools = excluded.mcp_tools,
          required_env = excluded.required_env,
          default_provider = excluded.default_provider,
          hand_written = excluded.hand_written,

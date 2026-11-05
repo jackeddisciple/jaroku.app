@@ -29,14 +29,17 @@ function scopedTool(frozen: { impact: "high" | "low" }, live: McpToolView | unde
   return { impact: frozen.impact };
 }
 
-export function runScope(manifest: Manifest, servers: readonly McpServerView[]): RunScope {
+export function runScope(manifest: Manifest, granted: readonly string[], servers: readonly McpServerView[]): RunScope {
+  const grant = new Set(granted);
   const live = new Map(servers.map((server) => [server.id, server]));
   const scope: RunScope = { servers: {} };
   for (const entry of manifest.servers) {
     const tools = new Map((live.get(entry.id)?.tools ?? []).map((tool) => [tool.name, tool]));
     const scoped: Record<string, ScopedTool> = {};
-    for (const tool of entry.tools) scoped[tool.name] = scopedTool(tool, tools.get(tool.name));
-    scope.servers[entry.id] = { tools: scoped };
+    for (const tool of entry.tools) {
+      if (grant.has(`${entry.id}/${tool.name}`)) scoped[tool.name] = scopedTool(tool, tools.get(tool.name));
+    }
+    if (Object.keys(scoped).length > 0) scope.servers[entry.id] = { tools: scoped };
   }
   return scope;
 }

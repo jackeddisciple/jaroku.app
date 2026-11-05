@@ -147,6 +147,22 @@ export function withoutMcpGrant<F extends { path: string; content: string }>(fil
   });
 }
 
+export function withGrantOnly<F extends { path: string; content: string }>(files: readonly F[], granted: readonly string[]): F[] {
+  const grant = new Set(granted);
+  return files.map((file) => {
+    if (file.path !== MANIFEST_FILE) return file;
+    try {
+      const manifest = JSON.parse(file.content) as Manifest;
+      const servers = manifest.servers
+        .map((server) => ({ ...server, tools: server.tools.filter((tool) => grant.has(`${server.id}/${tool.name}`)) }))
+        .filter((server) => server.tools.length > 0);
+      return { ...file, content: `${JSON.stringify({ ...manifest, servers }, null, 2)}\n` };
+    } catch {
+      return file;
+    }
+  });
+}
+
 export function grantWithout(granted: readonly string[], revoked: readonly string[]): string[] {
   const gone = new Set(revoked);
   return granted.filter((ref) => !gone.has(ref));

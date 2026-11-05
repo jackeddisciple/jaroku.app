@@ -158,7 +158,7 @@ import { CheckRunner } from "./checkRunner.ts";
 import { PrCommentsRepository } from "./db/repositories/prComments.ts";
 import { diffShapes, readShape } from "./semanticDiff.ts";
 import { inSubdirectory, repoPrefix } from "./githubPush.ts";
-import { MANIFEST_FILE, buildManifest, grantWithout, manifestRefs, withoutMcpCredentials, withoutMcpGrant, type Manifest } from "./mcpManifest.ts";
+import { MANIFEST_FILE, buildManifest, grantWithout, manifestRefs, withGrantOnly, withoutMcpCredentials, withoutMcpGrant, type Manifest } from "./mcpManifest.ts";
 import { SCOPE_ENV, runScope } from "./mcpScope.ts";
 import type { McpImpact } from "./mcpStore.ts";
 import { fetchGoogleAvatar, putAvatar } from "./storage/avatars.ts";
@@ -2550,6 +2550,7 @@ for (const stale of (
 
 
 const deployDeps: DeployManagerDeps = {
+  mcpScope: async (ctx, agentId, projectDir) => (await mcpScopeEnv(ctx, agentId, projectDir)) as Record<string, string>,
   runtimeDir: RUNTIME_DIR,
   store: deployStore,
   agents: agentRepo,
@@ -4459,13 +4460,18 @@ async function permissionModeForRun(ctx: TenantContext, runId: string): Promise<
  * was there, and the run's own error about a missing `agent.py` is a better answer than a dispatch
  * refused for a reason nobody can see. The failure is logged with the version in it.
  */
-async function mcpScopeEnv(ctx: TenantContext, projectDir: string | null | undefined): Promise<NodeJS.ProcessEnv> {
+async function mcpScopeEnv(
+  ctx: TenantContext,
+  slug: string | null | undefined,
+  projectDir: string | null | undefined,
+): Promise<NodeJS.ProcessEnv> {
   if (!projectDir) return {};
   const path = join(projectDir, MANIFEST_FILE);
   if (!existsSync(path)) return {};
   try {
     const manifest = JSON.parse(readFileSync(path, "utf8")) as Manifest;
-    return { [SCOPE_ENV]: JSON.stringify(runScope(manifest, await mcpRegistry.list(ctx))) };
+    const granted = slug ? ((await agentRepo.bySlug(ctx, slug))?.mcp_tools ?? []) : [];
+    return { [SCOPE_ENV]: JSON.stringify(runScope(manifest, granted, await mcpRegistry.list(ctx))) };
   } catch (err) {
     console.warn(`[mcp] no tool scope for ${projectDir}, so the run gets no MCP tools:`, (err as Error)?.message ?? err);
     return { [SCOPE_ENV]: JSON.stringify({ servers: {} }) };
@@ -5769,7 +5775,7 @@ evalRunner = new EvalRunner({
     const credentials = await continuationCredentials(ctx, runId, job.provider, job.agentId);
     if (credentials.refusal) return { refusal: credentials.refusal };
     const projectDir = await ensureProjectDir(ctx, job.agentId);
-    const mcpScope = await mcpScopeEnv(ctx, projectDir);
+    const mcpScope = await mcpScopeEnv(ctx, job.agentId, projectDir);
     runWorkspaces.set(runId, ctx);
     liveRuns.set(runId, { workspaceId: ctx.workspaceId, agentId: job.agentId, kind: "eval", ended: false });
     return {
@@ -7285,7 +7291,7 @@ async function restoreAgentVersion(ctx: TenantContext, slug: string, version: un
   // published as `import`, the one source the validator never saw, so restoring a version that had
   // passed it marked the agent Unverified — the recommended, reversible operation was the one that
   // downgraded an agent. The bytes are that version's bytes; what the validator said of them holds.
-  const restoredFiles = await projects.readVersion(ctx, agent.id, wanted);
+  const restoredFiles = withGrantOnly(await projects.readVersion(ctx, agent.id, wanted), agent.mcp_tools);
   const { version: published } = await projects.publish(ctx, agent.id, restoredFiles, {
     source: row.source,
     restoredFrom: wanted,
@@ -13441,7 +13447,7 @@ async function runAgent(
   if (agentId) {
     const projectDir = await ensureProjectDir(ctx, agentId);
     if (!shadow) env.JAROKU_AGENT_DIR = projectDir;
-    Object.assign(env, await mcpScopeEnv(ctx, shadow ? shadow.projectDir : projectDir));
+    Object.assign(env, await mcpScopeEnv(ctx, agentId, shadow ? shadow.projectDir : projectDir));
   }
   runWorkspaces.set(runId, ctx); // before the start: its first events arrive on their own tick
   // Before the start, for the same reason: `run_start` is what the ingest chain caches provider
@@ -13640,7 +13646,7 @@ async function resumeRun(ctx: TenantContext, runId: string): Promise<void> {
   const projectDir = run.agent_id ? await ensureProjectDir(ctx, run.agent_id) : null;
   const env: NodeJS.ProcessEnv = {
     ...credentials.env,
-    ...(await mcpScopeEnv(ctx, projectDir)),
+    ...(await mcpScopeEnv(ctx, run.agent_id, projectDir)),
     // This workspace's copy of the agent — see `agentProjectDir` and runAgent.
     ...(projectDir ? { JAROKU_AGENT_DIR: projectDir } : {}),
     JAROKU_RESUME_RUN_ID: runId,
@@ -13804,7 +13810,7 @@ async function branchRun(
   const projectDir = parent.agent_id ? await ensureProjectDir(ctx, parent.agent_id) : null;
   const env: NodeJS.ProcessEnv = {
     ...credentials.env,
-    ...(await mcpScopeEnv(ctx, projectDir)),
+    ...(await mcpScopeEnv(ctx, parent.agent_id, projectDir)),
     // This workspace's copy of the agent — see `agentProjectDir` and runAgent.
     ...(projectDir ? { JAROKU_AGENT_DIR: projectDir } : {}),
     JAROKU_RUN_ID: branchId,
