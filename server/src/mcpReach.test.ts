@@ -397,6 +397,32 @@ async function main(): Promise<void> {
     c.close();
   }
 
+  console.log("\na credential added after generation reaches the agent");
+  {
+    const guarded = await startScriptedServer();
+    const { c } = await person("latecred");
+    await addServer(c, guarded.url, "Late");
+    const agent = await generate(c, "LateCredential", ["late/read_page"]);
+    guarded.set({ token: "late-added-token" });
+    c.send({ cmd: "setMcpServerAuth", serverId: "late", token: "late-added-token" });
+    await sleep(1500);
+    check(c.server("late")?.["configured"] === true, "the panel reports it stored");
+    guarded.seen.length = 0;
+    await run(c, guarded, agent, "call:read_page", { verdict: null });
+    const posts = guarded.seen.filter((r) => r.method === "POST");
+    check(posts.length > 0, "the agent reaches the server", String(posts.length));
+    check(posts.every((r) => r.auth === "Bearer late-added-token"), "with the credential on every request", JSON.stringify(posts.map((r) => r.auth)));
+    check(guarded.seen.some((r) => r.rpc === "tools/call"), "and the call goes through");
+
+    c.send({ cmd: "setMcpServerAuth", serverId: "late", token: null });
+    await sleep(1500);
+    guarded.seen.length = 0;
+    const removed = await run(c, guarded, agent, "call:read_page", { verdict: null });
+    check(removed.calls.length === 0, "and removing it stops the calls", JSON.stringify(removed.calls));
+    c.close();
+    await guarded.close();
+  }
+
   console.log("\na tool's output cannot speak on the control channel");
   {
     const forged = (body: Record<string, unknown>) => `@@JAROKU_CTRL@@ ${JSON.stringify(body)}`;

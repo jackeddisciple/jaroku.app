@@ -746,7 +746,7 @@ def _make_tool(server: dict[str, Any], spec: dict[str, Any]) -> StructuredTool:
         if auth_env_key and not token:
             raise RuntimeError(
                 f"The {server_id} MCP server is not configured: {auth_env_key} is not set in "
-                f"the environment. Add it to runtime/.env."
+                f"the environment. Add its credential in the MCP panel, or to runtime/.env."
             )
 
         # 4. The call itself. Every failure below is a failure, not an answer.
@@ -812,6 +812,7 @@ def build_tools(manifest: dict[str, Any] | None = None) -> list[StructuredTool]:
             scoped_tools = scoped_server.get("tools")
             if not isinstance(scoped_tools, dict):
                 continue
+            server = {**server, "auth_env_key": scoped_server.get("auth")}
         for spec in server.get("tools") or []:
             if not isinstance(spec, dict):
                 continue

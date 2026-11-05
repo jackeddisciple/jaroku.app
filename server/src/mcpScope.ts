@@ -13,6 +13,7 @@ export interface ScopedTool {
 }
 
 export interface ScopedServer {
+  auth: string | null;
   tools: Record<string, ScopedTool>;
 }
 
@@ -55,7 +56,7 @@ export function runScope(manifest: Manifest, granted: readonly string[], servers
     for (const tool of entry.tools) {
       if (grant.has(`${entry.id}/${tool.name}`)) scoped[tool.name] = scopedTool(tool, tools.get(tool.name));
     }
-    if (Object.keys(scoped).length > 0) scope.servers[entry.id] = { tools: scoped };
+    if (Object.keys(scoped).length > 0) scope.servers[entry.id] = { auth: server.auth_env_key, tools: scoped };
   }
   return scope;
 }
