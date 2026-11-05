@@ -1545,6 +1545,10 @@ export function sendSetAgentTools(agentId: string, mcpTools: readonly string[]):
   send({ cmd: "setAgentTools", agentId, mcpTools: [...mcpTools] });
 }
 
+export function sendRevokeAgentTools(agentId: string, revoke: readonly string[]): boolean {
+  return send({ cmd: "setAgentTools", agentId, revoke: [...revoke] });
+}
+
 export function sendRestoreAgent(agentId: string): void {
   send({ cmd: "restoreAgent", agentId });
 }

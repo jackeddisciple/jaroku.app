@@ -2539,7 +2539,7 @@ export type ClientCommand =
   // to move on.
   | { cmd: "createDraftAgent"; category?: string; description?: string }
   /** §7.5: the WHOLE grant set for an agent that already exists. See sendSetAgentTools. */
-  | { cmd: "setAgentTools"; agentId: string; mcpTools: string[] }
+  | { cmd: "setAgentTools"; agentId: string; mcpTools?: string[]; revoke?: string[] }
   /**
    * §7.5's fork: the connectors and the current manifest copied, and the MCP grants NOT.
    *

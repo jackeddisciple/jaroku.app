@@ -1830,6 +1830,7 @@ jobs:
           # not locked, and a form disabled by a failed request is worse than the 403 was.
           npm run test:credential-gate
           npm run test:mcp-credential-field
+          npm run test:inbox-remove-grant
           # AND THE GRAPH TAB'S FAILURE COPY. It rendered the server's raw string as its hint under
           # a title saying the state was not ready "yet" — two claims at once, since a hard import
           # failure is not something waiting fixes, with an internal Python module path between them

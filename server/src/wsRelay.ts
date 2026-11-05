@@ -364,7 +364,7 @@ export type RestoreAgentVersionCommand = {
  * written, so a client cannot grant a tool this workspace has not connected — the same rule the
  * generation path applies to the same field.
  */
-export type SetAgentToolsCommand = { cmd: "setAgentTools"; agentId: string; mcpTools: string[] };
+export type SetAgentToolsCommand = { cmd: "setAgentTools"; agentId: string; mcpTools?: string[]; revoke?: string[] };
 
 export type AgentCommand =
   | ArchiveAgentCommand

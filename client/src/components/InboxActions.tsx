@@ -32,7 +32,7 @@ import {
   sendRediscoverMcpServer,
   sendRemoveMcpServer,
   sendRestoreAgent,
-  sendSetMcpToolImpact,
+  sendRevokeAgentTools,
   sendSetSpendCeiling,
 } from "../lib/socket.ts";
 import { useUiStore } from "../store/uiStore.ts";
@@ -154,7 +154,7 @@ export const ACTION_COMMAND: Partial<Record<InboxActionName, string>> = {
   // agent somebody can write to is the workspace's judgement rather than an admin's.
   save_memory: "answerMemoryProposal",
   reject_memory: "answerMemoryProposal",
-  remove_grant: "setMcpToolImpact",
+  remove_grant: "setAgentTools",
   // THE THREE THAT WERE MISSING FROM THIS TABLE AS WELL AS FROM THE DISPATCH, and their absence
   // here was the more dangerous half: a name absent from this map is treated as ungated-and-allowed
   // by `useAllowedActions`, so cancelling a deployment and removing an MCP server were offered to
@@ -248,16 +248,10 @@ export function runAction(action: InboxActionName, item: InboxItemView): boolean
       return true;
     }
     case "remove_grant": {
-      // Lowering a tool's impact is the existing command; removing the GRANT itself is the agent's
-      // own capability list, which is a decision about the agent rather than about this card — so
-      // this offers the one it can do here and the overflow's `open_agent` is the other half.
+      const agentId = str(item, "agent_slug");
       const tools = Array.isArray(item.payload["tools"]) ? (item.payload["tools"] as string[]) : [];
-      const first = tools[0];
-      if (!first) return false;
-      const [serverId, toolName] = first.split("/");
-      if (!serverId || !toolName) return false;
-      sendSetMcpToolImpact(serverId, toolName, "low");
-      return true;
+      if (!agentId || tools.length === 0) return false;
+      return sendRevokeAgentTools(agentId, tools);
     }
     case "cancel_deploy": {
       // THE SAME COMMAND THE DEPLOY PANEL SENDS, which is §6.4's rule and the reason this is one

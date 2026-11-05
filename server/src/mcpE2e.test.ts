@@ -17,7 +17,7 @@ import { McpStore } from "./mcpStore.ts";
 import { McpRegistry, type RegistrationResult } from "./mcpRegistry.ts";
 import { MCP_DISCOVER_CLASS, McpDiscoveryQueue, type McpDiscoveryPayload } from "./mcpDiscovery.ts";
 import { authEnvKeyFor } from "./envWriter.ts";
-import { buildManifest } from "./mcpManifest.ts";
+import { buildManifest, grantWithout } from "./mcpManifest.ts";
 import { startScriptedServer } from "../fixtures/mcp/scriptedServer.ts";
 
 let failures = 0;
@@ -209,6 +209,13 @@ console.log("\na redirect cannot reach anything the URL check would refuse");
 
   await slash.close();
   await internal.close();
+}
+
+console.log("\nrevoking takes the named refs out of the grant and nothing else");
+{
+  const granted = ["a/send", "a/read", "b/delete"];
+  check(JSON.stringify(grantWithout(granted, ["a/send", "b/delete"])) === JSON.stringify(["a/read"]), "both named refs go, the other stays");
+  check(JSON.stringify(grantWithout(granted, ["a/gone"])) === JSON.stringify(granted), "a ref it does not hold changes nothing");
 }
 
 check(errors.length === 0, "no handler threw", String(errors[0] ?? ""));

@@ -158,7 +158,7 @@ import { CheckRunner } from "./checkRunner.ts";
 import { PrCommentsRepository } from "./db/repositories/prComments.ts";
 import { diffShapes, readShape } from "./semanticDiff.ts";
 import { inSubdirectory, repoPrefix } from "./githubPush.ts";
-import { MANIFEST_FILE, buildManifest, manifestRefs } from "./mcpManifest.ts";
+import { MANIFEST_FILE, buildManifest, grantWithout, manifestRefs } from "./mcpManifest.ts";
 import type { McpImpact } from "./mcpStore.ts";
 import { fetchGoogleAvatar, putAvatar } from "./storage/avatars.ts";
 import { agentPrefix } from "./storage/keys.ts";
@@ -2438,6 +2438,10 @@ async function setAgentCategory(ctx: TenantContext, agentId: string, category: u
   await relay.broadcastAgentGrid();
 }
 
+function refList(value: unknown): string[] | null {
+  return Array.isArray(value) ? value.filter((r): r is string => typeof r === "string") : null;
+}
+
 /**
  * §7.5's grant, changed on an agent that already exists.
  *
@@ -2462,9 +2466,10 @@ async function setAgentCategory(ctx: TenantContext, agentId: string, category: u
  * (a fork on another replica) writes the column and skips the file; `ensureProjectDir` materialises
  * it on the next run, from the version this just published.
  */
-async function setAgentTools(ctx: TenantContext, slug: string, refs: unknown): Promise<void> {
-  const wanted = Array.isArray(refs) ? refs.filter((r): r is string => typeof r === "string") : null;
-  if (wanted === null) {
+async function setAgentTools(ctx: TenantContext, slug: string, refs: unknown, revoke?: unknown): Promise<void> {
+  const requested = refList(refs);
+  const revoked = refList(revoke);
+  if (requested === null && revoked === null) {
     refuseAgent(ctx, "that command needs a list of tools", slug);
     return;
   }
@@ -2473,6 +2478,7 @@ async function setAgentTools(ctx: TenantContext, slug: string, refs: unknown): P
     refuseAgent(ctx, `no agent called ${slug} in this workspace`, slug);
     return;
   }
+  const wanted = revoked ? grantWithout(agent.mcp_tools, revoked) : (requested ?? []);
 
   // THE REGISTRY DECIDES WHAT EXISTS, not the request. Same call the plan path makes, and the same
   // posture: a ref naming a server or tool that has gone away resolves to nothing rather than to a
@@ -7311,7 +7317,7 @@ async function handleAgentCommand(ctx: TenantContext, cmd: AgentCommand): Promis
     else if (cmd.cmd === "setAgentCategory") await setAgentCategory(ctx, cmd.agentId, cmd.category);
     else if (cmd.cmd === "forkAgent") await forkAgent(ctx, cmd.agentId);
     else if (cmd.cmd === "restoreAgentVersion") await restoreAgentVersion(ctx, cmd.agentId, cmd.version);
-    else if (cmd.cmd === "setAgentTools") await setAgentTools(ctx, cmd.agentId, cmd.mcpTools);
+    else if (cmd.cmd === "setAgentTools") await setAgentTools(ctx, cmd.agentId, cmd.mcpTools, cmd.revoke);
   } catch (err) {
     // A FIXED SENTENCE, AND THE REAL ONE IN THE LOG — the same rule the thread commands follow. What
     // throws on this path is usually a database driver, and nothing a driver wrote was written for a

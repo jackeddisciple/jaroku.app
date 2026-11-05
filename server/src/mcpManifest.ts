@@ -126,6 +126,11 @@ export function manifestRefs(manifest: Manifest): string[] {
   return manifest.servers.flatMap((s) => s.tools.map((t) => `${s.id}/${t.name}`));
 }
 
+export function grantWithout(granted: readonly string[], revoked: readonly string[]): string[] {
+  const gone = new Set(revoked);
+  return granted.filter((ref) => !gone.has(ref));
+}
+
 /** Just the tool names, for the validator's wiring and shadow checks. */
 export function manifestToolNames(manifest: Manifest): string[] {
   return manifest.servers.flatMap((s) => s.tools.map((t) => t.name));
