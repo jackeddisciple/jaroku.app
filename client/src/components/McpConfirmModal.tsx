@@ -44,7 +44,11 @@ import type { McpConfirmRequest, McpConfirmVerdict } from "../types.ts";
  * Long enough that a click or a key aimed at whatever was under the tray a moment ago does not
  * land on Deny or Allow; short enough that nobody reading the arguments ever meets it.
  */
-const ARM_MS = 700;
+export const ARM_MS = 700;
+
+export function askArmed(now: number, shownAt: number, movedAt: number): boolean {
+  return now - Math.max(shownAt, movedAt) >= ARM_MS;
+}
 
 /** Pretty-print the bridge's JSON args, falling back to the raw text if it isn't JSON. */
 function formatArgs(raw: string): string {
@@ -98,6 +102,8 @@ export function McpConfirmModal() {
     [confirms],
   );
   const open = ordered.find((c) => c.nonce === openNonce) ?? ordered[0];
+  const movedAt = useRef<{ nonce: string | null; at: number }>({ nonce: null, at: 0 });
+  if (open && movedAt.current.nonce !== open.nonce) movedAt.current = { nonce: open.nonce, at: Date.now() };
 
   // ONE TICK FOR EVERY CLOCK ON SCREEN, and none at all when nothing is waiting.
   useEffect(() => {
@@ -219,7 +225,7 @@ export function McpConfirmModal() {
                     request={request}
                     connected={connected}
                     answered={answered.has(request.nonce)}
-                    armed={now - (shownAt.current.get(request.nonce) ?? 0) >= ARM_MS}
+                    armed={askArmed(now, shownAt.current.get(request.nonce) ?? now, movedAt.current.at)}
                     onAnswered={() => setAnswered(new Set([...answered, request.nonce]))}
                   />
                 )}
