@@ -60,13 +60,7 @@ export interface McpDiscoveryPayload {
   /** Only on `add`. On a rediscover the endpoint comes from the row, which is the truth. */
   endpoint?: string;
   label?: string;
-  /**
-   * Whether a credential was supplied with the registration.
-   *
-   * A FLAG, NEVER THE VALUE. The token is written to the vault BEFORE the job is enqueued, so by
-   * the time this payload exists there is nothing left to carry — see the interface note above.
-   */
-  hasToken?: boolean;
+  authEnvKey?: string | null;
 }
 
 export interface McpDiscoveryOptions {
@@ -141,6 +135,7 @@ export class McpDiscoveryQueue {
                 endpoint: payload.endpoint ?? "",
                 label: payload.label,
                 id: payload.serverId,
+                authEnvKey: payload.authEnvKey ?? null,
               })
             : await this.opts.registry.rediscover(ctx, payload.serverId);
         this.opts.onResult?.(ctx, payload, result);

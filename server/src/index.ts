@@ -5997,7 +5997,7 @@ async function handleMcpCommand(ctx: TenantContext, cmd: McpCommand): Promise<vo
           serverId: prepared.id,
           endpoint: cmd.endpoint,
           label: cmd.label,
-          hasToken: Boolean(cmd.token),
+          authEnvKey: prepared.authEnvKey,
         });
         // The endpoint may carry a path or query a user would not want echoed; log the id we
         // assigned and let the job's own completion log what happened to it.

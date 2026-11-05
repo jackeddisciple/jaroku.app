@@ -171,9 +171,9 @@ console.log("\ndiscovery is enqueued, not awaited");
 // --- no credential rides the queue ---------------------------------------------------------
 console.log("\nno credential rides on a job");
 {
-  const job = await queue.enqueue(A, { kind: "add", serverId: "withtoken", endpoint: "https://x.example", hasToken: true });
+  const job = await queue.enqueue(A, { kind: "add", serverId: "withtoken", endpoint: "https://x.example", authEnvKey: "JAROKU_MCP_WITHTOKEN_TOKEN" });
   const serialised = JSON.stringify(job);
-  check(serialised.includes("hasToken"), "the job records THAT a credential was supplied");
+  check(serialised.includes("JAROKU_MCP_WITHTOKEN_TOKEN"), "the job names the key a credential was stored under");
   check(
     !/"token"|"secret"|"authorization"/i.test(serialised),
     "...and carries no field a value could be in — a token on a queue is a token in Redis",

@@ -290,32 +290,36 @@ export class McpRegistry {
   async prepare(
     ctx: TenantContext,
     opts: AddServerOptions,
-  ): Promise<{ ok: boolean; id: string; message: string | null }> {
+  ): Promise<{ ok: boolean; id: string; authEnvKey: string | null; message: string | null }> {
     const endpoint = opts.endpoint.trim();
-    if (!endpoint) return { ok: false, id: "", message: "an endpoint is required" };
+    if (!endpoint) return { ok: false, id: "", authEnvKey: null, message: "an endpoint is required" };
 
     const requested = opts.id?.trim() || slugifyServerId(opts.label?.trim() || endpoint);
     if (!SERVER_ID_RE.test(requested)) {
       return {
         ok: false,
         id: "",
+        authEnvKey: null,
         message: `"${requested}" is not a usable server id — lowercase letters, digits and underscores, starting with a letter`,
       };
     }
     if (opts.id && (await this.store.getServer(ctx, opts.id))) {
-      return { ok: false, id: "", message: `a server called "${opts.id}" is already connected` };
+      return { ok: false, id: "", authEnvKey: null, message: `a server called "${opts.id}" is already connected` };
     }
     const id = opts.id ?? (await uniqueServerId(ctx, this.store, requested));
 
     let message: string | null = null;
+    let authEnvKey: string | null = null;
     if (opts.token && this.secrets) {
-      const written = await this.secrets.set(ctx, authEnvKeyFor(id), opts.token);
+      const key = authEnvKeyFor(id);
+      const written = await this.secrets.set(ctx, key, opts.token);
       if (!written.ok) {
-        return { ok: false, id: "", message: written.warning ?? "could not store the credential" };
+        return { ok: false, id: "", authEnvKey: null, message: written.warning ?? "could not store the credential" };
       }
+      authEnvKey = key;
       message = written.warning;
     }
-    return { ok: true, id, message };
+    return { ok: true, id, authEnvKey, message };
   }
 
   /**

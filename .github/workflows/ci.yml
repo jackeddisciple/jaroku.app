@@ -449,6 +449,7 @@ jobs:
           # raised by an untrusted signal, and here the untrusted signal is an external commit
           # changing the manifest. It lives with the MCP suites and belongs to this feature.
           npm run test:mcp-impact
+          npm run test:mcp-e2e
 
       # THE THREADS DESTINATION, in a step of its own from its first suite rather than appended to
       # one above. The comment two steps up is about eleven suites that shipped and were never run
