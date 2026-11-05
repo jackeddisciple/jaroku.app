@@ -1852,8 +1852,8 @@ export function sendRediscoverMcpServer(serverId: string): void {
   send({ cmd: "rediscoverMcpServer", serverId });
 }
 /** Store or clear a credential. `null` removes the key from runtime/.env entirely. */
-export function sendSetMcpServerAuth(serverId: string, token: string | null): void {
-  send({ cmd: "setMcpServerAuth", serverId, token });
+export function sendSetMcpServerAuth(serverId: string, token: string | null): boolean {
+  return send({ cmd: "setMcpServerAuth", serverId, token });
 }
 /**
  * Answer a pending confirmation. The run is blocked until this lands.

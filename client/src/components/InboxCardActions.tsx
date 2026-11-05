@@ -17,6 +17,7 @@
 
 import { useEffect, useState, type ChangeEvent, type KeyboardEvent } from "react";
 import { SecretField } from "./SecretField.tsx";
+import { sendSetMcpServerAuth } from "../lib/socket.ts";
 import {
   ACTION_LABEL,
   FORM_ACTIONS,
@@ -55,6 +56,49 @@ const SNOOZE_CHOICES: { id: SnoozeDuration; label: string }[] = [
  * password manager is a copy of it nobody decided to make, and one filling a saved login in here
  * would store a personal password as a workspace credential.
  */
+function McpCredentialForm({ item }: { item: InboxItemView }) {
+  const [value, setValue] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState(false);
+  const submit = (): void => {
+    if (!value.trim()) return;
+    if (!sendSetMcpServerAuth(item.subject_id ?? "", value.trim())) {
+      setError("that could not be sent: the connection is down");
+      return;
+    }
+    setValue("");
+    setDone(true);
+  };
+  if (done) return <div className="ml-6 mt-2 text-tiny text-muted">Sent. This card leaves when it takes effect.</div>;
+  return (
+    <div className="ml-6 mt-2" onClick={(e) => e.stopPropagation()}>
+      <div className="flex items-center gap-2 rounded-control border border-edge bg-bg px-2 py-1">
+        <SecretField
+          name="inbox-mcp-credential"
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          onKeyDown={(e) => {
+            e.stopPropagation();
+            if (e.key === "Enter") submit();
+          }}
+          placeholder="Bearer token or API key"
+          aria-label="Bearer token or API key"
+          className="min-w-0 flex-1 bg-transparent text-caption text-ink placeholder:text-faint outline-none focus-visible:shadow-focusring"
+        />
+        <button
+          type="button"
+          onClick={submit}
+          disabled={!value.trim()}
+          className="shrink-0 rounded-control px-2 py-0.5 text-tiny text-muted transition-colors hover:bg-active active:bg-chrome hover:text-ink disabled:pointer-events-none disabled:opacity-40"
+        >
+          Save
+        </button>
+      </div>
+      {error && <div className="mt-1 text-tiny text-err">{error}</div>}
+    </div>
+  );
+}
+
 function InlineForm({ item, action }: { item: InboxItemView; action: InboxActionName }) {
   const [value, setValue] = useState("");
   const [busy, setBusy] = useState(false);
@@ -287,7 +331,9 @@ export function InboxCardActions({ item, expanded }: { item: InboxItemView; expa
 
   return (
     <>
-      {showForm && primary && <InlineForm item={item} action={primary} />}
+      {showForm && primary && (primary === "set_mcp_credential"
+        ? <McpCredentialForm item={item} />
+        : <InlineForm item={item} action={primary} />)}
 
       <div className="relative mt-1.5 flex items-center justify-end gap-0.5">
         {primary && !FORM_ACTIONS.has(primary) && (
