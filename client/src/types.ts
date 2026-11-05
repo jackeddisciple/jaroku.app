@@ -836,6 +836,8 @@ export interface McpConfirmRequest {
   /** Seconds the runner waits before denying, from `requestedAt`. It never allows on timeout. */
   timeoutS: number;
   requestedAt: string;
+  serverNow?: number;
+  deadlineAt?: number;
   /** The deployed job this run is, and its agent — absent for a local run, which is no job. */
   workItemId?: string | null;
   agentName?: string | null;
@@ -846,10 +848,11 @@ export type McpConfirmVerdict = "once" | "run" | "deny";
 export type McpMessage =
   | { channel: "mcp"; type: "servers"; servers: McpServer[] }
   | { channel: "mcp"; type: "discovering"; serverId: string | null; endpoint: string }
-  | { channel: "mcp"; type: "error"; message: string; serverId?: string }
+  | { channel: "mcp"; type: "error"; message: string; serverId?: string; runId?: string; nonce?: string }
   | { channel: "mcp"; type: "notice"; message: string; serverId?: string }
   | ({ channel: "mcp"; type: "confirmRequest" } & McpConfirmRequest)
-  | { channel: "mcp"; type: "confirmResolved"; runId: string; nonce: string; verdict: string };
+  | { channel: "mcp"; type: "confirmResolved"; runId: string; nonce: string; verdict: string }
+  | { channel: "mcp"; type: "confirmsReplayed"; nonces: string[] };
 
 /**
  * One provider's row in the OTHER credential system: the user's own subscription.

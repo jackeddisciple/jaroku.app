@@ -49,10 +49,14 @@ interface McpState {
   revealConfirm: (nonce: string | null) => void;
   addConfirm: (req: McpConfirmRequest) => void;
   resolveConfirm: (runId: string, nonce: string) => void;
+  reconcileConfirms: (nonces: readonly string[]) => void;
+  expireConfirms: (now: number) => void;
   setDiscovering: (serverId: string | null, endpoint: string) => void;
   setError: (message: string | null) => void;
   setNotice: (message: string | null) => void;
 }
+
+const CONFIRM_GRACE_MS = 5_000;
 
 export const useMcpStore = create<McpState>((set) => ({
   servers: [],
@@ -80,8 +84,32 @@ export const useMcpStore = create<McpState>((set) => ({
     set((s) =>
       // Deduplicated by nonce: a reconnecting client re-reads what it may already hold, and
       // showing the same question twice would let one of them be answered into a void.
-      s.confirms.some((c) => c.nonce === req.nonce) ? s : { confirms: [...s.confirms, req] },
+      s.confirms.some((c) => c.nonce === req.nonce)
+        ? s
+        : {
+            confirms: [
+              ...s.confirms,
+              {
+                ...req,
+                deadlineAt:
+                  new Date(req.requestedAt).getTime() + req.timeoutS * 1000 + (Date.now() - (req.serverNow ?? Date.now())),
+              },
+            ],
+          },
     ),
+
+  reconcileConfirms: (nonces) =>
+    set((s) => {
+      const live = new Set(nonces);
+      const kept = s.confirms.filter((c) => live.has(c.nonce));
+      return kept.length === s.confirms.length ? s : { confirms: kept };
+    }),
+
+  expireConfirms: (now) =>
+    set((s) => {
+      const kept = s.confirms.filter((c) => (c.deadlineAt ?? Number.POSITIVE_INFINITY) + CONFIRM_GRACE_MS > now);
+      return kept.length === s.confirms.length ? s : { confirms: kept };
+    }),
 
   resolveConfirm: (runId, nonce) =>
     set((s) => ({ confirms: s.confirms.filter((c) => !(c.runId === runId && c.nonce === nonce)) })),

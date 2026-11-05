@@ -3215,6 +3215,7 @@ function confirmRequestOf(p: PendingConfirm) {
     args: p.args,
     timeoutS: p.timeoutS,
     requestedAt: new Date(p.requestedAt).toISOString(),
+    serverNow: Date.now(),
     workItemId: p.workItemId,
     agentName: p.agentName,
   };
@@ -6083,6 +6084,8 @@ async function handleMcpCommand(ctx: TenantContext, cmd: McpCommand): Promise<vo
           relay.sendMcpTo(ctx, ctx.requestId, {
             type: "error",
             message: "that confirmation is no longer waiting — the run moved on without it",
+            runId: cmd.runId,
+            nonce: cmd.nonce,
           });
           return;
         }

@@ -62,7 +62,7 @@ function formatArgs(raw: string): string {
 
 /** When the runner denies this ask on its own clock. */
 function deadlineOf(request: McpConfirmRequest): number {
-  return new Date(request.requestedAt).getTime() + request.timeoutS * 1000;
+  return request.deadlineAt ?? new Date(request.requestedAt).getTime() + request.timeoutS * 1000;
 }
 
 function clock(ms: number): string {
@@ -109,7 +109,11 @@ export function McpConfirmModal() {
   useEffect(() => {
     if (ordered.length === 0) return;
     setNow(Date.now());
-    const id = setInterval(() => setNow(Date.now()), 250);
+    const id = setInterval(() => {
+      const tick = Date.now();
+      setNow(tick);
+      useMcpStore.getState().expireConfirms(tick);
+    }, 250);
     return () => clearInterval(id);
   }, [ordered.length]);
 

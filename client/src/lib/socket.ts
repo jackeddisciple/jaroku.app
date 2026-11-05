@@ -438,10 +438,17 @@ function dispatch(msg: ServerMessage): void {
       const m = useMcpStore.getState();
       if (msg.type === "servers") m.setServers(msg.servers);
       else if (msg.type === "discovering") m.setDiscovering(msg.serverId, msg.endpoint);
-      else if (msg.type === "error") m.setError(msg.message);
+      else if (msg.type === "error") {
+        m.setError(msg.message);
+        if (msg.runId && msg.nonce) {
+          m.resolveConfirm(msg.runId, msg.nonce);
+          useUiStore.getState().showToast(msg.message, "err");
+        }
+      }
       else if (msg.type === "notice") m.setNotice(msg.message);
       else if (msg.type === "confirmRequest") m.addConfirm(msg);
       else if (msg.type === "confirmResolved") m.resolveConfirm(msg.runId, msg.nonce);
+      else if (msg.type === "confirmsReplayed") m.reconcileConfirms(msg.nonces);
       break;
     }
     case "providers": {

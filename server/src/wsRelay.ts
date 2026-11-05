@@ -2278,7 +2278,7 @@ export type McpEvent =
   // A handshake is a network round trip against someone else's server; the UI needs to be
   // able to say it is waiting rather than appear to have ignored the click.
   | { type: "discovering"; serverId: string | null; endpoint: string }
-  | { type: "error"; message: string; serverId?: string }
+  | { type: "error"; message: string; serverId?: string; runId?: string; nonce?: string }
   // A discovery that succeeded but is worth a word anyway (e.g. a truncated tool list).
   | { type: "notice"; message: string; serverId?: string }
   // A run has HALTED before a high-impact MCP tool's first call and is waiting for an
@@ -2298,6 +2298,7 @@ export type McpEvent =
       /** Seconds the runner will wait before denying, counted from `requestedAt`. */
       timeoutS: number;
       requestedAt: string;
+      serverNow?: number;
       /**
        * The deployed job this run is, and its agent's name — null for a local run, which is no job.
        * What lets the ask say WHOSE it is and offer to stop the job rather than only answer it.
@@ -2306,7 +2307,8 @@ export type McpEvent =
       agentName?: string | null;
     }
   // The request is over: answered, or the run died, or the runner gave up waiting.
-  | { type: "confirmResolved"; runId: string; nonce: string; verdict: string };
+  | { type: "confirmResolved"; runId: string; nonce: string; verdict: string }
+  | { type: "confirmsReplayed"; nonces: string[] };
 
 // Model-provider credentials ride their own channel, parallel to trace/gen/edit/debug/reply/
 // eval/mcp — still one socket, and still no second transport.
@@ -4668,9 +4670,15 @@ export class WsRelay {
         // AND WHATEVER IS BLOCKED RIGHT NOW, replayed to this socket alone — see the option's own
         // note. To this socket rather than broadcast, because a reconnecting tab is the only one
         // that has missed anything and every other tab already holds the ask.
-        for (const pending of (await this.opts.listPendingConfirms?.(ctx)) ?? []) {
+        const pendingConfirms = (await this.opts.listPendingConfirms?.(ctx)) ?? [];
+        for (const pending of pendingConfirms) {
           this.sendTo(ws, { channel: "mcp", ...pending });
         }
+        this.sendTo(ws, {
+          channel: "mcp",
+          type: "confirmsReplayed",
+          nonces: pendingConfirms.flatMap((pending) => (pending.type === "confirmRequest" ? [pending.nonce] : [])),
+        });
         // Which providers are connected, so a first-run client knows on frame one whether it
         // is looking at a configured install or an empty one.
         this.sendTo(ws, {
