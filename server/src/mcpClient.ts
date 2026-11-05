@@ -92,6 +92,18 @@ const MAX_SERVER_FIELD_CHARS = 200;
  * honest answer is to refuse it rather than to store a schema nothing will ever render.
  */
 const MAX_SCHEMA_BYTES = 64 * 1024;
+const MAX_SCHEMA_DEPTH = 64;
+
+function nestedDeeperThan(value: unknown, limit: number): boolean {
+  const stack: { node: unknown; depth: number }[] = [{ node: value, depth: 0 }];
+  while (stack.length > 0) {
+    const { node, depth } = stack.pop()!;
+    if (node === null || typeof node !== "object") continue;
+    if (depth >= limit) return true;
+    for (const child of Object.values(node as Record<string, unknown>)) stack.push({ node: child, depth: depth + 1 });
+  }
+  return false;
+}
 
 const clean = cleanText;
 
@@ -247,6 +259,7 @@ function readTool(raw: unknown): AdvertisedTool | null {
     : null;
   // Measured before anything is kept: an oversized schema is refused whole, because storing a
   // truncated one would mean checking arguments against a schema the server never declared.
+  if (usable && nestedDeeperThan(usable, MAX_SCHEMA_DEPTH)) return null;
   if (usable && JSON.stringify(usable).length > MAX_SCHEMA_BYTES) return null;
   return {
     name,

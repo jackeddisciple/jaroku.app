@@ -431,7 +431,8 @@ export class McpRegistry {
       last_error: null,
       discovered_at: null, // set by replaceTools, so the timestamp matches the list it stamps
     });
-    await this.store.replaceTools(ctx, id, this.classifyAll(result));
+    const storing = await this.storeTools(ctx, id, result);
+    if (storing) return { ok: false, server: await this.get(ctx, id), message: joinMessages(credentialWarning, storing) };
 
     return {
       ok: true,
@@ -478,7 +479,8 @@ export class McpRegistry {
       status: "connected",
       last_error: null,
     });
-    await this.store.replaceTools(ctx, id, this.classifyAll(result));
+    const storing = await this.storeTools(ctx, id, result);
+    if (storing) return { ok: false, server: await this.get(ctx, id), message: storing };
     return { ok: true, server: await this.get(ctx, id), message: truncationNote(result) };
   }
 
@@ -539,6 +541,22 @@ export class McpRegistry {
     }
     await this.store.setServerAuthEnvKey(ctx, id, key);
     return { result: { ok: true, server: await this.get(ctx, id), message: null }, warning: written.warning };
+  }
+
+  private async storeTools(
+    ctx: TenantContext,
+    id: string,
+    result: Extract<DiscoveryResult, { ok: true }>,
+  ): Promise<string | null> {
+    try {
+      await this.store.replaceTools(ctx, id, this.classifyAll(result));
+      return null;
+    } catch (err) {
+      console.error(`[mcp] could not store the tools of ${id}:`, (err as Error)?.message ?? err);
+      const message = "this server answered, but its tool list could not be stored";
+      await this.store.setServerStatus(ctx, id, "error", message);
+      return message;
+    }
   }
 
   private classifyAll(result: Extract<DiscoveryResult, { ok: true }>): DiscoveredTool[] {

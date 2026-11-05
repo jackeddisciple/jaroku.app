@@ -23,7 +23,7 @@ import { parseControlLine } from "./processManager.ts";
 import { isSecretName, secretNameRefusal } from "./secrets/secretStore.ts";
 import { buildManifest, grantWithout, withGrantOnly, withoutMcpGrant } from "./mcpManifest.ts";
 import { AgentRepository } from "./db/repositories/agents.ts";
-import { startScriptedServer } from "../fixtures/mcp/scriptedServer.ts";
+import { startScriptedServer, type ScriptedRequest } from "../fixtures/mcp/scriptedServer.ts";
 
 let failures = 0;
 const check = (ok: boolean, msg: string, detail = ""): void => {
@@ -505,6 +505,41 @@ console.log("\na failure is classified by what happened, not by words in the bod
   check((await statusOf("forbidden", 403, "nope")) === "auth_required", "and so does a real 403");
   const refused = await discover({ endpoint: "http://127.0.0.1:1/mcp", timeoutMs: 2000, deadlineMs: 3000 });
   check(!refused.ok && refused.status === "unreachable", "a refused connection is unreachable", JSON.stringify(refused));
+}
+
+console.log("\none unusable tool does not take the others with it");
+{
+  const A = await workspace("deep");
+  const good = { name: "read_page", description: "Reads a page.", inputSchema: { type: "object", properties: {} } };
+  const listing = (depth: number) => {
+    const schema = `${'{"type":"object","properties":{"a":'.repeat(depth)}{"type":"string"}${"}}".repeat(depth)}`;
+    const tools = `[{"name":"too_deep","description":"Reads.","inputSchema":${schema}},${JSON.stringify(good)}]`;
+    return {
+      hook: ({ rpc, id, res }: ScriptedRequest) => {
+        if (rpc !== "tools/list") return false;
+        res.writeHead(200, { "content-type": "application/json", "mcp-session-id": "scripted" });
+        res.end(`{"jsonrpc":"2.0","id":${JSON.stringify(id)},"result":{"tools":${tools}}}`);
+        return true;
+      },
+    };
+  };
+  for (const depth of [100, 2500, 4000]) {
+    const label = `deep${depth}`;
+    const fixture = await startScriptedServer(listing(depth));
+    await connect(A, { endpoint: fixture.url, label });
+    const row = await registry.get(A, label);
+    const names = (row?.tools ?? []).map((t) => t.name);
+    check(row?.status === "connected", `depth ${depth}: connected`, `${row?.status} ${row?.last_error}`);
+    check(names.includes("read_page"), `depth ${depth}: the good tool is kept`, names.join());
+    check(!names.includes("too_deep"), `depth ${depth}: the unusable one is refused`, names.join());
+    await fixture.close();
+  }
+  const very = await startScriptedServer(listing(9500));
+  await connect(A, { endpoint: very.url, label: "VeryDeep" });
+  const row = await registry.get(A, "verydeep");
+  check(row?.status !== "connected" || (row?.tools.length ?? 0) > 0, "a depth nothing can parse is never connected with nothing", `${row?.status}`);
+  await very.close();
+  check(errors.length === 0, "and no handler threw", String(errors[0] ?? ""));
 }
 
 check(errors.length === 0, "no handler threw", String(errors[0] ?? ""));
