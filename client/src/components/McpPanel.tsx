@@ -182,7 +182,7 @@ function ServerDetail({ server }: { server: McpServer }) {
   const highCount = server.tools.filter((t) => t.impact === "high").length;
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
       <div className="shrink-0 px-4 py-2">
         <div className="flex items-center gap-2 flex-wrap">
           {/* GLYPH THEN WORD, which is I8: a card whose only "this is unreachable" signal is a rose
@@ -214,7 +214,7 @@ function ServerDetail({ server }: { server: McpServer }) {
         )}
 
         {server.last_error && (
-          <p className="mt-1 break-words rounded-control border border-err/30 px-2 py-1.5 text-tiny leading-[1.5] text-err">
+          <p className="mt-1 max-h-28 overflow-y-auto break-words rounded-control border border-err/30 px-2 py-1.5 text-tiny leading-[1.5] text-err">
             {server.last_error}
           </p>
         )}
@@ -287,7 +287,7 @@ function ServerDetail({ server }: { server: McpServer }) {
         )}
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-4">
+      <div className="px-2 pb-4">
         {server.tools.length === 0 ? (
           <EmptyState
             size="inline"

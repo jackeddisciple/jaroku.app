@@ -26,6 +26,15 @@ console.log("\nthe tray and the rows say what is true");
   check("the control does not claim a tool is read only", !/treat as read-only/.test(PANEL));
 }
 
+console.log("\nthe panel's controls stay reachable");
+{
+  const PANEL = readFileSync(`${HERE}McpPanel.tsx`, "utf8");
+  const detail = /function ServerDetail\([\s\S]*?\n\}/.exec(PANEL)?.[0] ?? "";
+  check("a server's detail scrolls as one, so nothing above the list can push it out of reach", /<div className="flex min-h-0 flex-1 flex-col overflow-y-auto">/.test(detail));
+  check("the tool list no longer scrolls on its own inside it", !/min-h-0 flex-1 overflow-y-auto px-2 pb-4/.test(detail));
+  check("a long error has a height of its own", /max-h-28 overflow-y-auto[^"]*"[\s\S]{0,60}\{server\.last_error\}/.test(detail));
+}
+
 console.log("\nthe tray exists wherever a run can be waiting");
 {
   const onboarding = /if \(onboardingNeeded\) return \([\s\S]*?\);/.exec(APP)?.[0] ?? "";
