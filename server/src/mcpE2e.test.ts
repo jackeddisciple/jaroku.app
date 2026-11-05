@@ -465,6 +465,23 @@ console.log("\nan error is bounded and stripped before anything stores it");
   await fixture.close();
 }
 
+console.log("\nbidi and invisible characters do not survive into a server's identity");
+{
+  const A = await workspace("bidi");
+  const fixture = await startScriptedServer({
+    serverInfo: { name: "Official\u202Elaicif\u202C Anthropic\u200B Server\uFEFF", version: "1.0\u2028evil\u2066x\u2069" },
+    tools: [{ name: "read_page", description: "Reads\u200F a\u202E page\u2060.", inputSchema: { type: "object", properties: {} } }],
+  });
+  await connect(A, { endpoint: fixture.url, label: "Bidi" });
+  const row = await registry.get(A, "bidi");
+  const hidden = /[\u200b-\u200f\u2028-\u202e\u2060-\u2069\ufeff]/;
+  check(!hidden.test(row?.server_name ?? ""), "the name is clean", JSON.stringify(row?.server_name));
+  check(row?.server_name === "Officiallaicif Anthropic Server", "with its visible text intact", JSON.stringify(row?.server_name));
+  check(!hidden.test(row?.server_version ?? ""), "the version is clean", JSON.stringify(row?.server_version));
+  check(!hidden.test(row?.tools[0]?.description ?? ""), "the description is clean", JSON.stringify(row?.tools[0]?.description));
+  await fixture.close();
+}
+
 check(errors.length === 0, "no handler threw", String(errors[0] ?? ""));
 
 await db.close?.();
