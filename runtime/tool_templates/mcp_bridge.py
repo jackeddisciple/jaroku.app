@@ -68,6 +68,7 @@ import re
 import sys
 import threading
 import time
+import urllib.parse
 import uuid
 from pathlib import Path
 from typing import Any
@@ -506,6 +507,28 @@ def check_arguments(schema: dict[str, Any], args: dict[str, Any]) -> None:
 # --- the call ---------------------------------------------------------------
 
 
+def _origin(url: str) -> tuple[str, str, int]:
+    parts = urllib.parse.urlsplit(url)
+    default = {"http": 80, "https": 443}.get(parts.scheme, 0)
+    return parts.scheme, (parts.hostname or "").lower(), parts.port or default
+
+
+def redirect_guard(endpoint: str) -> Any:
+    allowed = _origin(endpoint)
+
+    async def _check(response: Any) -> None:
+        location = response.headers.get("location")
+        if response.status_code in (301, 302, 303, 307, 308) and location:
+            target = urllib.parse.urljoin(str(response.request.url), location)
+            if _origin(target) != allowed:
+                raise RuntimeError(
+                    "this MCP server redirected to a different address, which Jaroku does not "
+                    "follow. Give its final URL."
+                )
+
+    return _check
+
+
 def _run_call(endpoint: str, token: str | None, tool: str, args: dict[str, Any]) -> Any:
     """Perform one MCP tool call, in a private event loop, and return the raw result.
 
@@ -522,6 +545,7 @@ def _run_call(endpoint: str, token: str | None, tool: str, args: dict[str, Any])
     async def _call() -> Any:
         headers = {"Authorization": f"Bearer {token}"} if token else None
         async with create_mcp_http_client(headers=headers) as http_client:
+            http_client.event_hooks["response"].append(redirect_guard(endpoint))
             async with streamable_http_client(endpoint, http_client=http_client) as streams:
                 read_stream, write_stream = streams[0], streams[1]
                 async with ClientSession(read_stream, write_stream) as session:

@@ -170,6 +170,47 @@ console.log("\na credential in a URL goes nowhere");
   await fixture.close();
 }
 
+console.log("\na redirect cannot reach anything the URL check would refuse");
+{
+  const A = await workspace("redirect");
+  const internal = await startScriptedServer({
+    hook: ({ res }) => {
+      res.writeHead(403, { "content-type": "text/plain" }).end("INTERNAL-METADATA aws_secret_access_key=AKIA-LEAKED");
+      return true;
+    },
+  });
+  for (const status of [301, 302, 303, 307, 308]) {
+    const relay = await startScriptedServer({
+      hook: ({ res }) => {
+        res.writeHead(status, { location: `${internal.origin}/secret` }).end("redirect-body");
+        return true;
+      },
+    });
+    const added = await connect(A, { endpoint: relay.url, label: `relay${status}`, token: "relay-token" });
+    const row = await registry.get(A, "id" in added ? added.id : "");
+    check(internal.seen.length === 0, `${status}: the target receives no request`, String(internal.seen.length));
+    check(row?.status === "error", `${status}: the row says error`, String(row?.status));
+    check(!/INTERNAL|AKIA/.test(row?.last_error ?? ""), `${status}: no response body reaches the row`, row?.last_error ?? "");
+    check(/redirected/.test(row?.last_error ?? ""), `${status}: and it says why`, row?.last_error ?? "");
+    await relay.close();
+  }
+
+  const slash = await startScriptedServer({
+    hook: ({ path, res }) => {
+      if (path !== "/mcp") return false;
+      res.writeHead(307, { location: "/mcp/" }).end();
+      return true;
+    },
+  });
+  await connect(A, { endpoint: slash.url, label: "Slash" });
+  const row = await registry.get(A, "slash");
+  check(row?.status === "connected", "a redirect on the same origin still works", `${row?.status} ${row?.last_error}`);
+  check((row?.tools.length ?? 0) > 0, "...and lists its tools");
+
+  await slash.close();
+  await internal.close();
+}
+
 check(errors.length === 0, "no handler threw", String(errors[0] ?? ""));
 
 await db.close?.();

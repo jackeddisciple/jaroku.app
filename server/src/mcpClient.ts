@@ -29,6 +29,7 @@
 
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import { guardedFetch } from "./mcpFetch.ts";
 import { endpointCarriesCredential } from "./mcpUrl.ts";
 import type { McpServerStatus } from "./mcpStore.ts";
 
@@ -309,6 +310,7 @@ export async function discover(opts: DiscoverOptions): Promise<DiscoveryResult> 
 
   const transport = new StreamableHTTPClientTransport(url, {
     requestInit: { headers },
+    fetch: guardedFetch,
   });
   const client = new Client(
     { name: "jaroku", version: "1.0.0" },
