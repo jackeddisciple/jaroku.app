@@ -6113,6 +6113,7 @@ async function handleMcpCommand(ctx: TenantContext, cmd: McpCommand): Promise<vo
       case "removeMcpServer": {
         if (typeof cmd.serverId !== "string") return;
         const removed = await mcpRegistry.removeServer(ctx, cmd.serverId);
+        await mcpDiscovery.forget(ctx, cmd.serverId);
         if (removed) console.log(`[mcp] removed ${cmd.serverId}`);
         broadcastMcpServers();
         if (!removed) {

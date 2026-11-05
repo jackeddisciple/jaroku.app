@@ -491,6 +491,8 @@ export class McpRegistry {
 
     const result = await discover({ endpoint: server.endpoint, token: await this.token(ctx, server), ...(pin ? { pin } : {}) });
 
+    if (!(await this.store.getServer(ctx, id))) return { ok: false, server: null, message: null };
+
     if (!result.ok) {
       await this.store.setServerStatus(ctx, id, result.status, result.error);
       return { ok: false, server: await this.get(ctx, id), message: result.error };

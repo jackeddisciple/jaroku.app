@@ -487,12 +487,13 @@ export class McpStore {
           ],
         );
       }
-      await tx.run(`UPDATE mcp_servers SET discovered_at = ?, retired_overrides = ? WHERE id = ? AND workspace_id = ?`, [
+      const stamped = await tx.run(`UPDATE mcp_servers SET discovered_at = ?, retired_overrides = ? WHERE id = ? AND workspace_id = ?`, [
         at,
         JSON.stringify(nextRetired),
         serverId,
         ctx.workspaceId,
       ]);
+      if (stamped.changes === 0) throw new Error("that server was disconnected while its tools were being stored");
     });
     return rows;
   }

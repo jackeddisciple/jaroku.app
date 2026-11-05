@@ -111,6 +111,11 @@ export class McpDiscoveryQueue {
     return this.opts.dispatcher.enqueue(MCP_DISCOVER_CLASS, ctx.workspaceId, full, { idempotencyKey });
   }
 
+  async forget(ctx: TenantContext, serverId: string): Promise<void> {
+    const key = buildIdempotencyKey(MCP_DISCOVER_CLASS, ctx.workspaceId, serverId);
+    await this.opts.dispatcher.backend.purgePending(MCP_DISCOVER_CLASS, ctx.workspaceId, new Set([key])).catch(() => 0);
+  }
+
   /**
    * The handler a worker loop registers for this class.
    *

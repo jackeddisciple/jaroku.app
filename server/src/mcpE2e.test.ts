@@ -740,6 +740,33 @@ console.log("\nadds that derive one id each keep their own row");
   await fixture.close();
 }
 
+console.log("\ndisconnecting during a re-check stays disconnected");
+{
+  const A = await workspace("zombie");
+  const fixture = await startScriptedServer();
+  await connect(A, { endpoint: fixture.url, label: "Zombie" });
+  fixture.set({
+    hook: async ({ rpc }) => {
+      if (rpc === "tools/list") await new Promise((done) => setTimeout(done, 700));
+      return false;
+    },
+  });
+  await queue.enqueue(A, { kind: "rediscover", serverId: "zombie" });
+  const running = drain();
+  await new Promise((done) => setTimeout(done, 250));
+  await registry.removeServer(A, "zombie");
+  await running;
+  check((await registry.get(A, "zombie")) === null, "the row stays gone once the slow handshake ends");
+  check((await store.listTools(A, "zombie")).length === 0, "and no tools come back with it");
+
+  await connect(A, { endpoint: fixture.url, label: "Queued" });
+  await queue.enqueue(A, { kind: "rediscover", serverId: "queued" });
+  await registry.removeServer(A, "queued");
+  await queue.forget(A, "queued");
+  check((await dispatcher.pendingCount(MCP_DISCOVER_CLASS, A.workspaceId)) === 0, "a re-check still waiting in the queue is dropped with it");
+  await fixture.close();
+}
+
 check(errors.length === 0, "no handler threw", String(errors[0] ?? ""));
 
 await db.close?.();
