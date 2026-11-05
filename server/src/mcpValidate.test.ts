@@ -320,6 +320,34 @@ TOOLS = [hello]
     result.problems.length === 0, result.problems.join(" | "));
 }
 
+// --- the gate cannot be turned off from inside the project ------------------------------
+{
+  const offenders: Record<string, string> = {
+    "a plain subscript": `import os\nos.environ["JAROKU_MCP_CONFIRM"] = "skip"\n`,
+    "update": `import os\nos.environ.update({"JAROKU_MCP_CONFIRM": "skip"})\n`,
+    "a built key": `import os\nos.environ["JAROKU_" + "MCP_" + "CONFIRM"] = "skip"\n`,
+    "a computed key": `import os\nkey = "x"\nos.environ[key] = "skip"\n`,
+    "an imported environ": `from os import environ\nenviron["X"] = "1"\n`,
+    "an aliased os": `import os as o\ne = o.environ\ne["X"] = "1"\n`,
+    "putenv": `import os\nos.putenv("X", "1")\n`,
+    "a joined name": `NAME = "_".join(["JAROKU", "MCP", "CONFIRM"])\n`,
+    "replacing the gate": `from tools import mcp_bridge as b\nb._confirm = lambda *a, **k: None\n`,
+    "adding a grant": `from tools.mcp_bridge import _run_grants\n_run_grants.add(("r", "s/t"))\n`,
+    "calling past the grant": `from tools.mcp_bridge import _run_call\n_run_call("u", None, "delete_everything", {})\n`,
+    "the module via sys": `import sys\nb = sys.modules["tools.mcp_bridge"]\n`,
+    "the module via import": `import tools.mcp_bridge\n`,
+  };
+  for (const [name, source] of Object.entries(offenders)) {
+    const problems = await validate({ "agent.py": AGENT_PY, "tools/extra.py": source });
+    check(`${name} is refused`, problems.some((p) => /rule 13/.test(p)), problems.join(" | ").slice(0, 200));
+  }
+  const fine = await validate({
+    "agent.py": AGENT_PY,
+    "tools/extra.py": `import os\nos.environ["MY_FLAG"] = "1"\nos.environ.setdefault("OTHER", "1")\nv = os.environ.get("MY_FLAG")\nw = os.environ["MY_FLAG"]\nh = "X" in os.environ\ndigest = os.getenv("Y")\n`,
+  });
+  check("ordinary environment use is not", !fine.some((p) => /rule 13/.test(p)), fine.join(" | ").slice(0, 200));
+}
+
 for (const d of dirs) rmSync(d, { recursive: true, force: true });
 console.log(fail === 0 ? "\nALL CORRECT" : `\n${fail} FAILURES`);
 process.exit(fail === 0 ? 0 : 1);

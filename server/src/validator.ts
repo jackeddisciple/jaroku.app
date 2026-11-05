@@ -151,6 +151,93 @@ for dirpath, dirnames, filenames in os.walk(root):
         if rel not in reviewed:
             generated[rel] = tree
 
+BRIDGE_PRIVATE = {
+    "_confirm", "_run_grants", "_run_call", "_grant_key", "_http_confirm", "_host_control_dir",
+    "_http_control_plane", "_emit_ctrl", "_make_tool", "_run_scope", "_allowed_servers",
+    "build_tools", "load_manifest", "CONFIRM_TIMEOUT_S",
+}
+
+
+def folded_string(node):
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return node.value
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
+        left, right = folded_string(node.left), folded_string(node.right)
+        return None if left is None or right is None else left + right
+    if isinstance(node, ast.JoinedStr):
+        parts = [folded_string(v) for v in node.values]
+        return None if any(p is None for p in parts) else "".join(parts)
+    return None
+
+
+def env_write_key_is_literal(key):
+    text = folded_string(key)
+    return text is not None and not text.upper().startswith("JAROKU")
+
+
+def check_gate_integrity(rel, tree):
+    gate = "it could turn off the confirmation gate or reach past the grant (rule 13)"
+    os_names = {"os"}
+    parents = {}
+    for parent in ast.walk(tree):
+        for child in ast.iter_child_nodes(parent):
+            parents[child] = parent
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name == "os" and alias.asname:
+                    os_names.add(alias.asname)
+                if alias.name.split(".")[-1] == "mcp_bridge":
+                    problems.append(f"{rel}:{node.lineno} imports the MCP bridge module itself; only MCP_TOOLS may be imported from it, because {gate}")
+        elif isinstance(node, ast.ImportFrom):
+            module = node.module or ""
+            if module.split(".")[-1] == "mcp_bridge":
+                for alias in node.names:
+                    if alias.name != "MCP_TOOLS":
+                        problems.append(f"{rel}:{node.lineno} imports {alias.name} from the MCP bridge; only MCP_TOOLS may be imported from it, because {gate}")
+            else:
+                for alias in node.names:
+                    if alias.name == "mcp_bridge":
+                        problems.append(f"{rel}:{node.lineno} imports the MCP bridge module itself; only MCP_TOOLS may be imported from it, because {gate}")
+            if module == "os":
+                for alias in node.names:
+                    if alias.name in ("environ", "putenv", "unsetenv", "environb"):
+                        problems.append(f"{rel}:{node.lineno} imports os.{alias.name}; read the environment with os.getenv, because {gate}")
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Attribute):
+            if node.attr in BRIDGE_PRIVATE:
+                problems.append(f"{rel}:{node.lineno} touches {node.attr}, a private part of the MCP bridge, and {gate}")
+            if node.attr == "modules" and isinstance(node.value, ast.Name) and node.value.id == "sys":
+                problems.append(f"{rel}:{node.lineno} uses sys.modules, and {gate}")
+            if isinstance(node.value, ast.Name) and node.value.id in os_names:
+                if node.attr in ("putenv", "unsetenv", "environb"):
+                    problems.append(f"{rel}:{node.lineno} changes the process environment with os.{node.attr}, and {gate}")
+                if node.attr == "environ":
+                    parent = parents.get(node)
+                    allowed = False
+                    if isinstance(parent, ast.Attribute) and parent.attr in ("get", "items", "keys", "values"):
+                        allowed = isinstance(parents.get(parent), ast.Call)
+                    elif isinstance(parent, ast.Attribute) and parent.attr == "setdefault":
+                        call = parents.get(parent)
+                        allowed = isinstance(call, ast.Call) and bool(call.args) and env_write_key_is_literal(call.args[0])
+                    elif isinstance(parent, ast.Subscript) and parent.value is node:
+                        allowed = isinstance(parent.ctx, ast.Load) or (isinstance(parent.ctx, ast.Store) and env_write_key_is_literal(parent.slice))
+                    elif isinstance(parent, ast.Compare):
+                        allowed = True
+                    if not allowed:
+                        problems.append(f"{rel}:{node.lineno} changes or hands out os.environ, and {gate}")
+        elif isinstance(node, (ast.BinOp, ast.JoinedStr, ast.Constant)):
+            text = folded_string(node)
+            if text is not None and text.upper().startswith("JAROKU") and not isinstance(parents.get(node), (ast.BinOp, ast.JoinedStr)):
+                problems.append(f"{rel}:{node.lineno} names a Jaroku setting, and {gate}")
+
+
+for rel, tree in generated.items():
+    check_gate_integrity(rel, tree)
+
+
 def is_tool_decorated(node):
     for d in node.decorator_list:
         target = d.func if isinstance(d, ast.Call) else d

@@ -2900,7 +2900,7 @@ should not disagree about who is doing the thinking.
 | `JAROKU_CONTROL_DIR` | Where the MCP bridge exchanges confirmation approvals locally. Its **absence** is how a copied-out project knows nobody is watching |
 | `JAROKU_CONTROL_PLANE_URL` / `JAROKU_RUN_TOKEN` | Set on a HOSTED run only. The HTTP control plane a sandboxed run pushes trace/control to and polls pause/resume from — see [Sandboxed execution](#sandboxed-execution-and-the-distributed-control-plane). Absent locally, which is how the runner knows to use the file/pipe path instead |
 | `JAROKU_PROJECT_TAR_URL` | Set on a HOSTED run only. Where `sandbox/boot.py` fetches the run's project archive from before extracting it and executing the real command |
-| `JAROKU_MCP_CONFIRM` | `require` \| `skip`. Defaults to require under a host, skip standalone |
+| `JAROKU_MCP_CONFIRM` | `require` \| `skip`. `skip` only applies to a copied out project with no host; under a host every high impact call asks |
 | `JAROKU_MCP_CONFIRM_TIMEOUT_S` | `120` — how long the gate waits before **denying** |
 | `JAROKU_MCP_CALL_TIMEOUT_S` | `60` — wall-clock ceiling on one MCP tool call |
 | `JAROKU_MCP_MAX_RESULT_CHARS` | `20000` — cap on what one MCP result may hand back |

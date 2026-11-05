@@ -149,6 +149,38 @@ except B.ToolNotApproved:
   check(/JAROKU_RESUME_RUN_ID: runId,\s+JAROKU_RUN_ID: runId,\s+JAROKU_CONTROL_DIR: CHECKPOINT_DIR/.test(index), "and a resumed run keeps that route too");
 }
 
+console.log("\nunder a host the environment cannot turn the gate off");
+{
+  const skipped = await python(`
+import os
+os.environ["JAROKU_RUN_ID"] = "hosted-run"
+os.environ["JAROKU_MCP_CONFIRM"] = "skip"
+os.environ.pop("JAROKU_CONTROL_DIR", None)
+called = []
+B._run_call = lambda endpoint, token, tool, args: called.append(tool)
+B._result_text = lambda server, name, result: "ok"
+tool = {t.name: t for t in B.build_tools(json.loads(${JSON.stringify(MANIFEST)}))}["send_message"]
+try:
+    tool.invoke({})
+    print(json.dumps({"called": called, "refused": False}))
+except B.ToolNotApproved:
+    print(json.dumps({"called": called, "refused": True}))
+`);
+  check(skipped["refused"] === true, "skip is ignored while a host owns the run", JSON.stringify(skipped));
+  const standalone = await python(`
+import os
+os.environ.pop("JAROKU_RUN_ID", None)
+os.environ["JAROKU_MCP_CONFIRM"] = "skip"
+called = []
+B._run_call = lambda endpoint, token, tool, args: called.append(tool)
+B._result_text = lambda server, name, result: "ok"
+tool = {t.name: t for t in B.build_tools(json.loads(${JSON.stringify(MANIFEST)}))}["send_message"]
+tool.invoke({})
+print(json.dumps({"called": called}))
+`);
+  check(JSON.stringify(standalone["called"]) === JSON.stringify(["send_message"]), "a copied out project run by its owner still honours it", JSON.stringify(standalone));
+}
+
 console.log("\nthe runner's .env loader will not read a gate setting");
 {
   const envFile = join(dir, "reserved.env").replace(/\\/g, "/");

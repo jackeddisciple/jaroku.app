@@ -50,7 +50,7 @@ Environment:
                                    Written by the host into runtime/.env; never logged.
     JAROKU_RUN_ID                  set by the host; its absence means nobody is watching.
     JAROKU_CONTROL_DIR             where approval files are exchanged with the host.
-    JAROKU_MCP_CONFIRM             "require" | "skip". Defaults to require under a host.
+    JAROKU_MCP_CONFIRM             "require" | "skip". Under a host it always requires.
     JAROKU_MCP_CONFIRM_TIMEOUT_S   how long to wait before denying (default 120).
 
 A tool that could not do its job raises. It does not return the reason as if it were an
@@ -355,7 +355,7 @@ def _confirm(
         return
 
     mode = os.environ.get("JAROKU_MCP_CONFIRM", "").strip().lower()
-    if mode == "skip":
+    if mode == "skip" and not os.environ.get("JAROKU_RUN_ID"):
         return
 
     control_plane = _http_control_plane()
@@ -379,10 +379,10 @@ def _confirm(
 
     control_dir = _host_control_dir()
     if control_dir is None:
-        if mode == "require":
+        if mode == "require" or os.environ.get("JAROKU_RUN_ID"):
             raise ToolNotApproved(
-                f"{key} is a high-impact MCP tool and JAROKU_MCP_CONFIRM=require, but there "
-                f"is no Jaroku session to ask. Run it from Jaroku, or unset the variable."
+                f"{key} is a high-impact MCP tool, but there is no Jaroku session to ask. "
+                f"Run it from Jaroku, or unset JAROKU_MCP_CONFIRM and JAROKU_RUN_ID."
             )
         print(
             f"[jaroku] WARNING: calling high-impact MCP tool {key} without confirmation "

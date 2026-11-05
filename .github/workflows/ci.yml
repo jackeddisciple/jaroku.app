@@ -2126,6 +2126,7 @@ jobs:
       - name: what a generated agent can reach
         run: |
           (cd ../runtime && uv sync --frozen --no-dev --extra connectors)
+          npm run test:mcp-validate
           npm run test:mcp-reach
 
       - name: a deployed agent, driven for real

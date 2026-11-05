@@ -135,7 +135,7 @@ except B.ToolNotApproved as e:
 }
 {
   const r = await confirmWith("skip", 20, "timeout");
-  check("JAROKU_MCP_CONFIRM=skip bypasses the HTTP gate entirely", r.stdout.includes("PROCEEDED"), r.stderr.slice(0, 300));
+  check("JAROKU_MCP_CONFIRM=skip does nothing while a host owns the run", r.stdout.startsWith("DENIED:"), r.stderr.slice(0, 300));
 }
 
 http.close();
