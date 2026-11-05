@@ -1,5 +1,6 @@
 import { request as httpRequest, type IncomingMessage } from "node:http";
 import { request as httpsRequest } from "node:https";
+import { isIP, type LookupFunction } from "node:net";
 import { Readable, Transform } from "node:stream";
 
 export type McpFetch = (input: string | URL, init?: RequestInit) => Promise<Response>;
@@ -26,7 +27,24 @@ function byteLimited(res: IncomingMessage): Readable {
   return res.pipe(limit);
 }
 
-function exchange(url: URL, init: RequestInit): Promise<IncomingMessage> {
+export interface AddressPin {
+  host: string;
+  ips: string[];
+}
+
+function pinnedLookup(pin: AddressPin): LookupFunction {
+  return (hostname, options, callback) => {
+    if (hostname !== pin.host) {
+      callback(new Error("that name was not the one checked"), "", 4);
+      return;
+    }
+    const addresses = pin.ips.map((address) => ({ address, family: isIP(address) === 6 ? 6 : 4 }));
+    if (options.all) (callback as unknown as (err: null, list: typeof addresses) => void)(null, addresses);
+    else callback(null, addresses[0]?.address ?? "", addresses[0]?.family ?? 4);
+  };
+}
+
+function exchange(url: URL, init: RequestInit, pin?: AddressPin): Promise<IncomingMessage> {
   return new Promise((resolve, reject) => {
     const send = url.protocol === "https:" ? httpsRequest : httpRequest;
     const req = send(
@@ -36,6 +54,7 @@ function exchange(url: URL, init: RequestInit): Promise<IncomingMessage> {
         headers: Object.fromEntries(new Headers(init.headers).entries()),
         agent: false,
         signal: init.signal ?? undefined,
+        ...(pin ? { lookup: pinnedLookup(pin) } : {}),
       },
       resolve,
     );
@@ -60,6 +79,7 @@ function toResponse(res: IncomingMessage): Response {
 
 export interface GuardOptions {
   deadline?: AbortSignal;
+  pin?: AddressPin;
 }
 
 export const guardedFetchWith = (guard: GuardOptions = {}): McpFetch => async (input, init = {}) => {
@@ -68,7 +88,7 @@ export const guardedFetchWith = (guard: GuardOptions = {}): McpFetch => async (i
   const signals = [init.signal, guard.deadline].filter((s): s is AbortSignal => Boolean(s));
   const bounded: RequestInit = { ...init, signal: signals.length > 0 ? AbortSignal.any(signals) : undefined };
   for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
-    const res = await exchange(url, bounded);
+    const res = await exchange(url, bounded, guard.pin);
     const location = res.headers.location;
     if (!REDIRECT_STATUS.has(res.statusCode ?? 0) || !location) return toResponse(res);
     res.destroy();

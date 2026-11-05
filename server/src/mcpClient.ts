@@ -30,7 +30,7 @@
 import { UnauthorizedError } from "@modelcontextprotocol/sdk/client/auth.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import { guardedFetchWith } from "./mcpFetch.ts";
+import { guardedFetchWith, type AddressPin } from "./mcpFetch.ts";
 import { boundedError, cleanText } from "./mcpText.ts";
 import { endpointCarriesCredential } from "./mcpUrl.ts";
 import type { McpServerStatus } from "./mcpStore.ts";
@@ -178,6 +178,7 @@ export interface DiscoverOptions {
    * the value is used once, to build a header, and never formatted into any message.
    */
   token?: string | null;
+  pin?: AddressPin;
   /** Overrides for tests. */
   timeoutMs?: number;
   deadlineMs?: number;
@@ -336,7 +337,7 @@ export async function discover(opts: DiscoverOptions): Promise<DiscoveryResult> 
 
   const transport = new StreamableHTTPClientTransport(url, {
     requestInit: { headers },
-    fetch: guardedFetchWith({ deadline: expiry }),
+    fetch: guardedFetchWith({ deadline: expiry, ...(opts.pin ? { pin: opts.pin } : {}) }),
   });
   const client = new Client(
     { name: "jaroku", version: "1.0.0" },

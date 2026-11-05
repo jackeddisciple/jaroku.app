@@ -683,6 +683,33 @@ console.log("\na bad list does not wipe the tools or a person's decisions");
   await fresh.close();
 }
 
+console.log("\ndiscovery connects to the address that was checked, not to a fresh lookup");
+{
+  const fixture = await startScriptedServer();
+  const port = new URL(fixture.url).port;
+  const pinned = await discover({
+    endpoint: `http://mcp.pinned.invalid:${port}/mcp`,
+    pin: { host: "mcp.pinned.invalid", ips: ["127.0.0.1"] },
+    timeoutMs: 3000,
+    deadlineMs: 4000,
+  });
+  check(pinned.ok, "a name no resolver knows connects through its pinned address", JSON.stringify(pinned).slice(0, 180));
+  const unpinned = await discover({ endpoint: `http://mcp.pinned.invalid:${port}/mcp`, timeoutMs: 3000, deadlineMs: 4000 });
+  check(!unpinned.ok, "and without the pin it does not, so the pin is what connected it");
+
+  const seen: string[] = [];
+  const pinning = new McpRegistry(store, secrets, async (host) => {
+    seen.push(host);
+    return { v4: ["93.184.216.34"], v6: [] };
+  });
+  const A = await workspace("pin");
+  const refused = await pinning.addServer(A, { endpoint: "http://mcp.pinned.invalid:9/mcp", label: "Pinned" });
+  check(seen.length === 1, "the registry resolves once, for the check", String(seen.length));
+  check(!refused.ok, "and the handshake goes to the checked address rather than asking DNS again");
+  check(!/ENOTFOUND|EAI_AGAIN|getaddrinfo/.test(refused.message ?? ""), "so the failure is the connection's, never a second lookup's", refused.message ?? "");
+  await fixture.close();
+}
+
 check(errors.length === 0, "no handler threw", String(errors[0] ?? ""));
 
 await db.close?.();

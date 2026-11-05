@@ -21,6 +21,7 @@
 //     still stops for a confirmation.
 
 import { discover, type DiscoveryResult } from "./mcpClient.ts";
+import type { AddressPin } from "./mcpFetch.ts";
 import { authEnvKeyFor } from "./envWriter.ts";
 import type { SecretStore } from "./secrets/secretStore.ts";
 import { ENDPOINT_CREDENTIAL_REFUSAL, McpUrlError, endpointCarriesCredential, validateMcpUrl } from "./mcpUrl.ts";
@@ -170,17 +171,17 @@ export class McpRegistry {
    * the point of entry, which is the same reason `connectorSecrets` re-resolves a DATABASE_URL
    * per run instead of trusting what was saved.
    */
-  private async refuseEndpoint(endpoint: string): Promise<string | null> {
+  private async checkEndpoint(endpoint: string): Promise<{ refusal: string | null; pin?: AddressPin }> {
     try {
-      await validateMcpUrl(endpoint, this.resolver);
-      return null;
+      const { host, ips } = await validateMcpUrl(endpoint, this.resolver);
+      return { refusal: null, pin: { host, ips } };
     } catch (err) {
       // Both carry a message written in this codebase. `validateMcpUrl` deliberately does not
       // quote a credentialed URL back, and neither does the shared egress refusal — which
       // matters because this text lands in `mcp_servers.last_error`, on every client's registry
       // snapshot, and in the log.
-      if (err instanceof McpUrlError || err instanceof EgressPolicyError) return err.message;
-      return "that endpoint could not be checked";
+      if (err instanceof McpUrlError || err instanceof EgressPolicyError) return { refusal: err.message };
+      return { refusal: "that endpoint could not be checked" };
     }
   }
 
@@ -379,7 +380,7 @@ export class McpRegistry {
     // BEFORE ANYTHING CONNECTS. A user-supplied URL fetched by the CONTROL PLANE is the SSRF
     // vector the migration spec names, and unlike a sandbox's egress there is no second wall
     // here — this check is the wall. See mcpUrl.ts.
-    const refusal = await this.refuseEndpoint(endpoint);
+    const { refusal, pin } = await this.checkEndpoint(endpoint);
     if (refusal) {
       await this.store.upsertServer(ctx, {
         id, label, endpoint, transport: "http", auth_env_key: authEnvKey,
@@ -399,6 +400,7 @@ export class McpRegistry {
       // the WORKSPACE's store, which is what makes two workspaces on one endpoint present two
       // different tokens.
       token: authEnvKey ? await this.credentialFor(ctx, authEnvKey) : null,
+      ...(pin ? { pin } : {}),
     });
 
     const base = {
@@ -455,7 +457,7 @@ export class McpRegistry {
     // RE-CHECKED, not trusted from registration. A hostname is not a promise: the owner of
     // `mcp.example.com` can repoint it at `169.254.169.254` the day after it was added, and a
     // re-discovery is exactly when that would be used.
-    const refusal = await this.refuseEndpoint(server.endpoint);
+    const { refusal, pin } = await this.checkEndpoint(server.endpoint);
     if (refusal) {
       // The tool list is LEFT ALONE, like every other rediscover failure — see this method's
       // own note. A repointed server must not silently strip every agent scoped to it; it must
@@ -464,7 +466,7 @@ export class McpRegistry {
       return { ok: false, server: await this.get(ctx, id), message: refusal };
     }
 
-    const result = await discover({ endpoint: server.endpoint, token: await this.token(ctx, server) });
+    const result = await discover({ endpoint: server.endpoint, token: await this.token(ctx, server), ...(pin ? { pin } : {}) });
 
     if (!result.ok) {
       await this.store.setServerStatus(ctx, id, result.status, result.error);
