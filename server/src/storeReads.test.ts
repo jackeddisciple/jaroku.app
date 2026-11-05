@@ -131,7 +131,7 @@ if (generated !== null) {
   console.log("\nvalidating a project that only exists as objects");
   const result = await validateProject(materialised, {
     runtimeDir,
-    connectorFiles: ["tools/postgres.py"],
+    connectorFiles: ["tools/postgres.py", "tools/_connector_guard.py"],
     connectorToolNames: ["pg_query"],
     requireToolErrorHandling: true,
   });
@@ -145,7 +145,7 @@ if (generated !== null) {
   fs.writeFileSync(join(broken, "agent.py"), "def build_graph(llm):\n    import nonexistent_module_xyz\n");
   const brokenResult = await validateProject(broken, {
     runtimeDir,
-    connectorFiles: ["tools/postgres.py"],
+    connectorFiles: ["tools/postgres.py", "tools/_connector_guard.py"],
     connectorToolNames: ["pg_query"],
   });
   check(!brokenResult.ok, "...and a broken one is rejected, so the check is reading these bytes");
