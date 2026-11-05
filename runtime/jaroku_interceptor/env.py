@@ -72,6 +72,8 @@ def load_env(path: Path | None = None, *, verbose: bool = True) -> list[str]:
         key, value = parsed
         if key in os.environ or PLATFORM_ONLY.match(key):
             continue
+        if os.environ.get("JAROKU_RUN_ID") and re.match(r"^JAROKU_MCP_[A-Z0-9_]+_TOKEN$", key):
+            continue
         os.environ[key] = value
         loaded.append(key)
 

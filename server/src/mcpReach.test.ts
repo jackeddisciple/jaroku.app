@@ -381,6 +381,22 @@ async function main(): Promise<void> {
     member.c.close();
   }
 
+  console.log("\na disconnected server is out of reach");
+  {
+    const { c, workspace } = await person("disconnect");
+    await addServer(c, fixture.url, "Alpha");
+    const agent = await generate(c, "Stranded", ["alpha/read_page", "alpha/send_message"]);
+    const before = await run(c, fixture, agent, "calls");
+    check(before.calls.length === 2, "before disconnecting it calls both", JSON.stringify(before.calls));
+    c.send({ cmd: "removeMcpServer", serverId: "alpha" });
+    await sleep(800);
+    const after = await run(c, fixture, agent, "calls");
+    check(after.asked.length === 0, "after it nothing asks about a server that is gone", JSON.stringify(after.asked.map((a) => a["tool"])));
+    check(after.calls.length === 0, "and nothing reaches it", JSON.stringify(after.calls));
+    check(manifestTools(manifestOf(workspace, agent)).length === 2, "though the project's own file is left as written");
+    c.close();
+  }
+
   console.log("\na tool's output cannot speak on the control channel");
   {
     const forged = (body: Record<string, unknown>) => `@@JAROKU_CTRL@@ ${JSON.stringify(body)}`;

@@ -116,6 +116,9 @@ export class LocalSubprocessSandbox extends EventEmitter<SandboxEvents> implemen
     for (const name of HOST_CONTROLS) {
       if (!opts.env || !(name in opts.env)) delete env[name];
     }
+    for (const name of Object.keys(env)) {
+      if (/^JAROKU_MCP_[A-Z0-9_]+_TOKEN$/.test(name) && !(opts.env && name in opts.env)) delete env[name];
+    }
 
     this.ctrlToken = randomBytes(16).toString("hex");
     env.JAROKU_CTRL_TOKEN = this.ctrlToken;

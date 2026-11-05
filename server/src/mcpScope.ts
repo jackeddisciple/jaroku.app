@@ -33,12 +33,24 @@ function scopedTool(frozen: { impact: "high" | "low" }, live: McpToolView | unde
   return { impact: frozen.impact };
 }
 
+export function mcpRunCredentials(
+  required: readonly string[],
+  granted: readonly string[],
+  servers: readonly { id: string; auth_env_key: string | null }[],
+): string[] {
+  const grantedServers = new Set(granted.map((ref) => ref.slice(0, ref.indexOf("/"))));
+  const live = servers.filter((server) => grantedServers.has(server.id) && server.auth_env_key).map((server) => server.auth_env_key as string);
+  return [...new Set([...required.filter((name) => !name.startsWith("JAROKU_MCP_")), ...live])];
+}
+
 export function runScope(manifest: Manifest, granted: readonly string[], servers: readonly McpServerView[]): RunScope {
   const grant = new Set(granted);
   const live = new Map(servers.map((server) => [server.id, server]));
   const scope: RunScope = { servers: {} };
   for (const entry of manifest.servers) {
-    const tools = new Map((live.get(entry.id)?.tools ?? []).map((tool) => [tool.name, tool]));
+    const server = live.get(entry.id);
+    if (!server) continue;
+    const tools = new Map(server.tools.map((tool) => [tool.name, tool]));
     const scoped: Record<string, ScopedTool> = {};
     for (const tool of entry.tools) {
       if (grant.has(`${entry.id}/${tool.name}`)) scoped[tool.name] = scopedTool(tool, tools.get(tool.name));

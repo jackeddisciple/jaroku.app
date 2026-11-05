@@ -159,7 +159,7 @@ import { PrCommentsRepository } from "./db/repositories/prComments.ts";
 import { diffShapes, readShape } from "./semanticDiff.ts";
 import { inSubdirectory, repoPrefix } from "./githubPush.ts";
 import { MANIFEST_FILE, buildManifest, grantWithout, manifestRefs, withGrantOnly, withoutMcpCredentials, withoutMcpGrant, type Manifest } from "./mcpManifest.ts";
-import { SCOPE_ENV, isConfirmNonce, runScope, type RunScope } from "./mcpScope.ts";
+import { SCOPE_ENV, isConfirmNonce, mcpRunCredentials, runScope, type RunScope } from "./mcpScope.ts";
 import type { McpImpact } from "./mcpStore.ts";
 import { fetchGoogleAvatar, putAvatar } from "./storage/avatars.ts";
 import { agentPrefix } from "./storage/keys.ts";
@@ -13318,7 +13318,7 @@ async function runAgent(
     // of a connector below reads THIS rather than `agent.connectors`, which is what turns the
     // deck's toggle from a dimmed logo into a capability. See `conversationConnectorIds`.
     const activeConnectors = conversationConnectorIds ?? agent?.connectors ?? [];
-    const names = (agent?.required_env ?? []).filter(isSecretName);
+    const names = mcpRunCredentials(agent?.required_env ?? [], agent?.mcp_tools ?? [], await mcpStore.listServers(ctx)).filter(isSecretName);
     if (names.length) Object.assign(env, await secrets.getForRun(runId, names));
 
     // AND THE OPTIONAL NAMES ITS CONNECTORS READ, which `required_env` deliberately does not carry.
@@ -13648,7 +13648,7 @@ async function continuationCredentials(
   try {
     const agent = agentId ? await agentRepo.bySlug(ctx, agentId).catch(() => undefined) : undefined;
     const declared = agent?.connectors ?? [];
-    const names = (agent?.required_env ?? []).filter(isSecretName);
+    const names = mcpRunCredentials(agent?.required_env ?? [], agent?.mcp_tools ?? [], await mcpStore.listServers(ctx)).filter(isSecretName);
     if (names.length) Object.assign(env, await secrets.getForRun(runId, names));
     const optional = optionalEnv(resolveSelected(loadConnectors(RUNTIME_DIR), declared))
       .filter(isSecretName)

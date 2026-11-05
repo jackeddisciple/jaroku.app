@@ -17,7 +17,7 @@ import { McpStore } from "./mcpStore.ts";
 import { McpRegistry, type RegistrationResult } from "./mcpRegistry.ts";
 import { MCP_DISCOVER_CLASS, McpDiscoveryQueue, type McpDiscoveryPayload } from "./mcpDiscovery.ts";
 import { authEnvKeyFor } from "./envWriter.ts";
-import { isConfirmNonce, runScope } from "./mcpScope.ts";
+import { isConfirmNonce, mcpRunCredentials, runScope } from "./mcpScope.ts";
 import { parseControlLine } from "./processManager.ts";
 import { isSecretName, secretNameRefusal } from "./secrets/secretStore.ts";
 import { buildManifest, grantWithout, withGrantOnly, withoutMcpGrant } from "./mcpManifest.ts";
@@ -264,6 +264,24 @@ console.log("\na secret cannot be named after a setting that controls the gate")
   check(!stored, "the store itself refuses one");
   const manager = readFileSync(join(fileURLToPath(new URL(".", import.meta.url)), "processManager.ts"), "utf8");
   check(/"JAROKU_MCP_CONFIRM",/.test(manager) && /delete env\[name\]/.test(manager), "and a run does not inherit one from the server's own environment");
+}
+
+console.log("\na run receives credentials only for servers it can still reach");
+{
+  const servers = [
+    { id: "alpha", auth_env_key: "JAROKU_MCP_ALPHA_TOKEN" },
+    { id: "beta", auth_env_key: null },
+    { id: "ungranted", auth_env_key: "JAROKU_MCP_UNGRANTED_TOKEN" },
+  ];
+  const names = mcpRunCredentials(
+    ["GMAIL_ACCESS_TOKEN", "JAROKU_MCP_ALPHA_TOKEN", "JAROKU_MCP_GONE_TOKEN"],
+    ["alpha/send", "beta/read", "gone/send"],
+    servers,
+  );
+  check(names.includes("GMAIL_ACCESS_TOKEN"), "a connector's credential is untouched");
+  check(names.includes("JAROKU_MCP_ALPHA_TOKEN"), "a granted, connected server's credential is included");
+  check(!names.includes("JAROKU_MCP_GONE_TOKEN"), "a disconnected server's is not, whatever the agent recorded");
+  check(!names.includes("JAROKU_MCP_UNGRANTED_TOKEN"), "nor is one for a server it was never granted");
 }
 
 console.log("\nrevoking takes the named refs out of the grant and nothing else");
