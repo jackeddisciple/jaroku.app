@@ -13,6 +13,14 @@ const check = (name: string, ok: boolean, detail = ""): void => {
 
 const HERE = fileURLToPath(new URL(".", import.meta.url));
 const TRAY = readFileSync(`${HERE}McpConfirmModal.tsx`, "utf8");
+const APP = readFileSync(`${HERE}../App.tsx`, "utf8");
+
+console.log("\nthe tray exists wherever a run can be waiting");
+{
+  const onboarding = /if \(onboardingNeeded\) return \([\s\S]*?\);/.exec(APP)?.[0] ?? "";
+  check("the onboarding screen renders", /<AccountOnboarding \/>/.test(onboarding));
+  check("...with the tray mounted beside it", /\{confirmTray\}/.test(onboarding));
+}
 
 console.log("\nan ask is not armed the moment it moves under the cursor");
 {

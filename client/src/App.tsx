@@ -464,7 +464,13 @@ export function App() {
   // AND IT IS THE LAST GATE. Everything above it — first-run, sign-in, the name screen — is about
   // getting to a session; this is the only one that runs WITH one, which is why it is the only one
   // that can greet somebody by name.
-  if (onboardingNeeded) return <AccountOnboarding />;
+  const confirmTray = <McpConfirmModal />;
+  if (onboardingNeeded) return (
+    <>
+      <AccountOnboarding />
+      {confirmTray}
+    </>
+  );
 
   return (
     // THE APP IS THE SURFACE NOW, not a panel resting on one. It was inset eight pixels inside a
@@ -717,7 +723,7 @@ export function App() {
       {/* Mounted last so it sits above everything. A run is halted mid-graph waiting for
           this answer, on a timer, and nothing else on screen can be more important — including
           during onboarding, where a generated agent can reach an MCP tool on its first run. */}
-      <McpConfirmModal />
+      {confirmTray}
     </div>
   );
 }
