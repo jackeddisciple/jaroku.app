@@ -30,6 +30,7 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { guardedFetch } from "./mcpFetch.ts";
+import { boundedError, cleanText } from "./mcpText.ts";
 import { endpointCarriesCredential } from "./mcpUrl.ts";
 import type { McpServerStatus } from "./mcpStore.ts";
 
@@ -91,15 +92,7 @@ const MAX_SERVER_FIELD_CHARS = 200;
  */
 const MAX_SCHEMA_BYTES = 64 * 1024;
 
-/** The C0 set except tab/newline, DEL, and C1 — same set the bridge strips from results. */
-const CONTROL_CHARS = /[\x00-\x08\x0b-\x1f\x7f-\x9f]/g;
-const ANSI_ESCAPE = /\x1b\[[0-9;?]*[ -\/]*[@-~]/g;
-
-/** Strip what should never be rendered, and cap. Never throws; never returns undefined. */
-function clean(text: string, max: number): string {
-  const stripped = text.replace(ANSI_ESCAPE, "").replace(CONTROL_CHARS, "");
-  return stripped.length > max ? `${stripped.slice(0, max)}… (truncated by Jaroku)` : stripped;
-}
+const clean = cleanText;
 
 /**
  * A description, flattened to a single line.
@@ -178,7 +171,7 @@ export function classifyDiscoveryFailure(err: unknown): {
   status: DiscoveryFailure["status"];
   error: string;
 } {
-  const raw = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
+  const raw = boundedError(err instanceof Error ? `${err.name}: ${err.message}` : String(err));
   const e = lower(raw);
 
   const unauthorized = ["401", "403", "unauthorized", "unauthenticated", "forbidden",

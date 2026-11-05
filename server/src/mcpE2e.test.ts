@@ -440,6 +440,31 @@ console.log("\na server changing its schema cannot remove a gate a person added"
   await fixture.close();
 }
 
+console.log("\nan error is bounded and stripped before anything stores it");
+{
+  const A = await workspace("errors");
+  const nasty = `\u001b[31mred\u001b[0m <script>alert(1)</script> Authorization: Bearer abc123secret\n\n${"x".repeat(2_000_000)}`;
+  const fixture = await startScriptedServer({
+    hook: ({ res }) => {
+      res.writeHead(500, { "content-type": "text/html" }).end(nasty);
+      return true;
+    },
+  });
+  await connect(A, { endpoint: fixture.url, label: "Loud" });
+  const row = await registry.get(A, "loud");
+  const text = row?.last_error ?? "";
+  check(row?.status === "error", "the row says error", String(row?.status));
+  check(text.length > 0 && text.length <= 1000, "a 2 MB body becomes a short message", String(text.length));
+  check(!text.includes("\u001b"), "with no terminal escapes");
+  check(!text.includes("\n"), "on one line");
+  check(!text.includes("abc123secret"), "and no bearer value");
+
+  await db.run(`UPDATE mcp_servers SET last_error = ? WHERE id = ? AND workspace_id = ?`, ["y".repeat(100_000), "loud", A.workspaceId]);
+  const legacy = await registry.get(A, "loud");
+  check((legacy?.last_error ?? "").length <= 1000, "a row written before this was fixed is bounded when read", String(legacy?.last_error?.length));
+  await fixture.close();
+}
+
 check(errors.length === 0, "no handler threw", String(errors[0] ?? ""));
 
 await db.close?.();

@@ -40,6 +40,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { jsonFromColumn, type Db, type Queryable } from "./db/db.ts";
 import type { TenantContext } from "./db/tenant.ts";
+import { boundedError } from "./mcpText.ts";
 import { endpointCarriesCredential, withoutEndpointCredential } from "./mcpUrl.ts";
 
 // --- row shapes --------------------------------------------------------------
@@ -214,7 +215,8 @@ export class McpStore {
   }
 
   private async hydrateServer(ctx: TenantContext, row: Record<string, unknown>): Promise<McpServer> {
-    const server = row as unknown as McpServer;
+    const stored = row as unknown as McpServer;
+    const server = stored.last_error === null ? stored : { ...stored, last_error: boundedError(stored.last_error) };
     if (!endpointCarriesCredential(server.endpoint)) return server;
     const endpoint = withoutEndpointCredential(server.endpoint);
     await this.q(ctx).run(`UPDATE mcp_servers SET endpoint = ? WHERE id = ? AND workspace_id = ?`, [
