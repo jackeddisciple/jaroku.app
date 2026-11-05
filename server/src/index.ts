@@ -6062,10 +6062,14 @@ async function handleMcpCommand(ctx: TenantContext, cmd: McpCommand): Promise<vo
         // job would have to redo under a race. The token has to be written now because a job
         // payload must never carry one — a credential on a queue is a credential in Redis, which
         // is neither encrypted at rest nor scoped to a tenant. See mcpDiscovery.ts.
+        const grantedAnywhere = (await agentRepo.list(ctx, { includeArchived: true }))
+          .flatMap((agent) => agent.mcp_tools)
+          .map((ref) => ref.slice(0, ref.indexOf("/")));
         const prepared = await mcpRegistry.prepare(ctx, {
           endpoint: cmd.endpoint,
           label: cmd.label,
           token: cmd.token,
+          reservedIds: new Set(grantedAnywhere),
         });
         if (!prepared.ok) {
           relay.broadcastMcp(ctx, { type: "error", message: prepared.message ?? "that server could not be added" });

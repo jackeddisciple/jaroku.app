@@ -96,11 +96,17 @@ export function slugifyServerId(input: string): string {
   return slug;
 }
 
-async function uniqueServerId(ctx: TenantContext, store: McpStore, base: string): Promise<string> {
-  if (!(await store.getServer(ctx, base))) return base;
+async function uniqueServerId(
+  ctx: TenantContext,
+  store: McpStore,
+  base: string,
+  reserved: ReadonlySet<string> = new Set(),
+): Promise<string> {
+  const free = async (id: string): Promise<boolean> => !reserved.has(id) && !(await store.getServer(ctx, id));
+  if (await free(base)) return base;
   for (let n = 2; n < 1000; n++) {
     const candidate = `${base.slice(0, 28)}_${n}`;
-    if (!(await store.getServer(ctx, candidate))) return candidate;
+    if (await free(candidate)) return candidate;
   }
   return `${base.slice(0, 24)}_${Date.now() % 100000}`;
 }
@@ -114,6 +120,7 @@ export interface AddServerOptions {
   id?: string;
   /** The NAME of the env var holding this server's credential. Never a value. */
   authEnvKey?: string | null;
+  reservedIds?: ReadonlySet<string>;
   /**
    * A bearer token or API key the user just entered.
    *
@@ -309,7 +316,7 @@ export class McpRegistry {
     if (opts.id && (await this.store.getServer(ctx, opts.id))) {
       return { ok: false, id: "", authEnvKey: null, message: `a server called "${opts.id}" is already connected` };
     }
-    const id = opts.id ?? (await uniqueServerId(ctx, this.store, requested));
+    const id = opts.id ?? (await uniqueServerId(ctx, this.store, requested, opts.reservedIds));
 
     let message: string | null = null;
     let authEnvKey: string | null = null;

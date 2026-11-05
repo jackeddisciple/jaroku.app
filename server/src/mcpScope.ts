@@ -1,4 +1,5 @@
 import type { Manifest } from "./mcpManifest.ts";
+import { withoutEndpointCredential } from "./mcpUrl.ts";
 import type { McpServerView, McpToolView } from "./mcpRegistry.ts";
 
 export const SCOPE_ENV = "JAROKU_MCP_SCOPE";
@@ -50,7 +51,7 @@ export function runScope(manifest: Manifest, granted: readonly string[], servers
   const scope: RunScope = { servers: {} };
   for (const entry of manifest.servers) {
     const server = live.get(entry.id);
-    if (!server) continue;
+    if (!server || server.endpoint !== withoutEndpointCredential(entry.endpoint)) continue;
     const tools = new Map(server.tools.map((tool) => [tool.name, tool]));
     const scoped: Record<string, ScopedTool> = {};
     for (const tool of entry.tools) {

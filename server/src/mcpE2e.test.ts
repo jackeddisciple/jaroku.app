@@ -321,6 +321,21 @@ console.log("\na fork starts with no MCP grant in any of its files");
   check(read("tools/mcp_bridge.py") === "kept = 1\n", "and the bridge stays, so a later grant can take effect");
 }
 
+console.log("\na manifest entry only runs against the endpoint it was granted for");
+{
+  const tool = { name: "read_page", description: null, input_schema: {}, impact: "low" as const, impact_reason: "r" };
+  const manifest = {
+    schema_version: 1 as const,
+    servers: [{ id: "linear", label: "L", endpoint: "https://old.test/mcp", transport: "http", auth_env_key: null, server_name: null, server_version: null, protocol_version: null, discovered_at: null, tools: [tool] }],
+  };
+  const row = (endpoint: string) => [{
+    id: "linear", label: "L", endpoint, transport: "http" as const, auth_env_key: null, server_name: null, server_version: null,
+    protocol_version: null, status: "connected" as const, last_error: null, discovered_at: null, created_at: "", configured: false, tools: [],
+  }];
+  check(Boolean(runScope(manifest, ["linear/read_page"], row("https://old.test/mcp")).servers["linear"]), "the same endpoint runs");
+  check(!runScope(manifest, ["linear/read_page"], row("https://new.test/mcp")).servers["linear"], "a different server under the same id does not");
+}
+
 console.log("\nan override reaches an agent that already exists, and a server cannot lower a gate");
 {
   const frozen = (name: string, impact: "high" | "low") => ({ name, description: null, input_schema: {}, impact, impact_reason: "frozen" });

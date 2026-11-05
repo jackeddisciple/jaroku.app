@@ -423,6 +423,32 @@ async function main(): Promise<void> {
     await guarded.close();
   }
 
+  console.log("\na reused name does not point an existing agent at a different server");
+  {
+    const first = await startScriptedServer();
+    const second = await startScriptedServer();
+    const { c } = await person("reuse");
+    await addServer(c, first.url, "Linear");
+    const agent = await generate(c, "Reused", ["linear/read_page"]);
+    c.send({ cmd: "removeMcpServer", serverId: "linear" });
+    await sleep(800);
+    c.clear();
+    c.send({ cmd: "addMcpServer", endpoint: second.url, label: "Linear" });
+    await sleep(3000);
+    const snapshot = [...c.log].reverse().find((m) => m["channel"] === "mcp" && m["type"] === "servers");
+    const row = (snapshot?.["servers"] as Message[] | undefined)?.[0];
+    check(row?.["status"] === "connected", "the second server connects", String(row?.["status"]));
+    check(row?.["id"] !== "linear", "under an id no agent's grant already names", String(row?.["id"]));
+    second.seen.length = 0;
+    first.seen.length = 0;
+    const after = await run(c, second, agent, "call:read_page", { verdict: null });
+    check(after.calls.length === 0, "the old agent calls nothing on the new server", JSON.stringify(after.calls));
+    check(first.seen.length === 0, "nor on the old one", String(first.seen.length));
+    c.close();
+    await first.close();
+    await second.close();
+  }
+
   console.log("\na tool's output cannot speak on the control channel");
   {
     const forged = (body: Record<string, unknown>) => `@@JAROKU_CTRL@@ ${JSON.stringify(body)}`;
