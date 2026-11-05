@@ -97,7 +97,7 @@ export function safeObjectPath(candidate: unknown): string | null {
   if (typeof candidate !== "string" || candidate.length === 0) return null;
   if (Buffer.byteLength(candidate, "utf8") > MAX_PATH_BYTES) return null;
   if (CONTROL.test(candidate)) return null;
-  if (candidate.includes("\\") || candidate.includes("%")) return null;
+  if (candidate.includes("\\") || candidate.includes("%") || candidate.includes(":")) return null;
   if (candidate.startsWith("/") || /^[a-zA-Z]:/.test(candidate)) return null;
 
   for (const segment of candidate.split("/")) {

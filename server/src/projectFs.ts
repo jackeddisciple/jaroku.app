@@ -107,6 +107,13 @@ function isTextFile(name: string): boolean {
  * filename in the catalogue rather than only the installed ones, so the model cannot introduce
  * a file masquerading as a reviewed template.
  */
+export function isHostOwnedPath(path: string, blocked: ReadonlySet<string>): boolean {
+  const lower = path.toLowerCase();
+  if (path.split("/").some((segment) => /~\d/.test(segment))) return true;
+  for (const owned of blocked) if (owned.toLowerCase() === lower) return true;
+  return false;
+}
+
 export function readOnlyPaths(connectorFiles: string[]): Set<string> {
   return new Set([...HOST_OWNED, ...connectorFiles]);
 }

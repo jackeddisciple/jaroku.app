@@ -39,7 +39,7 @@ import { anthropicClient, emptyUsage, summarizeUsage, type UsageSummary } from "
 import { loadConnectors, type Connector } from "./connectors.ts";
 import { FileProtocolParser, type ProtocolEvent } from "./fileProtocol.ts";
 import { agentProjectDir, replayFixture } from "./generator.ts";
-import { DEPLOY_ARTIFACTS, isSafeAgentId, readOnlyPaths } from "./projectFs.ts";
+import { DEPLOY_ARTIFACTS, isHostOwnedPath, isSafeAgentId, readOnlyPaths } from "./projectFs.ts";
 import { buildEditSystemPrompt, buildEditUserPrompt } from "./prompt.ts";
 import type { McpToolView } from "./mcpRegistry.ts";
 import { validateProject } from "./validator.ts";
@@ -371,7 +371,7 @@ export class Editor extends EventEmitter<EditorEvents> {
         if (event.type === "file_start") {
           const safe = safeObjectPath(event.path);
           if (!safe) throw new Error(`refusing unsafe path: ${event.path}`);
-          if (blocked.has(safe)) {
+          if (isHostOwnedPath(safe, blocked)) {
             // Each message names the right next move rather than just refusing. The MCP
             // pair gets its own, because "ask for a wrapper" is the wrong advice for a
             // manifest — the fix there is to change the agent's scope, which is a decision
@@ -379,7 +379,7 @@ export class Editor extends EventEmitter<EditorEvents> {
             // The deploy artifacts get theirs for the same shape of reason: they are
             // regenerated from jaroku.json on every deploy, so an edit to them would be
             // silently discarded even if it were allowed.
-            const isMcp = safe === MANIFEST_FILE || safe === BRIDGE_FILE;
+            const isMcp = /mcp_/i.test(safe);
             const isDeploy = DEPLOY_ARTIFACTS.has(safe);
             throw new Error(
               isMcp

@@ -23,6 +23,8 @@ import { discover } from "./mcpClient.ts";
 import { isConfirmNonce, mcpRunCredentials, runScope } from "./mcpScope.ts";
 import { parseControlLine } from "./processManager.ts";
 import { isSecretName, secretNameRefusal } from "./secrets/secretStore.ts";
+import { isHostOwnedPath, readOnlyPaths } from "./projectFs.ts";
+import { safeObjectPath } from "./storage/keys.ts";
 import { buildManifest, grantWithout, projectCanCallMcp, withGrantOnly, withoutMcpGrant } from "./mcpManifest.ts";
 import { AgentRepository } from "./db/repositories/agents.ts";
 import { startScriptedServer, type ScriptedRequest } from "../fixtures/mcp/scriptedServer.ts";
@@ -845,6 +847,24 @@ console.log("\na grant is refused on a project that could never call it");
   const fn = /async function setAgentTools\([\s\S]*?\n\}/.exec(index)?.[0] ?? "";
   check(/granted\.length > 0[\s\S]{0,200}projectCanCallMcp/.test(fn), "and the command refuses before it writes the grant");
   check(fn.indexOf("projectCanCallMcp") < fn.indexOf("agentRepo.setMcpTools"), "...before the column changes");
+}
+
+console.log("\nthe host owned files cannot be reached by another spelling");
+{
+  const blocked = readOnlyPaths(["tools/gmail.py"]);
+  const spellings = [
+    "mcp_tools.json", "MCP_TOOLS.JSON", "mcp_tools.JSON", "Mcp_Tools.json", "mcp_to~1.jso", "MCP_TO~1.JSO",
+    "tools/mcp_bridge.py", "tools/MCP_BRIDGE.PY", "Tools/mcp_bridge.py", "tools/mcp_br~1.py", "TOOLS~1/mcp_bridge.py",
+    "tools/GMAIL.PY", "Dockerfile".toLowerCase(),
+  ];
+  for (const path of spellings) check(isHostOwnedPath(path, blocked), `${path} is refused`);
+  for (const path of ["agent.py", "tools/mcp_helpers.py", "prompts/system.md", "tools/my~notes.py"]) {
+    check(!isHostOwnedPath(path, blocked), `${path} is an ordinary file`);
+  }
+  check(safeObjectPath("mcp_tools.json::$DATA") === null, "an alternate data stream is not a path");
+  check(safeObjectPath("agent.py:x") === null, "and neither is anything with a colon");
+  const editor = readFileSync(join(fileURLToPath(new URL(".", import.meta.url)), "editor.ts"), "utf8");
+  check(/isHostOwnedPath\(safe, blocked\)/.test(editor), "the edit loop asks this rather than an exact match");
 }
 
 check(errors.length === 0, "no handler threw", String(errors[0] ?? ""));
