@@ -136,6 +136,7 @@ export class McpDiscoveryQueue {
                 label: payload.label,
                 id: payload.serverId,
                 authEnvKey: payload.authEnvKey ?? null,
+                reserved: true,
               })
             : await this.opts.registry.rediscover(ctx, payload.serverId);
         this.opts.onResult?.(ctx, payload, result);

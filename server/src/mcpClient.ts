@@ -162,7 +162,7 @@ export interface DiscoverySuccess {
 
 export interface DiscoveryFailure {
   ok: false;
-  status: Exclude<McpServerStatus, "connected">;
+  status: Exclude<McpServerStatus, "connected" | "connecting">;
   error: string;
 }
 

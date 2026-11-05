@@ -179,6 +179,7 @@ export function syncPhase(state: SyncState): Phase | null {
 // and `StatusGlyph` takes a `title` so the tooltip does too.
 
 export const MCP_PHASE: Record<McpServerStatus, Phase> = {
+  connecting: "active",
   connected: "done",
   auth_required: "waiting",
   unreachable: "failed",

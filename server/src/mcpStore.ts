@@ -49,6 +49,7 @@ import { endpointCarriesCredential, withoutEndpointCredential } from "./mcpUrl.t
 export type McpTransport = "http";
 
 export type McpServerStatus =
+  | "connecting"
   /** Handshake succeeded; `tools` below are what it advertised. */
   | "connected"
   /** Could not be reached — DNS, refused, reset, timeout. Usually transient. */
@@ -307,6 +308,32 @@ export class McpStore {
       ],
     );
     return row;
+  }
+
+  async reserveServer(ctx: TenantContext, input: Omit<McpServer, "created_at">): Promise<boolean> {
+    const res = await this.q(ctx).run(
+      `INSERT INTO mcp_servers
+         (workspace_id, id, label, endpoint, transport, auth_env_key, server_name,
+          server_version, protocol_version, status, last_error, discovered_at, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(workspace_id, id) DO NOTHING`,
+      [
+        ctx.workspaceId,
+        input.id,
+        input.label,
+        withoutEndpointCredential(input.endpoint),
+        input.transport,
+        input.auth_env_key,
+        input.server_name,
+        input.server_version,
+        input.protocol_version,
+        input.status,
+        input.last_error,
+        input.discovered_at,
+        nowIso(),
+      ],
+    );
+    return res.changes > 0;
   }
 
   /**

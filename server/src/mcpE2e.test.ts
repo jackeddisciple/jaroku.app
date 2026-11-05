@@ -710,6 +710,36 @@ console.log("\ndiscovery connects to the address that was checked, not to a fres
   await fixture.close();
 }
 
+console.log("\nadds that derive one id each keep their own row");
+{
+  const A = await workspace("collide");
+  const fixture = await startScriptedServer();
+  const paths = ["/ok", "/dupes", "/colliding"];
+  const added = await Promise.all(paths.map((path) => registry.prepare(A, { endpoint: `${fixture.origin}${path}` })));
+  check(new Set(added.map((a) => a.id)).size === 3, "three adds on one host get three ids", added.map((a) => a.id).join());
+  for (const [index, prepared] of added.entries()) {
+    await queue.enqueue(A, { kind: "add", serverId: prepared.id, endpoint: `${fixture.origin}${paths[index]}`, authEnvKey: prepared.authEnvKey });
+  }
+  const before = await registry.list(A);
+  check(before.length === 3, "each is visible the moment it is accepted", String(before.length));
+  check(before.every((row) => row.status === "connecting"), "as connecting", before.map((row) => row.status).join());
+  await drain();
+  const rows = await registry.list(A);
+  check(rows.length === 3, "and three rows exist once they finish", String(rows.length));
+  check(rows.every((row) => row.status === "connected"), "all connected", rows.map((row) => row.status).join());
+  check(new Set(rows.map((row) => row.endpoint)).size === 3, "each with its own endpoint");
+
+  const labelled = await Promise.all(["/a", "/b"].map((path) => registry.prepare(A, { endpoint: `${fixture.origin}${path}`, label: "Same Label" })));
+  check(new Set(labelled.map((a) => a.id)).size === 2, "two adds with one label get two ids", labelled.map((a) => a.id).join());
+
+  const gone = await registry.prepare(A, { endpoint: `${fixture.origin}/gone`, label: "Gone" });
+  await queue.enqueue(A, { kind: "add", serverId: gone.id, endpoint: `${fixture.origin}/gone`, authEnvKey: null });
+  await registry.removeServer(A, gone.id);
+  await drain();
+  check((await registry.get(A, gone.id)) === null, "disconnecting one still waiting to connect keeps it gone");
+  await fixture.close();
+}
+
 check(errors.length === 0, "no handler threw", String(errors[0] ?? ""));
 
 await db.close?.();

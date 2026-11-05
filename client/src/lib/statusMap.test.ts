@@ -137,11 +137,9 @@ console.log("\none vocabulary, many domains, no local shapes");
       same(expected.slice().sort(), actives[domain]!.slice().sort()),
       `${actives[domain]!.join(", ")} vs ${expected.join(", ")}`);
   }
-  // MCP HAS NO ACTIVE STATE AT ALL, which is worth asserting rather than leaving as an absence in a
-  // table above: a server is connected or it is not, and a "connecting" phase would be a shape for a
-  // state the union does not have.
-  check("an MCP server is never amber",
-    !Object.values(MCP_PHASE).includes("active"), Object.entries(MCP_PHASE).join("; "));
+  check("an MCP server is amber only during its first handshake",
+    same(Object.keys(MCP_PHASE).filter((k) => MCP_PHASE[k as keyof typeof MCP_PHASE] === "active"), ["connecting"]),
+    Object.entries(MCP_PHASE).join("; "));
 }
 
 // --- 3. §3, asserted as an absence -----------------------------------------------------------------

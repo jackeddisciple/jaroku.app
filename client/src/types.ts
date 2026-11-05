@@ -774,7 +774,7 @@ export type EvalMessage =
 
 export type McpImpact = "high" | "low";
 
-export type McpServerStatus = "connected" | "unreachable" | "auth_required" | "error";
+export type McpServerStatus = "connecting" | "connected" | "unreachable" | "auth_required" | "error";
 
 export interface McpTool {
   server_id: string;

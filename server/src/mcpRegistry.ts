@@ -122,6 +122,7 @@ export interface AddServerOptions {
   /** The NAME of the env var holding this server's credential. Never a value. */
   authEnvKey?: string | null;
   reservedIds?: ReadonlySet<string>;
+  reserved?: boolean;
   /**
    * A bearer token or API key the user just entered.
    *
@@ -130,6 +131,8 @@ export interface AddServerOptions {
    */
   token?: string | null;
 }
+
+const ABANDONED_CONNECT_MS = 5 * 60_000;
 
 export class McpRegistry {
   /**
@@ -257,8 +260,15 @@ export class McpRegistry {
   async list(ctx: TenantContext): Promise<McpServerView[]> {
     const servers = await this.store.listServers(ctx);
     const out: McpServerView[] = [];
-    for (const s of servers) out.push(await this.view(ctx, s));
+    for (const s of servers) out.push(await this.view(ctx, await this.settleAbandoned(ctx, s)));
     return out;
+  }
+
+  private async settleAbandoned(ctx: TenantContext, server: McpServer): Promise<McpServer> {
+    if (server.status !== "connecting" || Date.now() - Date.parse(server.created_at) < ABANDONED_CONNECT_MS) return server;
+    const message = "that connection attempt was interrupted: re-check to try again";
+    await this.store.setServerStatus(ctx, server.id, "error", message);
+    return { ...server, status: "error", last_error: message };
   }
 
   async get(ctx: TenantContext, id: string): Promise<McpServerView | null> {
@@ -317,7 +327,17 @@ export class McpRegistry {
     if (opts.id && (await this.store.getServer(ctx, opts.id))) {
       return { ok: false, id: "", authEnvKey: null, message: `a server called "${opts.id}" is already connected` };
     }
-    const id = opts.id ?? (await uniqueServerId(ctx, this.store, requested, opts.reservedIds));
+    let id = "";
+    for (let attempt = 0; attempt < 8 && !id; attempt++) {
+      const candidate = opts.id ?? (await uniqueServerId(ctx, this.store, requested, opts.reservedIds));
+      const reserved = await this.store.reserveServer(ctx, {
+        id: candidate, label: opts.label?.trim() || candidate, endpoint, transport: "http", auth_env_key: null,
+        server_name: null, server_version: null, protocol_version: null,
+        status: "connecting", last_error: null, discovered_at: null,
+      });
+      if (reserved) id = candidate;
+    }
+    if (!id) return { ok: false, id: "", authEnvKey: null, message: "that server could not be added: try again" };
 
     let message: string | null = null;
     let authEnvKey: string | null = null;
@@ -325,6 +345,7 @@ export class McpRegistry {
       const key = authEnvKeyFor(id);
       const written = await this.secrets.set(ctx, key, opts.token);
       if (!written.ok) {
+        await this.store.deleteServer(ctx, id);
         return { ok: false, id: "", authEnvKey: null, message: written.warning ?? "could not store the credential" };
       }
       authEnvKey = key;
@@ -355,7 +376,9 @@ export class McpRegistry {
         message: `"${requested}" is not a usable server id — lowercase letters, digits and underscores, starting with a letter`,
       };
     }
-    if (opts.id && (await this.store.getServer(ctx, opts.id))) {
+    const existing = opts.id ? await this.store.getServer(ctx, opts.id) : null;
+    if (opts.reserved && !existing) return { ok: false, server: null, message: null };
+    if (existing && !(opts.reserved && existing.status === "connecting")) {
       return { ok: false, server: null, message: `a server called "${opts.id}" is already connected` };
     }
     const id = opts.id ?? (await uniqueServerId(ctx, this.store, requested));

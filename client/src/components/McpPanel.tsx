@@ -49,6 +49,7 @@ import { useToastFrom } from "./Toast.tsx";
  * is why the label stays beside the mark rather than being folded into it.
  */
 const STATUS_LABEL: Record<McpServer["status"], string> = {
+  connecting: "connecting…",
   connected: "connected",
   unreachable: "unreachable",
   auth_required: "needs a credential",
@@ -226,7 +227,7 @@ function ServerDetail({ server }: { server: McpServer }) {
             failing — because that is what `mcp:read` is for. */}
         {canManage && (
           <div className="mt-2 flex items-center gap-2 flex-wrap">
-            <button className={secondaryBtn} disabled={discovering}
+            <button className={secondaryBtn} disabled={discovering || server.status === "connecting"}
               onClick={() => sendRediscoverMcpServer(server.id)}
               title="Ask the server what it can do, again. A failure keeps the tools already discovered.">
               <RefreshIcon size={ICON.xs} />
