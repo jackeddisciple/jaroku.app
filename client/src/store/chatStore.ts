@@ -91,6 +91,7 @@ export interface PlanTurn extends TurnAnchor {
    *  parser could make nothing of is still shown rather than swallowed. */
   raw: string;
   plan: AgentPlan | null;
+  mcpRefs?: string[];
   warnings: string[];
   usage: GenUsage | null;
   error?: string;
@@ -329,7 +330,7 @@ interface ChatState {
   planDelta: (e: In & { text: string }) => void;
   planReady: (p: In & {
     planId: string; prompt: string; plan: AgentPlan; warnings: string[]; usage: GenUsage;
-    revision: number;
+    revision: number; mcpTools?: string[];
   }) => void;
   planDiscarded: (e: In & { planId: string }) => void;
   /** The generation this plan authorised failed and wrote nothing, so the plan is takeable again. */
@@ -605,14 +606,14 @@ export const useChatStore = create<ChatState>((set) => ({
       return putTurns(s, threadId, replaceTurn(turns, open.id, { ...open, raw: open.raw + text }));
     }),
 
-  planReady: ({ threadId, planId, prompt, plan, warnings, usage, revision }) =>
+  planReady: ({ threadId, planId, prompt, plan, mcpTools, warnings, usage, revision }) =>
     set((s) => {
       const turns = turnsIn(s, threadId);
       const open = openPlan(turns);
       const settled: PlanTurn = {
         id: open?.id ?? turnId(),
         role: "jaroku", kind: "plan", status: "pending",
-        planId, revision, prompt, raw: plan.raw, plan, warnings, usage,
+        planId, revision, prompt, raw: plan.raw, plan, mcpRefs: mcpTools, warnings, usage,
       };
       return putTurns(s, threadId, open ? replaceTurn(turns, open.id, settled) : [...turns, settled]);
     }),

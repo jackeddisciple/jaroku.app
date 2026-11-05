@@ -130,6 +130,20 @@ export function allMcpTools(servers: McpServer[]): McpToolRef[] {
   );
 }
 
+export function planMcpTool(
+  servers: McpServer[],
+  selected: readonly string[],
+  planned: { name: string; mcpServerId?: string },
+): McpToolRef | undefined {
+  const named = allMcpTools(servers).filter((tool) => tool.name === planned.name);
+  return (
+    named.find((tool) => selected.includes(tool.ref)) ??
+    named.find((tool) => tool.ref === `${planned.mcpServerId}/${planned.name}`) ??
+    named.find((tool) => tool.impact === "high") ??
+    named[0]
+  );
+}
+
 /** Resolve `"server/tool"` refs to tools, dropping any that no longer exist. */
 export function resolveMcpRefs(servers: McpServer[], refs: string[]): McpToolRef[] {
   const byRef = new Map(allMcpTools(servers).map((t) => [t.ref, t]));

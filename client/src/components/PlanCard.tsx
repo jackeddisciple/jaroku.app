@@ -45,7 +45,7 @@ import {
   SparklesIcon,
 } from "./panelIcons.tsx";
 import { HighImpactBadge, McpBadge } from "./McpBadge.tsx";
-import { allMcpTools, useMcpStore } from "../store/mcpStore.ts";
+import { planMcpTool, useMcpStore } from "../store/mcpStore.ts";
 
 /**
  * Which sections the user has folded away, for as long as the panel is open.
@@ -394,11 +394,6 @@ export function PlanCard({ turn }: { turn: PlanTurn }) {
   const connectorTools = plan?.tools.filter((t) => t.origin === "connector") ?? [];
   const bespokeTools = plan?.tools.filter((t) => t.origin === "bespoke") ?? [];
   const mcpTools = plan?.tools.filter((t) => t.origin === "mcp") ?? [];
-  // The impact classification lives in the registry, not in the plan text — the plan says
-  // WHICH tools, the registry says what each one costs to run.
-  const mcpImpact = new Map(
-    allMcpTools(mcpServers).map((t) => [t.name, t] as const),
-  );
   // The parser makes nothing of a response that ignored the protocol. Rather than hide it,
   // fall back to the raw text — a plan the user can read is worth more than a tidy blank.
   const degraded = !plan || (plan.tools.length === 0 && plan.state.length === 0 && plan.graph.length === 0);
@@ -532,7 +527,7 @@ export function PlanCard({ turn }: { turn: PlanTurn }) {
                 count={mcpTools.length}
               >
                 {mcpTools.map((t) => {
-                  const known = mcpImpact.get(t.name);
+                  const known = planMcpTool(mcpServers, turn.mcpRefs ?? [], t);
                   return (
                     <ToolRow
                       key={t.name}

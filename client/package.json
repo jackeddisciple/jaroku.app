@@ -57,6 +57,7 @@
     "test:mcp-credential-field": "tsx src/components/mcpCredentialField.test.ts",
     "test:inbox-remove-grant": "tsx src/components/inboxRemoveGrant.test.ts",
     "test:mcp-tray": "tsx src/components/mcpTray.test.ts",
+    "test:plan-card-mcp": "tsx src/components/planCardMcp.test.ts",
     "test:graph-error": "tsx src/lib/graphError.test.ts",
     "test:palette-search": "tsx src/components/paletteSearch.test.ts",
     "test:export": "tsx src/lib/evalExport.test.ts",
