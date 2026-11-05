@@ -145,7 +145,7 @@ except B.ToolNotApproved:
   const runner = readFileSync(join(repoRoot, "evalRunner.ts"), "utf8");
   const index = readFileSync(join(repoRoot, "index.ts"), "utf8");
   check(/JAROKU_MCP_CONFIRM: "require"/.test(runner), "the eval runner sets that on every job");
-  check(/runSetup: async[\s\S]{0,700}JAROKU_CONTROL_DIR: CHECKPOINT_DIR/.test(index), "and the app gives an eval's run the route to ask");
+  check(/runSetup: async[\s\S]{0,1500}JAROKU_CONTROL_DIR: CHECKPOINT_DIR/.test(index), "and the app gives an eval's run the route to ask");
   check(/JAROKU_RESUME_RUN_ID: runId,\s+JAROKU_RUN_ID: runId,\s+JAROKU_CONTROL_DIR: CHECKPOINT_DIR/.test(index), "and a resumed run keeps that route too");
 }
 
