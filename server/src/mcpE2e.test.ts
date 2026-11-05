@@ -22,6 +22,7 @@ import { authEnvKeyFor } from "./envWriter.ts";
 import { discover } from "./mcpClient.ts";
 import { isConfirmNonce, mcpRunCredentials, runScope } from "./mcpScope.ts";
 import { parseControlLine } from "./processManager.ts";
+import { PeerConfirms } from "./mcpConfirmPeers.ts";
 import { isSecretName, secretNameRefusal } from "./secrets/secretStore.ts";
 import { isHostOwnedPath, readOnlyPaths } from "./projectFs.ts";
 import { safeObjectPath } from "./storage/keys.ts";
@@ -865,6 +866,35 @@ console.log("\nthe host owned files cannot be reached by another spelling");
   check(safeObjectPath("agent.py:x") === null, "and neither is anything with a colon");
   const editor = readFileSync(join(fileURLToPath(new URL(".", import.meta.url)), "editor.ts"), "utf8");
   check(/isHostOwnedPath\(safe, blocked\)/.test(editor), "the edit loop asks this rather than an exact match");
+}
+
+console.log("\na replica holds the asks another replica raised, until they close");
+{
+  const peers = new PeerConfirms();
+  const at = Date.parse("2026-11-05T10:00:00.000Z");
+  const ask = (nonce: string, barred?: string[]) => ({
+    channel: "mcp", type: "confirmRequest", runId: "run-1", nonce, server: "alpha", tool: "send",
+    args: "{}", impactReason: null, timeoutS: 120, requestedAt: new Date(at).toISOString(), serverNow: at, agentSlug: "agent",
+    ...(barred ? { __barredUsers: barred } : {}),
+  });
+  peers.observe("ws-1", ask("aaa"), at);
+  peers.observe("ws-1", ask("bbb", ["barred-user"]), at);
+  check(peers.find("ws-1", "run-1", "aaa", at)?.agentSlug === "agent", "an ask seen over the bridge can be found");
+  check(peers.find("ws-2", "run-1", "aaa", at) === null, "but never from another workspace");
+  const listed = peers.listFor("ws-1", "someone", at);
+  check(listed.length === 2, "a tab connecting to this replica is told about both", String(listed.length));
+  check(listed.every((event) => !("__barredUsers" in event) && !("channel" in event)), "without the delivery fields");
+  check(peers.listFor("ws-1", "barred-user", at).length === 1, "a barred member is not told about the one they cannot see");
+  peers.observe("ws-1", { channel: "mcp", type: "confirmResolved", runId: "run-1", nonce: "aaa", verdict: "once" }, at);
+  check(peers.find("ws-1", "run-1", "aaa", at) === null, "an answer closes it here too");
+  check(peers.find("ws-1", "run-1", "bbb", at + 121_000) === null, "and one nobody answered lapses with its clock");
+  check(peers.listFor("ws-1", "someone", at + 121_000).length === 0, "so a dead replica's ask does not linger");
+  peers.observe("ws-1", { channel: "trace", event: {} }, at);
+  const index = readFileSync(join(fileURLToPath(new URL(".", import.meta.url)), "index.ts"), "utf8");
+  check(/peerConfirms\.find\(ctx\.workspaceId, cmd\.runId, cmd\.nonce\)/.test(index), "an answer for another replica's ask is looked up here");
+  check(/channel: CONFIRM_ANSWER_CHANNEL/.test(index), "and forwarded over the bridge");
+  check(/payload as \{ channel\?: unknown \}\)\.channel === CONFIRM_ANSWER_CHANNEL/.test(index), "and the owning replica acts on it");
+  check(/peerConfirms\.listFor\(/.test(index), "and a reconnecting tab is told about asks held elsewhere");
 }
 
 check(errors.length === 0, "no handler threw", String(errors[0] ?? ""));

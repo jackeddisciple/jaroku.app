@@ -2301,6 +2301,7 @@ export type McpEvent =
       timeoutS: number;
       requestedAt: string;
       serverNow?: number;
+      agentSlug?: string | null;
       /**
        * The deployed job this run is, and its agent's name — null for a local run, which is no job.
        * What lets the ask say WHOSE it is and offer to stop the job rather than only answer it.

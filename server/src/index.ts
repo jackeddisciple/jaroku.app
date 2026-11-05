@@ -247,6 +247,7 @@ import {
 } from "./threadFacts.ts";
 import { McpRegistry } from "./mcpRegistry.ts";
 import { MCP_DISCOVER_CLASS, McpDiscoveryQueue } from "./mcpDiscovery.ts";
+import { CONFIRM_ANSWER_CHANNEL, PeerConfirms } from "./mcpConfirmPeers.ts";
 import { WorkspaceExporter } from "./lifecycle/export.ts";
 import { lifecycleRoutes } from "./http/lifecycle.ts";
 import { mountSecretsRoutes, type SecretsCaller } from "./http/secrets.ts";
@@ -3236,6 +3237,7 @@ function confirmRequestOf(p: PendingConfirm) {
     serverNow: Date.now(),
     workItemId: p.workItemId,
     agentName: p.agentName,
+    agentSlug: p.agentSlug ?? liveRuns.get(p.runId)?.agentId ?? null,
   };
 }
 
@@ -5091,7 +5093,8 @@ const relay = new WsRelay({
       .filter((p) => !runBarred.get(p.runId)?.has(ctx.actorUserId ?? ""))
       // THE ORIGINAL CLOCK — see `confirmRequestOf`. The client counts down from `requestedAt` plus
       // `timeoutS`, so sending what was left against the original start counted the wait twice.
-      .map(confirmRequestOf),
+      .map(confirmRequestOf)
+      .concat(peerConfirms.listFor(ctx.workspaceId, ctx.actorUserId ?? "") as unknown as ReturnType<typeof confirmRequestOf>[]),
 
   // §4's grid, with every card's tags already derived — see `agentGridSnapshot` for why deriving
   // them here rather than in the browser is a correctness requirement and not an optimisation.
@@ -5757,6 +5760,19 @@ if (eventBridge) {
       void evalRunner.cancel(control.evalId).catch((err) => console.error("[eval] forwarded cancel failed:", (err as Error)?.message ?? err));
       return;
     }
+    if ((payload as { channel?: unknown }).channel === CONFIRM_ANSWER_CHANNEL) {
+      const answer = payload as { runId?: string; nonce?: string; verdict?: "once" | "run" | "deny"; actorUserId?: string | null };
+      const pending = pendingConfirms.get(confirmKey(String(answer.runId), String(answer.nonce)));
+      if (pending && pending.workspaceId === workspaceId && answer.verdict) {
+        answerConfirm(
+          { ...systemContextFor(workspaceId, newRequestId()), actorUserId: answer.actorUserId ?? null },
+          pending,
+          answer.verdict,
+        );
+      }
+      return;
+    }
+    peerConfirms.observe(workspaceId, payload);
     relay.deliverFromPeer(systemContextFor(workspaceId, newRequestId()), payload);
   });
   console.log("[server] event bridge: subscribed for cross-replica fan-out");
@@ -6005,6 +6021,7 @@ interface PendingConfirm {
   agentSlug?: string | null;
 }
 const pendingConfirms = new Map<string, PendingConfirm>();
+const peerConfirms = new PeerConfirms();
 const confirmKey = (runId: string, nonce: string): string => `${runId}.${nonce}`;
 const approvalFile = (runId: string, nonce: string): string => {
   if (!isConfirmNonce(nonce)) throw new Error("that is not a confirmation nonce");
@@ -6158,6 +6175,20 @@ async function handleMcpCommand(ctx: TenantContext, cmd: McpCommand): Promise<vo
         const verdict = cmd.verdict === "once" || cmd.verdict === "run" ? cmd.verdict : "deny";
         const key = confirmKey(cmd.runId, cmd.nonce);
         const pending = pendingConfirms.get(key);
+        const held = pending ? null : peerConfirms.find(ctx.workspaceId, cmd.runId, cmd.nonce);
+        if (held && eventBridge) {
+          const heldRefusal = held.agentSlug ? await agentAccessRefusalFor(ctx, held.agentSlug, "run", cmd.cmd) : null;
+          if (!heldRefusal) {
+            eventBridge.publish(ctx.workspaceId, {
+              channel: CONFIRM_ANSWER_CHANNEL,
+              runId: cmd.runId,
+              nonce: cmd.nonce,
+              verdict,
+              actorUserId: ctx.actorUserId,
+            });
+            return;
+          }
+        }
         const agentSlug = pending ? (pending.agentSlug ?? liveRuns.get(pending.runId)?.agentId ?? null) : null;
         const answerRefusal = pending && agentSlug ? await agentAccessRefusalFor(ctx, agentSlug, "run", cmd.cmd) : null;
         // An ask belonging to another workspace answers exactly as an absent one does. Same
