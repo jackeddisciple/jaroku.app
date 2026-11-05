@@ -279,9 +279,9 @@ function ServerDetail({ server }: { server: McpServer }) {
             </div>
             {/* Saying where it goes matters more than saying it is safe. */}
             <p className="mt-1.5 text-tiny leading-[1.5] text-faint">
-              Stored in <span className="font-mono">runtime/.env</span> as{" "}
-              <span className="font-mono">{server.auth_env_key ?? `JAROKU_MCP_${server.id.toUpperCase()}_TOKEN`}</span>,
-              which is gitignored. It is never logged and never sent back to this page.
+              Stored in <span className="font-mono">runtime/.env</span>
+              {server.auth_env_key ? <> as <span className="font-mono">{server.auth_env_key}</span></> : null}
+              , which is gitignored. It is never logged and never sent back to this page.
             </p>
           </div>
         )}

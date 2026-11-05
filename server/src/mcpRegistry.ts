@@ -20,6 +20,7 @@
 //     only if a plan actually calls for it (see the manifest), and running a high-impact one
 //     still stops for a confirmation.
 
+import { createHash } from "node:crypto";
 import { discover, type DiscoveryResult } from "./mcpClient.ts";
 import type { AddressPin } from "./mcpFetch.ts";
 import { authEnvKeyFor } from "./envWriter.ts";
@@ -165,6 +166,11 @@ export class McpRegistry {
      */
     private resolver: Resolver = realResolver,
   ) {}
+
+  private credentialKey(ctx: TenantContext, id: string): string {
+    if (this.secrets?.kind !== "dotenv") return authEnvKeyFor(id);
+    return authEnvKeyFor(`${id}_${createHash("sha256").update(ctx.workspaceId).digest("hex").slice(0, 8)}`);
+  }
 
   /**
    * Refuse an endpoint that must not be connected to, with a message safe to show.
@@ -346,7 +352,7 @@ export class McpRegistry {
     let message: string | null = null;
     let authEnvKey: string | null = null;
     if (opts.token && this.secrets) {
-      const key = authEnvKeyFor(id);
+      const key = this.credentialKey(ctx, id);
       const written = await this.secrets.set(ctx, key, opts.token);
       if (!written.ok) {
         await this.store.deleteServer(ctx, id);
@@ -394,7 +400,7 @@ export class McpRegistry {
     let authEnvKey = opts.authEnvKey ?? null;
     let credentialWarning: string | null = null;
     if (opts.token) {
-      authEnvKey = authEnvKey ?? authEnvKeyFor(id);
+      authEnvKey = authEnvKey ?? this.credentialKey(ctx, id);
       if (this.secrets) {
         const written = await this.secrets.set(ctx, authEnvKey, opts.token);
         if (!written.ok) {
@@ -557,7 +563,7 @@ export class McpRegistry {
     if (!server) {
       return { result: { ok: false, server: null, message: `no server called "${id}"` }, warning: null };
     }
-    const key = server.auth_env_key ?? authEnvKeyFor(id);
+    const key = server.auth_env_key ?? this.credentialKey(ctx, id);
 
     if (token === null) {
       await this.secrets?.delete(ctx, key);

@@ -11,6 +11,8 @@ import { IdentityRepository } from "./db/repositories/identity.ts";
 import { SecretRefRepository } from "./db/repositories/secretRefs.ts";
 import { KmsSecretStore } from "./secrets/kmsSecretStore.ts";
 import { LocalMasterKeyProvider } from "./secrets/masterKey.ts";
+import { DotEnvSecretStore } from "./secrets/dotEnvSecretStore.ts";
+import { fileCredentialWriter } from "./envWriter.ts";
 import { Dispatcher } from "./queue/dispatcher.ts";
 import { InMemoryQueueBackend } from "./queue/inMemoryBackend.ts";
 import { McpStore } from "./mcpStore.ts";
@@ -801,6 +803,32 @@ console.log("\nparallel adds cannot pass a plan's server limit");
   check(added.filter((a) => !a.ok).every((a) => a.atLimit === true), "the rest are told it was the limit");
   const unlimited = await registry.prepare(A, { endpoint: `${fixture.origin}/open`, label: "Open" });
   check(unlimited.ok, "no limit means no refusal");
+  await fixture.close();
+}
+
+console.log("\non the local store two workspaces on one server name keep their own token");
+{
+  const envPath = join(dir, "isolated.env");
+  const dotenv = new DotEnvSecretStore({ envPath, writer: fileCredentialWriter(envPath) });
+  const local = new McpRegistry(store, dotenv);
+  const A = await workspace("env-a");
+  const B = await workspace("env-b");
+  const fixture = await startScriptedServer();
+  await local.addServer(A, { endpoint: fixture.url, label: "Linear", token: "TOKEN-OF-WORKSPACE-A" });
+  await local.addServer(B, { endpoint: fixture.url, label: "Linear", token: "TOKEN-OF-WORKSPACE-B" });
+  const keyA = (await local.get(A, "linear"))?.auth_env_key;
+  const keyB = (await local.get(B, "linear"))?.auth_env_key;
+  check(Boolean(keyA && keyB) && keyA !== keyB, "they are stored under different names", `${keyA} ${keyB}`);
+  fixture.seen.length = 0;
+  await local.rediscover(A, "linear");
+  check(fixture.seen.every((r) => r.auth === "Bearer TOKEN-OF-WORKSPACE-A"), "workspace A presents its own token", String(fixture.seen[0]?.auth));
+  await local.setCredential(B, "linear", null);
+  fixture.seen.length = 0;
+  await local.rediscover(A, "linear");
+  check(fixture.seen.every((r) => r.auth === "Bearer TOKEN-OF-WORKSPACE-A"), "and B removing its token leaves A's alone", String(fixture.seen[0]?.auth));
+  check((await local.get(A, "linear"))?.configured === true, "so A still reads configured");
+  await local.removeServer(A, "linear");
+  await local.removeServer(B, "linear");
   await fixture.close();
 }
 
