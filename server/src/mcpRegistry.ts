@@ -123,6 +123,7 @@ export interface AddServerOptions {
   authEnvKey?: string | null;
   reservedIds?: ReadonlySet<string>;
   reserved?: boolean;
+  maxServers?: number | null;
   /**
    * A bearer token or API key the user just entered.
    *
@@ -308,7 +309,7 @@ export class McpRegistry {
   async prepare(
     ctx: TenantContext,
     opts: AddServerOptions,
-  ): Promise<{ ok: boolean; id: string; authEnvKey: string | null; message: string | null }> {
+  ): Promise<{ ok: boolean; id: string; authEnvKey: string | null; message: string | null; atLimit?: boolean }> {
     const endpoint = opts.endpoint.trim();
     if (!endpoint) return { ok: false, id: "", authEnvKey: null, message: "an endpoint is required" };
     if (endpointCarriesCredential(endpoint)) {
@@ -334,8 +335,11 @@ export class McpRegistry {
         id: candidate, label: opts.label?.trim() || candidate, endpoint, transport: "http", auth_env_key: null,
         server_name: null, server_version: null, protocol_version: null,
         status: "connecting", last_error: null, discovered_at: null,
-      });
+      }, opts.maxServers ?? null);
       if (reserved) id = candidate;
+      else if (opts.maxServers !== undefined && opts.maxServers !== null && (await this.store.listServers(ctx)).length >= opts.maxServers) {
+        return { ok: false, id: "", authEnvKey: null, atLimit: true, message: `this workspace is at its limit of ${opts.maxServers} MCP servers` };
+      }
     }
     if (!id) return { ok: false, id: "", authEnvKey: null, message: "that server could not be added: try again" };
 

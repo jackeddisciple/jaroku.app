@@ -6065,14 +6065,18 @@ async function handleMcpCommand(ctx: TenantContext, cmd: McpCommand): Promise<vo
         const grantedAnywhere = (await agentRepo.list(ctx, { includeArchived: true }))
           .flatMap((agent) => agent.mcp_tools)
           .map((ref) => ref.slice(0, ref.indexOf("/")));
+        const workspace = await identityRepo.workspaceById(ctx, ctx.workspaceId);
+        const planLimit = entitlementsForPlan(workspace?.plan ?? "free", (await billing.balance(ctx)).limit_overrides).maxMcpServers;
         const prepared = await mcpRegistry.prepare(ctx, {
           endpoint: cmd.endpoint,
           label: cmd.label,
           token: cmd.token,
           reservedIds: new Set(grantedAnywhere),
+          maxServers: planLimit === "unlimited" ? null : planLimit,
         });
         if (!prepared.ok) {
-          relay.broadcastMcp(ctx, { type: "error", message: prepared.message ?? "that server could not be added" });
+          const refused = prepared.atLimit ? (await entitlementRefusalFor(ctx, cmd.cmd, null, { audit: false }))?.message : null;
+          relay.broadcastMcp(ctx, { type: "error", message: refused ?? prepared.message ?? "that server could not be added" });
           broadcastMcpServers();
           return;
         }

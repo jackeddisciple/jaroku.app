@@ -789,6 +789,21 @@ console.log("\na slow job does not undo a credential added while it ran");
   await fixture.close();
 }
 
+console.log("\nparallel adds cannot pass a plan's server limit");
+{
+  const A = await workspace("quota");
+  const fixture = await startScriptedServer();
+  const added = await Promise.all(
+    Array.from({ length: 8 }, (_, index) => registry.prepare(A, { endpoint: `${fixture.origin}/s${index}`, label: `Server ${index}`, maxServers: 3 })),
+  );
+  check(added.filter((a) => a.ok).length === 3, "eight together on a limit of three leave three", String(added.filter((a) => a.ok).length));
+  check((await registry.list(A)).length === 3, "and three rows");
+  check(added.filter((a) => !a.ok).every((a) => a.atLimit === true), "the rest are told it was the limit");
+  const unlimited = await registry.prepare(A, { endpoint: `${fixture.origin}/open`, label: "Open" });
+  check(unlimited.ok, "no limit means no refusal");
+  await fixture.close();
+}
+
 check(errors.length === 0, "no handler threw", String(errors[0] ?? ""));
 
 await db.close?.();

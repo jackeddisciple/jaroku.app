@@ -310,12 +310,13 @@ export class McpStore {
     return row;
   }
 
-  async reserveServer(ctx: TenantContext, input: Omit<McpServer, "created_at">): Promise<boolean> {
+  async reserveServer(ctx: TenantContext, input: Omit<McpServer, "created_at">, maxServers: number | null = null): Promise<boolean> {
     const res = await this.q(ctx).run(
       `INSERT INTO mcp_servers
          (workspace_id, id, label, endpoint, transport, auth_env_key, server_name,
           server_version, protocol_version, status, last_error, discovered_at, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+        WHERE (SELECT count(*) FROM mcp_servers WHERE workspace_id = ?) < ?
        ON CONFLICT(workspace_id, id) DO NOTHING`,
       [
         ctx.workspaceId,
@@ -331,6 +332,8 @@ export class McpStore {
         input.last_error,
         input.discovered_at,
         nowIso(),
+        ctx.workspaceId,
+        maxServers ?? Number.MAX_SAFE_INTEGER,
       ],
     );
     return res.changes > 0;

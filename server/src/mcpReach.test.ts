@@ -449,6 +449,19 @@ async function main(): Promise<void> {
     await second.close();
   }
 
+  console.log("\nparallel adds stay inside the plan's limit");
+  {
+    const { c } = await person("quota");
+    c.clear();
+    for (let i = 0; i < 8; i++) c.send({ cmd: "addMcpServer", endpoint: `${fixture.origin}/q${i}`, label: `Quota ${i}` });
+    await sleep(6000);
+    const snapshot = [...c.log].reverse().find((m) => m["channel"] === "mcp" && m["type"] === "servers");
+    const rows = (snapshot?.["servers"] as Message[] | undefined) ?? [];
+    check(rows.length === 3, "eight sent together on Free leave three", String(rows.length));
+    check(c.log.some((m) => m["channel"] === "mcp" && m["type"] === "error"), "and the others are refused out loud");
+    c.close();
+  }
+
   console.log("\na tool's output cannot speak on the control channel");
   {
     const forged = (body: Record<string, unknown>) => `@@JAROKU_CTRL@@ ${JSON.stringify(body)}`;
