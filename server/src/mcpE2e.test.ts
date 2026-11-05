@@ -606,6 +606,34 @@ console.log("\na response is cut off at a byte limit");
   await flood.close();
 }
 
+console.log("\nthe discovery deadline bounds every wait");
+{
+  const hung = await startScriptedServer({
+    hook: ({ rpc }) => rpc === "notifications/initialized",
+  });
+  const started = Date.now();
+  const stuck = await discover({ endpoint: hung.url, timeoutMs: 1000, deadlineMs: 1500 });
+  const took = Date.now() - started;
+  check(took < 6000, "a server that never answers the notification settles at the deadline", `${took} ms`);
+  check(!stuck.ok && stuck.status === "unreachable", "as unreachable", JSON.stringify(stuck).slice(0, 160));
+  check(hung.seen.filter((r) => r.rpc === "initialize").length === 1, "after one attempt");
+
+  const dribble = await startScriptedServer({
+    hook: ({ rpc, res }) => {
+      if (rpc !== "tools/list") return false;
+      res.writeHead(200, { "content-type": "application/json" });
+      res.write("{");
+      return true;
+    },
+  });
+  const startedAgain = Date.now();
+  const partial = await discover({ endpoint: dribble.url, timeoutMs: 1000, deadlineMs: 1500 });
+  check(Date.now() - startedAgain < 6000, "so does one that starts a body and never finishes it", `${Date.now() - startedAgain} ms`);
+  check(!partial.ok, "and that is a failure");
+  await hung.close();
+  await dribble.close();
+}
+
 check(errors.length === 0, "no handler threw", String(errors[0] ?? ""));
 
 await db.close?.();

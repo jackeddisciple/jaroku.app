@@ -30,7 +30,7 @@
 import { UnauthorizedError } from "@modelcontextprotocol/sdk/client/auth.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import { guardedFetch } from "./mcpFetch.ts";
+import { guardedFetchWith } from "./mcpFetch.ts";
 import { boundedError, cleanText } from "./mcpText.ts";
 import { endpointCarriesCredential } from "./mcpUrl.ts";
 import type { McpServerStatus } from "./mcpStore.ts";
@@ -299,8 +299,10 @@ function readTool(raw: unknown): AdvertisedTool | null {
  */
 export async function discover(opts: DiscoverOptions): Promise<DiscoveryResult> {
   const timeout = opts.timeoutMs ?? REQUEST_TIMEOUT_MS;
-  const deadline = Date.now() + (opts.deadlineMs ?? DISCOVERY_DEADLINE_MS);
+  const deadlineMs = opts.deadlineMs ?? DISCOVERY_DEADLINE_MS;
+  const deadline = Date.now() + deadlineMs;
   const remaining = (): number => Math.max(0, deadline - Date.now());
+  const expiry = AbortSignal.timeout(deadlineMs);
 
   let url: URL;
   try {
@@ -334,7 +336,7 @@ export async function discover(opts: DiscoverOptions): Promise<DiscoveryResult> 
 
   const transport = new StreamableHTTPClientTransport(url, {
     requestInit: { headers },
-    fetch: guardedFetch,
+    fetch: guardedFetchWith({ deadline: expiry }),
   });
   const client = new Client(
     { name: "jaroku", version: "1.0.0" },
@@ -344,7 +346,12 @@ export async function discover(opts: DiscoverOptions): Promise<DiscoveryResult> 
     { capabilities: {} },
   );
 
-  try {
+  const expired = new Promise<never>((_, reject) => {
+    expiry.addEventListener("abort", () => reject(new Error("discovery timed out while listing tools")), { once: true });
+  });
+  expired.catch(() => {});
+
+  const handshake = async (): Promise<DiscoveryResult> => {
     await client.connect(transport, { timeout: Math.min(timeout, remaining() || 1) });
 
     const tools: AdvertisedTool[] = [];
@@ -402,10 +409,14 @@ export async function discover(opts: DiscoverOptions): Promise<DiscoveryResult> 
       truncated,
       rejected: rejected + (tools.length - unique.length),
     };
+  };
+
+  try {
+    return await Promise.race([handshake(), expired]);
   } catch (err) {
     return { ok: false, ...classifyDiscoveryFailure(err) };
   } finally {
     // Best effort: a server that refuses to close must not turn discovery into a hang.
-    await client.close().catch(() => {});
+    await Promise.race([client.close().catch(() => {}), new Promise((done) => setTimeout(done, 1000))]);
   }
 }

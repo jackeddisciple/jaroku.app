@@ -58,11 +58,17 @@ function toResponse(res: IncomingMessage): Response {
   return new Response(Readable.toWeb(byteLimited(res)) as ReadableStream, { status, headers });
 }
 
-export const guardedFetch: McpFetch = async (input, init = {}) => {
+export interface GuardOptions {
+  deadline?: AbortSignal;
+}
+
+export const guardedFetchWith = (guard: GuardOptions = {}): McpFetch => async (input, init = {}) => {
   let url = new URL(String(input));
   const origin = url.origin;
+  const signals = [init.signal, guard.deadline].filter((s): s is AbortSignal => Boolean(s));
+  const bounded: RequestInit = { ...init, signal: signals.length > 0 ? AbortSignal.any(signals) : undefined };
   for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
-    const res = await exchange(url, init);
+    const res = await exchange(url, bounded);
     const location = res.headers.location;
     if (!REDIRECT_STATUS.has(res.statusCode ?? 0) || !location) return toResponse(res);
     res.destroy();
@@ -79,3 +85,5 @@ export const guardedFetch: McpFetch = async (input, init = {}) => {
   }
   throw new Error(REDIRECT_REFUSAL);
 };
+
+export const guardedFetch = guardedFetchWith();
