@@ -462,6 +462,23 @@ async function main(): Promise<void> {
     c.close();
   }
 
+  console.log("\nsaving a credential is rate limited and does its handshake on the queue");
+  {
+    const counted = await startScriptedServer();
+    const { c } = await person("hammer");
+    await addServer(c, counted.url, "Hammered");
+    counted.seen.length = 0;
+    c.clear();
+    const started = Date.now();
+    for (let i = 0; i < 40; i++) c.send({ cmd: "setMcpServerAuth", serverId: "hammered", token: `value-${i}` });
+    await sleep(3000);
+    const posts = counted.seen.filter((r) => r.method === "POST").length;
+    check(posts < 60, "forty saves do not make forty handshakes", `${posts} POSTs in ${Date.now() - started} ms`);
+    check(c.log.some((m) => m["channel"] === "mcp" && m["type"] === "error" && /slow down|too many|try again|retry/i.test(String(m["message"]))), "and the excess is refused", JSON.stringify(c.log.filter((m) => m["type"] === "error").slice(0, 1)));
+    c.close();
+    await counted.close();
+  }
+
   console.log("\na tool's output cannot speak on the control channel");
   {
     const forged = (body: Record<string, unknown>) => `@@JAROKU_CTRL@@ ${JSON.stringify(body)}`;

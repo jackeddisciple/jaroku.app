@@ -5654,6 +5654,7 @@ const COMMAND_RATE_ACTIONS: Partial<Record<string, RateAction>> = {
   deploy: "deploy.start",
   addMcpServer: "mcp.discover",
   rediscoverMcpServer: "mcp.discover",
+  setMcpServerAuth: "mcp.discover",
   inviteMember: "member.invite",
   connectConnector: "connector.connect",
 };
@@ -6169,12 +6170,8 @@ async function handleMcpCommand(ctx: TenantContext, cmd: McpCommand): Promise<vo
         // A stored credential is only useful if it works, so prove it immediately rather
         // than leaving the server sitting in auth_required until someone clicks refresh.
         relay.broadcastMcp(ctx, { type: "discovering", serverId: cmd.serverId, endpoint: result.server?.endpoint ?? "" });
-        const retried = await mcpRegistry.rediscover(ctx, cmd.serverId);
-        broadcastMcpServers();
         if (warning) relay.broadcastMcp(ctx, { type: "notice", message: warning, serverId: cmd.serverId });
-        if (!retried.ok && retried.message) {
-          relay.broadcastMcp(ctx, { type: "error", message: retried.message, serverId: cmd.serverId });
-        }
+        await mcpDiscovery.enqueue(ctx, { kind: "rediscover", serverId: cmd.serverId });
         return;
       }
 
