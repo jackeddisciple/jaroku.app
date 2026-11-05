@@ -142,21 +142,22 @@ export function hashSchema(schema: unknown): string {
 /**
  * The impact that actually governs the gate.
  *
- * An override applies only while it still describes the tool it was made about. Once the
- * schema moves, the override is inert and the computed classification governs again — it is
- * not deleted, so the UI can say "your override no longer applies" rather than silently
- * losing it.
+ * A raise always holds: a server changing its schema must never lower protection a person asked
+ * for. A lowering applies only while it still describes the tool it was made about. Once the
+ * schema moves, it is inert and the computed classification governs again — it is not deleted, so
+ * the UI can say "your override no longer applies" rather than silently losing it.
  */
 export function effectiveImpact(tool: McpTool): McpImpact {
+  if (tool.impact_override === "high") return "high";
   if (tool.impact_override && tool.override_schema_hash === tool.schema_hash) {
     return tool.impact_override;
   }
   return tool.impact;
 }
 
-/** True when a stored override has been voided by a schema change — a UI-worthy state. */
+/** True when a stored lowering has been voided by a schema change — a UI-worthy state. */
 export function overrideVoided(tool: McpTool): boolean {
-  return tool.impact_override !== null && tool.override_schema_hash !== tool.schema_hash;
+  return tool.impact_override === "low" && tool.override_schema_hash !== tool.schema_hash;
 }
 
 /** `"linear/create_issue"` — how a scoped tool is named on the wire and in the manifest. */

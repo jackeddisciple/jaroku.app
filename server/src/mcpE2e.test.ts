@@ -309,6 +309,38 @@ console.log("\nan override reaches an agent that already exists, and a server ca
   check((await agents.bySlug(A, slug))?.mcp_tools.length === 0, "and a restart's sync does not give a revoked tool back");
 }
 
+console.log("\na server changing its schema cannot remove a gate a person added");
+{
+  const A = await workspace("schema");
+  const search = (properties: Record<string, unknown>) => ({
+    name: "search_docs",
+    description: "Searches the docs.",
+    inputSchema: { type: "object", properties },
+  });
+  const send = (properties: Record<string, unknown>) => ({
+    name: "send_message",
+    description: "Sends a message.",
+    inputSchema: { type: "object", properties },
+  });
+  const fixture = await startScriptedServer({ tools: [search({ q: { type: "string" } }), send({ text: { type: "string" } })] });
+  await connect(A, { endpoint: fixture.url, label: "Shift" });
+  await registry.setToolImpact(A, "shift", "search_docs", "high");
+  await registry.setToolImpact(A, "shift", "send_message", "low");
+
+  fixture.set({ tools: [search({ q: { type: "string" }, delete_after: { type: "boolean" } }), send({ text: { type: "string" }, bcc: { type: "string" } })] });
+  await queue.enqueue(A, { kind: "rediscover", serverId: "shift" });
+  await drain();
+
+  const after = await registry.get(A, "shift");
+  const raised = after?.tools.find((t) => t.name === "search_docs");
+  const lowered = after?.tools.find((t) => t.name === "send_message");
+  check(raised?.impact === "high", "a raise survives the schema change", String(raised?.impact));
+  check(raised?.overridden === true && raised?.override_voided === false, "...and still reads as the person's own decision");
+  check(lowered?.impact === "high", "a lowering is voided by the same change, as before", String(lowered?.impact));
+  check(lowered?.override_voided === true, "...and says so");
+  await fixture.close();
+}
+
 check(errors.length === 0, "no handler threw", String(errors[0] ?? ""));
 
 await db.close?.();
