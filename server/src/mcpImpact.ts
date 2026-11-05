@@ -57,11 +57,11 @@ export interface ImpactVerdict {
  */
 const HIGH_VERBS = new Set([
   "add", "apply", "approve", "archive", "assign", "cancel", "clear", "close", "commit",
-  "create", "delete", "deploy", "disable", "drop", "edit", "enable", "execute", "grant",
-  "insert", "install", "invite", "kill", "merge", "modify", "patch", "publish", "purge",
-  "refresh", "reject", "remove", "rename", "replace", "reset", "restart", "revoke", "send",
-  "submit", "sync", "terminate", "trigger", "truncate", "uninstall", "update", "upload",
-  "upsert", "write",
+  "create", "delete", "deploy", "destroy", "disable", "drop", "edit", "enable", "erase", "exec",
+  "execute", "grant", "insert", "install", "invite", "kill", "merge", "modify", "nuke",
+  "overwrite", "patch", "publish", "purge", "refresh", "reject", "remove", "rename", "replace",
+  "reset", "restart", "revoke", "send", "shutdown", "submit", "sync", "terminate", "trigger",
+  "truncate", "uninstall", "update", "upload", "upsert", "wipe", "write",
 ]);
 
 /**
@@ -84,8 +84,14 @@ const LOW_VERBS = new Set([
   "view",
 ]);
 
+const LOW_LEADING_ONLY = new Set(["check", "diff", "download", "exists", "export", "has", "is", "preview", "query", "status"]);
+
+const CONJUNCTIONS = new Set(["and", "then", "or", "plus"]);
+
 /** How many leading words of a description count as its verb phrase. */
 const DESCRIPTION_LEAD_WORDS = 8;
+const READ_NAME_LEAD_WORDS = 3;
+const NEGATIONS = new Set(["no", "not", "never", "nothing", "none", "without"]);
 
 /**
  * Candidate forms of a prose word: "creates" -> ["creates", "create"], "purges" ->
@@ -140,14 +146,19 @@ function scanName(tokens: string[]): { impact: McpImpact; word: string; leading:
   }
   // A high verb anywhere outranks a low one, wherever either sits. `get_or_create_issue`
   // is a write with a read's leading verb, and the write is the part that matters.
-  for (const t of tokens.slice(1)) {
+  for (const [index, t] of tokens.entries()) {
+    if (index === 0) continue;
     if (HIGH_VERBS.has(t)) return { impact: "high", word: t, leading: false };
+    if (HIGH_LEADING_ONLY.has(t) && CONJUNCTIONS.has(tokens[index - 1] ?? "")) {
+      return { impact: "high", word: t, leading: false };
+    }
   }
   if (first !== undefined && LOW_VERBS.has(first)) {
     return { impact: "low", word: first, leading: true };
   }
-  for (const t of tokens.slice(1)) {
-    if (LOW_VERBS.has(t)) return { impact: "low", word: t, leading: false };
+  const second = tokens[1];
+  if (second !== undefined && LOW_VERBS.has(second) && !LOW_LEADING_ONLY.has(second)) {
+    return { impact: "low", word: second, leading: false };
   }
   return null;
 }
@@ -182,6 +193,15 @@ export function classify(input: ClassifyInput): ImpactVerdict {
     const where = byName.leading ? "its name begins with" : "its name contains";
     if (byName.impact === "high") {
       return { impact: "high", reason: `${where} "${byName.word}"${caveat}` };
+    }
+    const opening = tokenize(description).slice(0, READ_NAME_LEAD_WORDS);
+    const negated = opening.some((word) => NEGATIONS.has(word));
+    const written = negated ? undefined : opening.flatMap(stems).find((form) => HIGH_VERBS.has(form));
+    if (written) {
+      return {
+        impact: "high",
+        reason: `its description begins "${opening.join(" ")}…", and "${written}" writes, whatever its name says${caveat}`,
+      };
     }
     return { impact: "low", reason: `${where} "${byName.word}"` };
   }

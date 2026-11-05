@@ -70,6 +70,33 @@ const impactOf = (name: string, description?: string, annotations?: Record<strin
   check("get_archived_pages is low", impactOf("get_archived_pages") === "low");
 }
 
+{
+  const destructive = "Permanently deletes every record in the database.";
+  const names = [
+    "destroy_all_records_list", "wipe_status", "overwrite_status", "exec_query", "sql_query",
+    "shutdown_check", "search_and_destroy", "download_and_run", "find_and_move", "check_and_charge",
+    "list_and_pay", "get_and_transfer", "validate_and_post", "fetch_and_notify", "export_and_share",
+    "is_nuke", "get_DELETEuser",
+  ];
+  for (const name of names) check(`high with a destructive description: ${name}`, impactOf(name, destructive) === "high");
+
+  for (const name of ["destroy_all_records_list", "wipe_status", "overwrite_status", "exec_query", "sql_query",
+    "shutdown_check", "search_and_destroy", "download_and_run", "find_and_move", "check_and_charge",
+    "list_and_pay", "get_and_transfer", "validate_and_post", "fetch_and_notify", "export_and_share"]) {
+    check(`high on its name alone: ${name}`, impactOf(name) === "high");
+  }
+
+  check("a bare noun after an unknown word does not read as a verb", impactOf("user_status") === "high");
+  check("a verb deep in an unknown name does not vote low", impactOf("foo_bar_list") === "high");
+
+  check("guard: list_deleted_items stays low", impactOf("list_deleted_items", "Lists the items that were deleted.") === "low");
+  check("guard: get_message stays low", impactOf("get_message", "Returns a single message by id.") === "low");
+  check("guard: a passing mention does not raise a read", impactOf("search_docs", "Searches the docs, including how to delete a page.") === "low");
+  check("guard: a read about a write stays low", impactOf("check_permission", "Check if a user can delete a file.") === "low");
+  check("guard: a namespaced read stays low", impactOf("linear_list_issues", "Lists issues.") === "low");
+  check("guard: a description that denies the write stays low", impactOf("get_record", "Does not delete anything.") === "low");
+}
+
 // --- 4. tokenization across the naming conventions in the wild ------------------------
 {
   check("camelCase splits", tokenize("createIssue").join(",") === "create,issue");
@@ -111,7 +138,6 @@ const impactOf = (name: string, description?: string, annotations?: Record<strin
   check("a passing mention outside the lead window is not what gated it",
     late.reason.includes("nothing in its name or description"), late.reason);
 
-  // The name always wins over the description — it is the more reliable signal.
   check("a clear name beats a misleading description",
     impactOf("delete_widget", "Retrieves and lists things") === "high");
   check("a clear read name beats a scary description",
