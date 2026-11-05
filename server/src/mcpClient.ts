@@ -373,7 +373,8 @@ export async function discover(opts: DiscoverOptions): Promise<DiscoveryResult> 
         { timeout: Math.min(timeout, remaining() || 1) },
       )) as ToolsListPage;
 
-      for (const raw of Array.isArray(page.tools) ? page.tools : []) {
+      if (!Array.isArray(page.tools)) throw new Error("this server's tool list is malformed: it is not a list");
+      for (const raw of page.tools) {
         const tool = readTool(raw);
         if (!tool) {
           rejected++;

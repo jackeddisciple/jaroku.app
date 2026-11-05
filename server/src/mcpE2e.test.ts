@@ -634,6 +634,55 @@ console.log("\nthe discovery deadline bounds every wait");
   await dribble.close();
 }
 
+console.log("\na bad list does not wipe the tools or a person's decisions");
+{
+  const A = await workspace("wipe");
+  const search = { name: "search_docs", description: "Searches.", inputSchema: { type: "object", properties: {} } };
+  const send = { name: "send_message", description: "Sends.", inputSchema: { type: "object", properties: {} } };
+  const fixture = await startScriptedServer({ tools: [search, send] });
+  await connect(A, { endpoint: fixture.url, label: "Wobbly" });
+  await registry.setToolImpact(A, "wobbly", "search_docs", "high");
+
+  const recheck = async () => {
+    await queue.enqueue(A, { kind: "rediscover", serverId: "wobbly" });
+    await drain();
+    return registry.get(A, "wobbly");
+  };
+
+  fixture.set({ tools: "not-an-array" });
+  const malformed = await recheck();
+  check(malformed?.status === "error", "a list that is not a list is an error", String(malformed?.status));
+  check(malformed?.tools.length === 2, "and the working list survives it", String(malformed?.tools.length));
+
+  fixture.set({ tools: [] });
+  const empty = await recheck();
+  check(empty?.tools.length === 2, "a sudden empty list does not wipe the tools", String(empty?.tools.length));
+  check(empty?.status !== "connected", "and it is not silent", String(empty?.status));
+  check(/no usable tools/.test(empty?.last_error ?? ""), "it says what happened", empty?.last_error ?? "");
+
+  fixture.set({ tools: [{ name: "has spaces", inputSchema: {} }] });
+  const illegal = await recheck();
+  check(illegal?.tools.length === 2, "nor does a list of only unusable names", String(illegal?.tools.length));
+
+  fixture.set({ tools: [search, send] });
+  const back = await recheck();
+  check(back?.status === "connected", "when the server recovers it reads connected", String(back?.status));
+
+  fixture.set({ tools: [send] });
+  const dropped = await recheck();
+  check(dropped?.tools.map((t) => t.name).join() === "send_message", "a real change to the list still applies");
+  fixture.set({ tools: [search, send] });
+  const restored = await recheck();
+  const tool = restored?.tools.find((t) => t.name === "search_docs");
+  check(tool?.impact === "high" && tool?.overridden === true, "and a tool that comes back keeps the person's raise", JSON.stringify({ impact: tool?.impact, overridden: tool?.overridden }));
+
+  const fresh = await startScriptedServer({ tools: "nope" });
+  await connect(A, { endpoint: fresh.url, label: "Malformed" });
+  check((await registry.get(A, "malformed"))?.status === "error", "a malformed list on first connect is an error too");
+  await fixture.close();
+  await fresh.close();
+}
+
 check(errors.length === 0, "no handler threw", String(errors[0] ?? ""));
 
 await db.close?.();

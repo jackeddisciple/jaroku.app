@@ -471,6 +471,14 @@ export class McpRegistry {
       return { ok: false, server: await this.get(ctx, id), message: result.error };
     }
 
+    if (result.tools.length === 0 && (await this.store.listTools(ctx, id)).length > 0) {
+      const message =
+        "this server now advertises no usable tools, so the last list was kept. Re-check once it is " +
+        "healthy, or disconnect it if that is what you want.";
+      await this.store.setServerStatus(ctx, id, "error", message);
+      return { ok: false, server: await this.get(ctx, id), message };
+    }
+
     await this.store.upsertServer(ctx, {
       ...server,
       server_name: result.server_name,

@@ -105,6 +105,13 @@ export interface McpTool {
   discovered_at: string;
 }
 
+interface RetiredOverride {
+  impact_override: McpImpact | null;
+  override_schema_hash: string | null;
+}
+
+const MAX_RETIRED_OVERRIDES = 500;
+
 /** A discovered tool before it has a row — what mcpClient hands the registration pipeline. */
 export interface DiscoveredTool {
   name: string;
@@ -394,11 +401,12 @@ export class McpStore {
     discovered: DiscoveredTool[],
   ): Promise<McpTool[]> {
     const previous = new Map((await this.listTools(ctx, serverId)).map((t) => [t.name, t]));
+    const retired = await this.retiredOverrides(ctx, serverId);
     const at = nowIso();
     const rows: McpTool[] = discovered.map((d) => {
-      const prior = previous.get(d.name);
+      const prior = previous.get(d.name) ?? retired[d.name];
       return {
-        id: prior?.id ?? randomUUID(),
+        id: previous.get(d.name)?.id ?? randomUUID(),
         server_id: serverId,
         name: d.name,
         description: d.description,
@@ -412,6 +420,16 @@ export class McpStore {
         discovered_at: at,
       };
     });
+
+    const kept = new Set(discovered.map((d) => d.name));
+    const nextRetired: Record<string, RetiredOverride> = Object.fromEntries(
+      Object.entries(retired).filter(([name]) => !kept.has(name)),
+    );
+    for (const tool of previous.values()) {
+      if (tool.impact_override && !kept.has(tool.name) && Object.keys(nextRetired).length < MAX_RETIRED_OVERRIDES) {
+        nextRetired[tool.name] = { impact_override: tool.impact_override, override_schema_hash: tool.override_schema_hash };
+      }
+    }
 
     await this.db.scoped(ctx.workspaceId, async (tx: Queryable) => {
       await tx.run(`DELETE FROM mcp_tools WHERE server_id = ? AND workspace_id = ?`, [
@@ -442,13 +460,26 @@ export class McpStore {
           ],
         );
       }
-      await tx.run(`UPDATE mcp_servers SET discovered_at = ? WHERE id = ? AND workspace_id = ?`, [
+      await tx.run(`UPDATE mcp_servers SET discovered_at = ?, retired_overrides = ? WHERE id = ? AND workspace_id = ?`, [
         at,
+        JSON.stringify(nextRetired),
         serverId,
         ctx.workspaceId,
       ]);
     });
     return rows;
+  }
+
+  private async retiredOverrides(ctx: TenantContext, serverId: string): Promise<Record<string, RetiredOverride>> {
+    const row = await this.q(ctx).get<{ retired_overrides: string | null }>(
+      `SELECT retired_overrides FROM mcp_servers WHERE id = ? AND workspace_id = ?`,
+      [serverId, ctx.workspaceId],
+    );
+    try {
+      return row?.retired_overrides ? (JSON.parse(row.retired_overrides) as Record<string, RetiredOverride>) : {};
+    } catch {
+      return {};
+    }
   }
 
   /**
