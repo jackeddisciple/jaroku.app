@@ -542,6 +542,39 @@ console.log("\none unusable tool does not take the others with it");
   check(errors.length === 0, "and no handler threw", String(errors[0] ?? ""));
 }
 
+console.log("\nwhat a server advertises is bounded in total, not only per field");
+{
+  const A = await workspace("bounds");
+  const fixture = await startScriptedServer({
+    tools: [{
+      name: "read_page",
+      description: "Reads a page.",
+      inputSchema: { type: "object", properties: {} },
+      annotations: { title: "Read", destructiveHint: true, padding: "z".repeat(5_000_000), nested: { a: 1 } },
+    }],
+  });
+  await connect(A, { endpoint: fixture.url, label: "Annotated" });
+  const row = await registry.get(A, "annotated");
+  check(JSON.stringify(row?.tools[0]?.annotations ?? {}).length < 1000, "5 MB of annotations does not get stored", String(JSON.stringify(row?.tools[0]?.annotations ?? {}).length));
+  check(row?.tools[0]?.annotations?.["destructiveHint"] === true, "the hints the classifier reads are kept");
+  check(row?.tools[0]?.impact === "high", "and still raise the tool");
+  await fixture.close();
+
+  const wide = Array.from({ length: 400 }, (_, i) => ({
+    name: `read_${i}`,
+    description: "Reads.",
+    inputSchema: { type: "object", properties: { pad: { type: "string", description: "p".repeat(60_000) } } },
+  }));
+  const flood = await startScriptedServer({ tools: wide });
+  await connect(A, { endpoint: flood.url, label: "Flood" });
+  const flooded = await registry.get(A, "flood");
+  const size = JSON.stringify(flooded).length;
+  check(size < 3_000_000, "400 tools of 60 KB do not make a 24 MB snapshot", String(size));
+  check((flooded?.tools.length ?? 0) > 0, "the ones that fit are kept");
+  check(results.some((r) => /truncated/.test(r.result.message ?? "")), "and the person is told the list was cut");
+  await flood.close();
+}
+
 check(errors.length === 0, "no handler threw", String(errors[0] ?? ""));
 
 await db.close?.();

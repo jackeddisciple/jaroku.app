@@ -94,6 +94,19 @@ const MAX_SERVER_FIELD_CHARS = 200;
 const MAX_SCHEMA_BYTES = 64 * 1024;
 const MAX_SCHEMA_DEPTH = 64;
 
+const MAX_TOTAL_SCHEMA_BYTES = 2 * 1024 * 1024;
+
+function readAnnotations(raw: unknown): Record<string, unknown> | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const source = raw as Record<string, unknown>;
+  const kept: Record<string, unknown> = {};
+  if (typeof source["title"] === "string") kept["title"] = clean(source["title"], MAX_SERVER_FIELD_CHARS);
+  for (const hint of ["readOnlyHint", "destructiveHint", "idempotentHint", "openWorldHint"]) {
+    if (typeof source[hint] === "boolean") kept[hint] = source[hint];
+  }
+  return Object.keys(kept).length > 0 ? kept : null;
+}
+
 function nestedDeeperThan(value: unknown, limit: number): boolean {
   const stack: { node: unknown; depth: number }[] = [{ node: value, depth: 0 }];
   while (stack.length > 0) {
@@ -126,7 +139,7 @@ export interface AdvertisedTool {
   description: string | null;
   /** The declared JSON Schema for the tool's arguments, exactly as advertised. */
   input_schema: Record<string, unknown>;
-  /** The server's ToolAnnotations. Kept verbatim; may only RAISE impact (mcpImpact.ts). */
+  /** The server's ToolAnnotations. May only RAISE impact (mcpImpact.ts). */
   annotations: Record<string, unknown> | null;
 }
 
@@ -260,7 +273,7 @@ function readTool(raw: unknown): AdvertisedTool | null {
   // Measured before anything is kept: an oversized schema is refused whole, because storing a
   // truncated one would mean checking arguments against a schema the server never declared.
   if (usable && nestedDeeperThan(usable, MAX_SCHEMA_DEPTH)) return null;
-  if (usable && JSON.stringify(usable).length > MAX_SCHEMA_BYTES) return null;
+  if (usable && Buffer.byteLength(JSON.stringify(usable), "utf8") > MAX_SCHEMA_BYTES) return null;
   return {
     name,
     description: typeof t["description"] === "string" ? cleanDescription(t["description"]) : null,
@@ -273,10 +286,7 @@ function readTool(raw: unknown): AdvertisedTool | null {
     input_schema: usable && Object.keys(usable).length > 0
       ? usable
       : { type: "object", properties: {} },
-    annotations:
-      t["annotations"] && typeof t["annotations"] === "object" && !Array.isArray(t["annotations"])
-        ? (t["annotations"] as Record<string, unknown>)
-        : null,
+    annotations: readAnnotations(t["annotations"]),
   };
 }
 
@@ -342,6 +352,7 @@ export async function discover(opts: DiscoverOptions): Promise<DiscoveryResult> 
     let pages = 0;
     let truncated = false;
     let rejected = 0;
+    let schemaBytes = 0;
 
     do {
       if (remaining() <= 0) throw new Error("discovery timed out while listing tools");
@@ -361,7 +372,8 @@ export async function discover(opts: DiscoverOptions): Promise<DiscoveryResult> 
           rejected++;
           continue;
         }
-        if (tools.length >= MAX_TOOLS) {
+        schemaBytes += Buffer.byteLength(JSON.stringify(tool.input_schema), "utf8");
+        if (tools.length >= MAX_TOOLS || schemaBytes > MAX_TOTAL_SCHEMA_BYTES) {
           truncated = true;
           break;
         }
