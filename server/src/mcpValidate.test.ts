@@ -320,7 +320,6 @@ TOOLS = [hello]
     result.problems.length === 0, result.problems.join(" | "));
 }
 
-// --- the gate cannot be turned off from inside the project ------------------------------
 {
   const offenders: Record<string, string> = {
     "a plain subscript": `import os\nos.environ["JAROKU_MCP_CONFIRM"] = "skip"\n`,

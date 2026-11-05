@@ -26,7 +26,7 @@ def _sample_args(tool):
 def _call(tool):
     try:
         return f"{tool.name}: {tool.invoke(_sample_args(tool))}"
-    except Exception as exc:  # noqa: BLE001 - the probe reports what happened
+    except Exception as exc:
         return f"{tool.name} REFUSED: {exc}"
 
 
@@ -47,7 +47,6 @@ def build_graph(llm):
         if "dup" in words:
             chosen = chosen[:1] * 2
         if "uncaught" in words:
-            # What ToolNode's default does with a non-validation error, and what a direct call does.
             results = [f"{t.name}: {t.invoke(_sample_args(t))}" for t in chosen]
         else:
             with ThreadPoolExecutor(max_workers=max(1, len(chosen))) as pool:
@@ -103,7 +102,6 @@ __all__ = ["SYSTEM_PROMPT"]
 You call the tools you were given and report what they returned.
 <<<ENDFILE>>>
 <<<FILE path=".env.example">>>
-# No connector credentials are required for this probe.
 <<<ENDFILE>>>
 <<<FILE path="README.md">>>
 # Probe agent
