@@ -350,7 +350,6 @@ export class Editor extends EventEmitter<EditorEvents> {
 
       const all = loadConnectors(runtimeDir);
       const installed = all.filter((c) => agent.connectors.includes(c.id));
-      const installedFiles = installed.map((c) => `tools/${c.file}`);
       // The emit-block covers every catalog connector filename, installed or not, so the
       // model can never introduce a file masquerading as a reviewed template.
       // readOnlyPaths also covers mcp_tools.json, tools/mcp_bridge.py and the four deploy
@@ -496,7 +495,7 @@ export class Editor extends EventEmitter<EditorEvents> {
         runtimeDir,
         // The bridge is reviewed code copied in verbatim, so it is excluded from the
         // model-output lints for the same reason a connector template is.
-        connectorFiles: [...installedFiles, ...(currentFiles.has(BRIDGE_FILE) ? [BRIDGE_FILE] : [])],
+        connectorFiles: [...blocked],
         connectorToolNames: installed.flatMap((c) => c.tools.map((t) => t.name)),
         // The agent's existing grant, read from its own manifest rather than from the
         // registry: an edit is validated against what this project actually has.
