@@ -134,7 +134,7 @@ const leg = (over: Partial<ProviderMetrics>): ProviderMetrics => ({
       check("forkAgent exists to be read", forkFn.length > 0);
       check(
         "a fork publishes the source's FILES under the fork's own id",
-        /projects\.publish\(ctx, id, sourceFiles/.test(forkFn),
+        /projects\.publish\(ctx, id, withoutMcpGrant\(sourceFiles\)/.test(forkFn),
       );
       check(
         "...rather than copying the manifest onto it with addVersion, which writes no objects",
