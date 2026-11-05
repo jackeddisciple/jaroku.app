@@ -9,6 +9,7 @@
 // see sandbox/flySandbox.ts.
 
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { randomBytes } from "node:crypto";
 import { EventEmitter } from "node:events";
 import { RAILWAY_ENV_KEY } from "./railwayApi.ts";
 import { BackpressureTracker, describeViolation, type BackpressureViolation } from "./sandbox/backpressure.ts";
@@ -52,11 +53,24 @@ export interface AgentRunOptions {
  *  ignores fields (limits, workspaceId) it has no use enforcing on a developer's own machine. */
 export type LocalRunOptions = AgentRunOptions | SandboxSpec;
 
+export function parseControlLine(line: string, token: string): Record<string, unknown> | null {
+  const prefix = `${CTRL_SENTINEL}${token} `;
+  if (!token || !line.startsWith(prefix)) return null;
+  try {
+    const parsed: unknown = JSON.parse(line.slice(prefix.length));
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : null;
+  } catch {
+    return null;
+  }
+}
+
 export class LocalSubprocessSandbox extends EventEmitter<SandboxEvents> implements RunSandbox {
   private child: ChildProcessWithoutNullStreams | null = null;
   private stdoutBuf = "";
   private stderrBuf = "";
   private backpressure = new BackpressureTracker();
+
+  private ctrlToken = "";
 
   get running(): boolean {
     return this.child !== null && this.child.exitCode === null && !this.child.killed;
@@ -89,6 +103,9 @@ export class LocalSubprocessSandbox extends EventEmitter<SandboxEvents> implemen
     for (const name of Object.keys(env)) {
       if (/^JAROKU_DEPLOY_[A-Z0-9_]+_SERVE_TOKEN$/.test(name)) delete env[name];
     }
+
+    this.ctrlToken = randomBytes(16).toString("hex");
+    env.JAROKU_CTRL_TOKEN = this.ctrlToken;
 
     const child = spawn("uv", args, { cwd: opts.runtimeDir, env });
     this.child = child;
@@ -165,13 +182,10 @@ export class LocalSubprocessSandbox extends EventEmitter<SandboxEvents> implemen
       if (!line.trim()) continue;
       // Split the debug-depth control plane out of ordinary logs. A control line is JSON after
       // the sentinel; a malformed one falls through to stderr rather than being lost.
-      if (line.startsWith(CTRL_SENTINEL)) {
-        try {
-          this.emit("control", JSON.parse(line.slice(CTRL_SENTINEL.length)) as Record<string, unknown>);
-          continue;
-        } catch {
-          /* fall through to stderr */
-        }
+      const ctrl = parseControlLine(line, this.ctrlToken);
+      if (ctrl) {
+        this.emit("control", ctrl);
+        continue;
       }
       this.emit("stderr", line);
     }

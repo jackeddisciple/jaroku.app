@@ -237,7 +237,8 @@ def _host_control_dir() -> Path | None:
 
 def _emit_ctrl(obj: dict[str, Any]) -> None:
     """One control line on stderr. Never stdout — that carries the trace and nothing else."""
-    print(CTRL_SENTINEL + json.dumps(obj), file=sys.stderr, flush=True)
+    token = os.environ.get("JAROKU_CTRL_TOKEN", "")
+    print(f"{CTRL_SENTINEL}{token} {json.dumps(obj)}", file=sys.stderr, flush=True)
 
 
 def _http_control_plane() -> tuple[str, str, str] | None:

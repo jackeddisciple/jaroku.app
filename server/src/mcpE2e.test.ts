@@ -18,6 +18,7 @@ import { McpRegistry, type RegistrationResult } from "./mcpRegistry.ts";
 import { MCP_DISCOVER_CLASS, McpDiscoveryQueue, type McpDiscoveryPayload } from "./mcpDiscovery.ts";
 import { authEnvKeyFor } from "./envWriter.ts";
 import { isConfirmNonce, runScope } from "./mcpScope.ts";
+import { parseControlLine } from "./processManager.ts";
 import { buildManifest, grantWithout, withGrantOnly, withoutMcpGrant } from "./mcpManifest.ts";
 import { AgentRepository } from "./db/repositories/agents.ts";
 import { startScriptedServer } from "../fixtures/mcp/scriptedServer.ts";
@@ -236,6 +237,17 @@ console.log("\na nonce can never name a path");
   const routes = readFileSync(join(fileURLToPath(new URL(".", import.meta.url)), "sandbox", "controlPlaneRoutes.ts"), "utf8");
   check(/const approvalFile = [\s\S]{0,120}isConfirmNonce\(nonce\)/.test(index), "the path is only ever built from a checked nonce");
   check(/if \(!isConfirmNonce\(body\.nonce\)\) throw badRequest/.test(routes), "and the hosted route refuses one before it is registered");
+}
+
+console.log("\nonly the bridge and the runner can write a control line");
+{
+  const ok = '{"ctrl":"paused","seq_high":1}';
+  check(parseControlLine(`@@JAROKU_CTRL@@ sekrit ${ok}`, "sekrit")?.["ctrl"] === "paused", "a line carrying this run's token is a control line");
+  check(parseControlLine(`@@JAROKU_CTRL@@ ${ok}`, "sekrit") === null, "the old shape is ordinary stderr now");
+  check(parseControlLine(`@@JAROKU_CTRL@@ wrong ${ok}`, "sekrit") === null, "a wrong token is ordinary stderr");
+  check(parseControlLine(`@@JAROKU_CTRL@@  ${ok}`, "") === null, "no token means no control lines at all");
+  check(parseControlLine("@@JAROKU_CTRL@@ sekrit not json", "sekrit") === null, "a malformed line falls through to stderr");
+  check(parseControlLine("@@JAROKU_CTRL@@ sekrit [1]", "sekrit") === null, "and so does one that is not an object");
 }
 
 console.log("\nrevoking takes the named refs out of the grant and nothing else");

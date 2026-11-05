@@ -164,7 +164,8 @@ def emit_ctrl(obj: dict) -> None:
     Pushing it over HTTP too is additive: see controlplane_http's module docstring on why a
     hosted run pushes rather than being read from.
     """
-    print(CTRL_SENTINEL + json.dumps(obj), file=sys.stderr, flush=True)
+    token = os.environ.get("JAROKU_CTRL_TOKEN", "")
+    print(f"{CTRL_SENTINEL}{token} {json.dumps(obj)}", file=sys.stderr, flush=True)
     controlplane_http.push_control_line(obj)
 
 

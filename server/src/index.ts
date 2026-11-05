@@ -159,7 +159,7 @@ import { PrCommentsRepository } from "./db/repositories/prComments.ts";
 import { diffShapes, readShape } from "./semanticDiff.ts";
 import { inSubdirectory, repoPrefix } from "./githubPush.ts";
 import { MANIFEST_FILE, buildManifest, grantWithout, manifestRefs, withGrantOnly, withoutMcpCredentials, withoutMcpGrant, type Manifest } from "./mcpManifest.ts";
-import { SCOPE_ENV, isConfirmNonce, runScope } from "./mcpScope.ts";
+import { SCOPE_ENV, isConfirmNonce, runScope, type RunScope } from "./mcpScope.ts";
 import type { McpImpact } from "./mcpStore.ts";
 import { fetchGoogleAvatar, putAvatar } from "./storage/avatars.ts";
 import { agentPrefix } from "./storage/keys.ts";
@@ -2550,7 +2550,7 @@ for (const stale of (
 
 
 const deployDeps: DeployManagerDeps = {
-  mcpScope: async (ctx, agentId, projectDir) => (await mcpScopeEnv(ctx, agentId, projectDir)) as Record<string, string>,
+  mcpScope: async (ctx, agentId, projectDir) => (await mcpScopeEnv(ctx, null, agentId, projectDir)) as Record<string, string>,
   runtimeDir: RUNTIME_DIR,
   store: deployStore,
   agents: agentRepo,
@@ -4491,8 +4491,23 @@ async function permissionModeForRun(ctx: TenantContext, runId: string, conversat
  * was there, and the run's own error about a missing `agent.py` is a better answer than a dispatch
  * refused for a reason nobody can see. The failure is logged with the version in it.
  */
+const runMcpTools = new Map<string, Map<string, { impact: "high" | "low"; reason: string | null }>>();
+
+function noteRunTools(runId: string | null, manifest: Manifest, scope: RunScope): void {
+  if (!runId) return;
+  const tools = new Map<string, { impact: "high" | "low"; reason: string | null }>();
+  for (const server of manifest.servers) {
+    for (const tool of server.tools) {
+      const scoped = scope.servers[server.id]?.tools[tool.name];
+      if (scoped) tools.set(`${server.id}/${tool.name}`, { impact: scoped.impact, reason: scoped.reason ?? tool.impact_reason });
+    }
+  }
+  runMcpTools.set(runId, tools);
+}
+
 async function mcpScopeEnv(
   ctx: TenantContext,
+  runId: string | null,
   slug: string | null | undefined,
   projectDir: string | null | undefined,
 ): Promise<NodeJS.ProcessEnv> {
@@ -4502,7 +4517,9 @@ async function mcpScopeEnv(
   try {
     const manifest = JSON.parse(readFileSync(path, "utf8")) as Manifest;
     const granted = slug ? ((await agentRepo.bySlug(ctx, slug))?.mcp_tools ?? []) : [];
-    return { [SCOPE_ENV]: JSON.stringify(runScope(manifest, granted, await mcpRegistry.list(ctx))) };
+    const scope = runScope(manifest, granted, await mcpRegistry.list(ctx));
+    noteRunTools(runId, manifest, scope);
+    return { [SCOPE_ENV]: JSON.stringify(scope) };
   } catch (err) {
     console.warn(`[mcp] no tool scope for ${projectDir}, so the run gets no MCP tools:`, (err as Error)?.message ?? err);
     return { [SCOPE_ENV]: JSON.stringify({ servers: {} }) };
@@ -5807,7 +5824,7 @@ evalRunner = new EvalRunner({
     const credentials = await continuationCredentials(ctx, runId, job.provider, job.agentId);
     if (credentials.refusal) return { refusal: credentials.refusal };
     const projectDir = await ensureProjectDir(ctx, job.agentId);
-    const mcpScope = await mcpScopeEnv(ctx, job.agentId, projectDir);
+    const mcpScope = await mcpScopeEnv(ctx, runId, job.agentId, projectDir);
     await noteRunAudience(ctx, runId, job.agentId);
     runWorkspaces.set(runId, ctx);
     liveRuns.set(runId, { workspaceId: ctx.workspaceId, agentId: job.agentId, kind: "eval", ended: false });
@@ -12236,6 +12253,12 @@ onBothPools("control", ({ runId: slotRunId, ctrl }) => {
         writeApproval(runId, nonce, "deny");
         return;
       }
+      const granted = runMcpTools.get(runId)?.get(`${server}/${tool}`);
+      if (!granted) {
+        console.warn(`[mcp] ${runId} asked about ${server}/${tool}, which it was never granted; denied`);
+        writeApproval(runId, nonce, "deny");
+        return;
+      }
 
       // THE PERMISSION SHIELD, ON THE SERVER, WITH THE CLIENT BYPASSED — §12.7's own wording.
       //
@@ -12249,7 +12272,7 @@ onBothPools("control", ({ runId: slotRunId, ctrl }) => {
       // could classify is NEVER auto-approved, in any mode: `mustConfirm` checks that before it
       // reads the mode at all, so a mode added later cannot opt out by forgetting a branch.
       ingest(async () => {
-        const impact = ctrl.impact === "low" || ctrl.impact === "high" ? ctrl.impact : null;
+        const impact = granted.impact;
         const decision = mustConfirm(
           await permissionModeForRun(runCtx, runId),
           classOf(impact),
@@ -12265,7 +12288,7 @@ onBothPools("control", ({ runId: slotRunId, ctrl }) => {
         relay.broadcastMcp(runCtx, { type: "confirmResolved", runId, nonce, verdict: "run" });
       });
 
-      const impactReason = reasonOf(ctrl.impact_reason);
+      const impactReason = granted.impact === "high" ? granted.reason : "Strict mode confirms every tool call";
       const args = String(ctrl.args ?? "{}");
       const timeoutS = typeof ctrl.timeout_s === "number" ? ctrl.timeout_s : 120;
       const local: PendingConfirm = {
@@ -12399,6 +12422,7 @@ onBothPools("exit", ({ runId, code, signal, timedOut, elapsedMs }) => {
     runPermissionModes.delete(runId);
     runMcpServers.delete(runId);
     runBarred.delete(runId);
+    runMcpTools.delete(runId);
     runPayers.delete(runId);
     // Same condition, same reason: a resumed segment's steps still need to know what the run
     // is executing on, and the meter's fallback would otherwise re-read the run row once.
@@ -13508,7 +13532,7 @@ async function runAgent(
   if (agentId) {
     const projectDir = await ensureProjectDir(ctx, agentId);
     if (!shadow) env.JAROKU_AGENT_DIR = projectDir;
-    Object.assign(env, await mcpScopeEnv(ctx, agentId, shadow ? shadow.projectDir : projectDir));
+    Object.assign(env, await mcpScopeEnv(ctx, runId, agentId, shadow ? shadow.projectDir : projectDir));
     await noteRunAudience(ctx, runId, agentId);
   }
   runWorkspaces.set(runId, ctx); // before the start: its first events arrive on their own tick
@@ -13709,7 +13733,7 @@ async function resumeRun(ctx: TenantContext, runId: string): Promise<void> {
   await noteRunAudience(ctx, runId, run.agent_id);
   const env: NodeJS.ProcessEnv = {
     ...credentials.env,
-    ...(await mcpScopeEnv(ctx, run.agent_id, projectDir)),
+    ...(await mcpScopeEnv(ctx, runId, run.agent_id, projectDir)),
     // This workspace's copy of the agent — see `agentProjectDir` and runAgent.
     ...(projectDir ? { JAROKU_AGENT_DIR: projectDir } : {}),
     JAROKU_RESUME_RUN_ID: runId,
@@ -13874,7 +13898,7 @@ async function branchRun(
   await noteRunAudience(ctx, branchId, parent.agent_id);
   const env: NodeJS.ProcessEnv = {
     ...credentials.env,
-    ...(await mcpScopeEnv(ctx, parent.agent_id, projectDir)),
+    ...(await mcpScopeEnv(ctx, branchId, parent.agent_id, projectDir)),
     // This workspace's copy of the agent — see `agentProjectDir` and runAgent.
     ...(projectDir ? { JAROKU_AGENT_DIR: projectDir } : {}),
     JAROKU_RUN_ID: branchId,
