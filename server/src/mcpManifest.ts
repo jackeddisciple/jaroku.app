@@ -163,6 +163,15 @@ export function withGrantOnly<F extends { path: string; content: string }>(files
   });
 }
 
+export function collisionRefusal(manifest: Manifest): string | null {
+  const names = manifestCollisions(manifest);
+  if (names.length === 0) return null;
+  const owners = (name: string): string =>
+    manifest.servers.filter((server) => server.tools.some((tool) => tool.name === name)).map((server) => server.id).join(" and ");
+  const detail = names.map((name) => `${name} (from ${owners(name)})`).join(", ");
+  return `an agent has one tool per name, and this grant holds ${detail} from two servers. Keep one of them.`;
+}
+
 export function grantWithout(granted: readonly string[], revoked: readonly string[]): string[] {
   const gone = new Set(revoked);
   return granted.filter((ref) => !gone.has(ref));

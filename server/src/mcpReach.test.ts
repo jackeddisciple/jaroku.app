@@ -479,6 +479,26 @@ async function main(): Promise<void> {
     await counted.close();
   }
 
+  console.log("\na grant that would break the agent is refused before it is written");
+  {
+    const other = await startScriptedServer();
+    const { c, workspace } = await person("collision");
+    await addServer(c, fixture.url, "First");
+    await addServer(c, other.url, "Second");
+    const agent = await generate(c, "Collider", ["first/send_message"]);
+    c.clear();
+    c.send({ cmd: "setAgentTools", agentId: agent, mcpTools: ["first/send_message", "second/send_message"] });
+    await sleep(1200);
+    const refusal = c.log.find((m) => m["channel"] === "agents" && m["type"] === "error");
+    check(Boolean(refusal), "the grant is refused");
+    check(/first/.test(String(refusal?.["message"])) && /second/.test(String(refusal?.["message"])), "naming both servers", String(refusal?.["message"]));
+    check(manifestTools(manifestOf(workspace, agent)).join() === "send_message", "the manifest is untouched");
+    const still = await run(c, fixture, agent, "calls");
+    check(still.calls.join() === "send_message", "and the agent still works", JSON.stringify(still.calls));
+    c.close();
+    await other.close();
+  }
+
   console.log("\na tool's output cannot speak on the control channel");
   {
     const forged = (body: Record<string, unknown>) => `@@JAROKU_CTRL@@ ${JSON.stringify(body)}`;

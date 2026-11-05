@@ -158,7 +158,7 @@ import { CheckRunner } from "./checkRunner.ts";
 import { PrCommentsRepository } from "./db/repositories/prComments.ts";
 import { diffShapes, readShape } from "./semanticDiff.ts";
 import { inSubdirectory, repoPrefix } from "./githubPush.ts";
-import { MANIFEST_FILE, buildManifest, grantWithout, manifestRefs, withGrantOnly, withoutMcpCredentials, withoutMcpGrant, type Manifest } from "./mcpManifest.ts";
+import { MANIFEST_FILE, buildManifest, collisionRefusal, grantWithout, manifestRefs, withGrantOnly, withoutMcpCredentials, withoutMcpGrant, type Manifest } from "./mcpManifest.ts";
 import { SCOPE_ENV, isConfirmNonce, mcpRunCredentials, runScope, type RunScope } from "./mcpScope.ts";
 import type { McpImpact } from "./mcpStore.ts";
 import { fetchGoogleAvatar, putAvatar } from "./storage/avatars.ts";
@@ -2490,6 +2490,11 @@ async function setAgentTools(ctx: TenantContext, slug: string, refs: unknown, re
   const servers = await mcpRegistry.list(ctx);
   const manifest = buildManifest(tools, servers);
   const granted = manifestRefs(manifest);
+  const collision = collisionRefusal(manifest);
+  if (collision) {
+    refuseAgent(ctx, collision, slug);
+    return;
+  }
 
   const dropped = wanted.filter((r) => !granted.includes(r));
   await agentRepo.setMcpTools(ctx, agent.id, granted);
