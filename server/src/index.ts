@@ -4392,13 +4392,14 @@ for (const route of conversationRoutes({
  * approval for work already in flight.
  */
 const runPermissionModes = new Map<string, PermissionMode>();
+const runMcpServers = new Map<string, Set<string>>();
 
-async function permissionModeForRun(ctx: TenantContext, runId: string): Promise<PermissionMode> {
+async function permissionModeForRun(ctx: TenantContext, runId: string, conversation?: string | null): Promise<PermissionMode> {
   const cached = runPermissionModes.get(runId);
   if (cached) return cached;
   let mode: PermissionMode = DEFAULT_PERMISSION_MODE;
   try {
-    const threadId = await threadStore.threadForRef(ctx, "run", runId);
+    const threadId = conversation ?? (await threadStore.threadForRef(ctx, "run", runId));
     mode = threadId
       ? (await conversationSettings.effective(ctx, threadId)).permissionMode
       : (await conversationSettings.workspaceDefaults(ctx)).permissionMode;
@@ -8085,6 +8086,16 @@ const rejectedGenerations = new Set<string>();
  * session rather than refused, because a caller learning "that id exists elsewhere" is the one
  * outcome worth avoiding.
  */
+async function conversationForNewRun(
+  ctx: TenantContext,
+  threadId: string | undefined,
+  agentSlug?: string | null,
+): Promise<string | null> {
+  if (threadId && (await threadStore.get(ctx, threadId))) return threadId;
+  const agent = agentSlug ? await agentRepo.bySlug(ctx, agentSlug) : undefined;
+  return agent ? threadStore.findForAgent(ctx, agent.id) : null;
+}
+
 async function threadForWork(
   ctx: TenantContext,
   threadId: string | undefined,
@@ -12178,6 +12189,12 @@ onBothPools("control", ({ runId: slotRunId, ctrl }) => {
       if (!nonce) return;
       const server = String(ctrl.server ?? "unknown");
       const tool = String(ctrl.tool ?? "unknown");
+      const scopedServers = runMcpServers.get(runId);
+      if (scopedServers && !scopedServers.has(server)) {
+        console.warn(`[mcp] ${runId} asked about ${server}/${tool}, which its conversation switched off; denied`);
+        writeApproval(runId, nonce, "deny");
+        return;
+      }
 
       // THE PERMISSION SHIELD, ON THE SERVER, WITH THE CLIENT BYPASSED — §12.7's own wording.
       //
@@ -12340,6 +12357,7 @@ onBothPools("exit", ({ runId, code, signal, timedOut, elapsedMs }) => {
     runWorkspaces.delete(runId);
     // ...and the mode it ran under, which is only ever a cache of that conversation's row.
     runPermissionModes.delete(runId);
+    runMcpServers.delete(runId);
     runPayers.delete(runId);
     // Same condition, same reason: a resumed segment's steps still need to know what the run
     // is executing on, and the meter's fallback would otherwise re-read the run row once.
@@ -13114,7 +13132,8 @@ async function runAgent(
   // arrives at the gate above, which resolves the mode from the conversation's own row and either
   // auto-approves or puts a person in front of it. A run whose environment claimed "fast" would
   // ask less often and be refused just as often, because the deciding is not done here.
-  env.JAROKU_PERMISSION_MODE = await permissionModeForRun(ctx, runId);
+  const conversation = shadow ? null : await conversationForNewRun(ctx, threadId, agentId).catch(() => null);
+  env.JAROKU_PERMISSION_MODE = await permissionModeForRun(ctx, runId, conversation);
 
   // AND THE REASONING EFFORT, ON THE SAME SEAM AND FOR THE SAME REASON. `JAROKU_PROVIDER` and
   // `JAROKU_MODEL` already decide at spawn time what a generated project runs on; this decides how
@@ -13128,9 +13147,8 @@ async function runAgent(
   // implementation of the adapter, in a second language, out of sync the first time a budget
   // changes. `models.py` reads the word and translates it once, beside the constructor.
   try {
-    const threadForRun = await threadStore.threadForRef(ctx, "run", runId);
-    env.JAROKU_REASONING_EFFORT = threadForRun
-      ? (await conversationSettings.effective(ctx, threadForRun)).effort
+    env.JAROKU_REASONING_EFFORT = conversation
+      ? (await conversationSettings.effective(ctx, conversation)).effort
       : (await conversationSettings.workspaceDefaults(ctx)).effort;
   } catch (err) {
     // Never fatal. A run at the provider's default is a run; a run refused because a settings read
@@ -13182,9 +13200,8 @@ async function runAgent(
   const conversationConnectorIds = await (async (): Promise<string[] | null> => {
     const declared = agentForRun?.connectors ?? [];
     if (declared.length === 0) return null;
-    const threadId = await threadStore.threadForRef(ctx, "run", runId).catch(() => undefined);
-    if (!threadId) return null;
-    const decisions = await conversationConnectors.decisionsFor(ctx, threadId).catch(() => new Map<string, boolean>());
+    if (!conversation) return null;
+    const decisions = await conversationConnectors.decisionsFor(ctx, conversation).catch(() => new Map<string, boolean>());
     // ABSENT MEANS YES — the store's own rule, and the reason a conversation nobody has scoped
     // runs exactly as it did before this existed.
     if (decisions.size === 0) return null;
@@ -13192,9 +13209,8 @@ async function runAgent(
   })();
 
   {
-    const threadId = await threadStore.threadForRef(ctx, "run", runId).catch(() => undefined);
-    if (threadId) {
-      const decisions = await conversationConnectors.decisionsFor(ctx, threadId).catch(() => new Map<string, boolean>());
+    if (conversation) {
+      const decisions = await conversationConnectors.decisionsFor(ctx, conversation).catch(() => new Map<string, boolean>());
       // Only when somebody has actually ruled on something. A conversation nobody has scoped runs
       // with no allowlist at all, which is also what makes connecting a new connector reach every
       // existing conversation.
@@ -13202,6 +13218,7 @@ async function runAgent(
         const servers = await mcpStore.listServers(ctx).catch(() => []);
         const allowed = servers.map((sv) => sv.id).filter((id) => decisions.get(id) ?? true);
         env.JAROKU_MCP_SERVERS = allowed.length > 0 ? allowed.join(",") : "-";
+        runMcpServers.set(runId, new Set(allowed));
         // THE SAME SENTINEL, FOR THE OTHER SIX ROWS. `tools/__init__.py` reads it and omits the
         // unlisted templates from `TOOLS`, so a disabled connector is absent from the model's tool
         // list rather than merely credential-less. Absent means no restriction — a run outside any

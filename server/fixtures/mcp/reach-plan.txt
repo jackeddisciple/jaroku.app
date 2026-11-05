@@ -1,0 +1,15 @@
+<<<PLAN section="tools">>>
+- send_message — mcp; sends a message
+- read_page — mcp; reads a page
+<<<ENDPLAN>>>
+<<<PLAN section="state">>>
+- messages: MessagesState — the conversation; no extra domain state is needed
+<<<ENDPLAN>>>
+<<<PLAN section="graph">>>
+- agent (llm) calls a tool or answers
+- tools runs the tool and returns to agent
+- fire_all calls every granted tool at once when asked to
+<<<ENDPLAN>>>
+<<<PLAN section="notes">>>
+- Every tool here is unreviewed third-party code.
+<<<ENDPLAN>>>

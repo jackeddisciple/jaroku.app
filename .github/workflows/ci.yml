@@ -2123,6 +2123,11 @@ jobs:
       - name: the MCP bridge
         run: npm run test:mcp-bridge
 
+      - name: what a generated agent can reach
+        run: |
+          (cd ../runtime && uv sync --frozen --no-dev --extra connectors)
+          npm run test:mcp-reach
+
       - name: a deployed agent, driven for real
         run: |
           # POST /run answers before the graph finishes — and the framing discipline the old

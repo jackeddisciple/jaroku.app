@@ -1,0 +1,112 @@
+<<<FILE path="agent.py">>>
+"""Probe agent: its input says how to behave, so one project can reproduce many agent shapes."""
+from __future__ import annotations
+
+import logging
+import sys
+from concurrent.futures import ThreadPoolExecutor
+
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from langgraph.graph import END, START, MessagesState, StateGraph
+from langgraph.prebuilt import ToolNode
+
+from .prompts import SYSTEM_PROMPT
+from .tools import TOOLS
+
+log = logging.getLogger("probe")
+
+
+def _sample_args(tool):
+    args = {}
+    for name in (tool.args or {}):
+        args[name] = "probe-value"
+    return args
+
+
+def _call(tool):
+    try:
+        return f"{tool.name}: {tool.invoke(_sample_args(tool))}"
+    except Exception as exc:  # noqa: BLE001 - the probe reports what happened
+        return f"{tool.name} REFUSED: {exc}"
+
+
+def build_graph(llm):
+    model = llm.bind_tools(TOOLS)
+
+    def call_model(state: MessagesState):
+        messages = state["messages"]
+        if not any(isinstance(m, SystemMessage) for m in messages):
+            messages = [SystemMessage(SYSTEM_PROMPT), *messages]
+        return {"messages": [model.invoke(messages)]}
+
+    def scripted(state: MessagesState):
+        text = str(state["messages"][-1].content)
+        words = text.split()
+        names = [w.split(":", 1)[1] for w in words if w.startswith("call:")]
+        chosen = [t for t in TOOLS if not names or t.name in names]
+        if "dup" in words:
+            chosen = chosen[:1] * 2
+        if "uncaught" in words:
+            # What ToolNode's default does with a non-validation error, and what a direct call does.
+            results = [f"{t.name}: {t.invoke(_sample_args(t))}" for t in chosen]
+        else:
+            with ThreadPoolExecutor(max_workers=max(1, len(chosen))) as pool:
+                results = list(pool.map(_call, chosen))
+        if "print" in words:
+            for line in results:
+                print(line, file=sys.stderr)
+        if "log" in words:
+            for line in results:
+                log.warning("tool said: %s", line)
+        if "wait" in words:
+            import time
+            time.sleep(8)
+        return {"messages": [AIMessage(content="\n".join(results))]}
+
+    def route_start(state: MessagesState) -> str:
+        text = str(state["messages"][-1].content)
+        return "agent" if text.strip() == "dry" else "scripted"
+
+    def should_continue(state: MessagesState) -> str:
+        last = state["messages"][-1]
+        return "tools" if getattr(last, "tool_calls", None) else END
+
+    graph = StateGraph(MessagesState)
+    graph.add_node("agent", call_model)
+    graph.add_node("tools", ToolNode(TOOLS, handle_tool_errors=True))
+    graph.add_node("scripted", scripted)
+    graph.add_conditional_edges(START, route_start, {"agent": "agent", "scripted": "scripted"})
+    graph.add_conditional_edges("agent", should_continue, {"tools": "tools", END: END})
+    graph.add_edge("tools", "agent")
+    graph.add_edge("scripted", END)
+    return graph.compile()
+
+
+def build_initial_state(user_input: str) -> dict:
+    return {"messages": [HumanMessage(user_input)]}
+<<<ENDFILE>>>
+<<<FILE path="tools/__init__.py">>>
+from .mcp_bridge import MCP_TOOLS
+
+TOOLS = [*MCP_TOOLS]
+
+__all__ = ["TOOLS", "MCP_TOOLS"]
+<<<ENDFILE>>>
+<<<FILE path="prompts/__init__.py">>>
+from pathlib import Path
+
+SYSTEM_PROMPT = (Path(__file__).parent / "system.md").read_text(encoding="utf-8").strip()
+
+__all__ = ["SYSTEM_PROMPT"]
+<<<ENDFILE>>>
+<<<FILE path="prompts/system.md">>>
+You call the tools you were given and report what they returned.
+<<<ENDFILE>>>
+<<<FILE path=".env.example">>>
+# No connector credentials are required for this probe.
+<<<ENDFILE>>>
+<<<FILE path="README.md">>>
+# Probe agent
+
+Calls whatever MCP tools it was granted.
+<<<ENDFILE>>>

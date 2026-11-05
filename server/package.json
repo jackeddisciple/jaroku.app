@@ -235,6 +235,7 @@
     "test:mcp-hardening": "tsx src/mcpHardening.test.ts",
     "test:mcp-e2e": "tsx src/mcpE2e.test.ts",
     "test:mcp-bridge": "tsx src/mcpBridge.test.ts",
+    "test:mcp-reach": "tsx src/mcpReach.test.ts",
     "mock:mcp": "tsx fixtures/mcp/mockServer.ts",
     "mock:s3": "tsx fixtures/s3/mockS3.ts",
     "mock:fly": "tsx fixtures/fly/mockFlyApi.ts",

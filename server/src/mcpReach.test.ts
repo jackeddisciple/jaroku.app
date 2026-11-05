@@ -1,0 +1,347 @@
+import { spawn } from "node:child_process";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import WebSocket from "ws";
+import { startScriptedServer, type ScriptedServer } from "../fixtures/mcp/scriptedServer.ts";
+
+let failures = 0;
+const check = (ok: boolean, msg: string, detail = ""): void => {
+  if (ok) console.log(`  ok   ${msg}`);
+  else {
+    failures++;
+    console.log(`  FAIL ${msg}${detail ? ` | ${detail}` : ""}`);
+  }
+};
+
+const SERVER_DIR = process.cwd();
+const RUNTIME = join(SERVER_DIR, "..", "runtime");
+const FIXTURES = join(SERVER_DIR, "fixtures", "mcp");
+const scratch = mkdtempSync(join(tmpdir(), "jaroku-reach-"));
+const PORT = 43000 + Math.floor(Math.random() * 2000);
+const API = `http://127.0.0.1:${PORT}`;
+const ORIGIN = "http://localhost:5173";
+const sleep = (ms: number): Promise<void> => new Promise((done) => setTimeout(done, ms));
+
+type Message = Record<string, any>;
+
+const child = spawn(process.execPath, ["--import", "tsx", "src/index.ts"], {
+  cwd: SERVER_DIR,
+  env: {
+    ...process.env,
+    JAROKU_DB: join(scratch, "reach.db"),
+    JAROKU_PORT: String(PORT),
+    JAROKU_NO_AUTORUN: "1",
+    JAROKU_GEN_FIXTURE: join(FIXTURES, "reach-gen.txt"),
+    JAROKU_PLAN_FIXTURE: join(FIXTURES, "reach-plan.txt"),
+  },
+  stdio: ["ignore", "ignore", "ignore"],
+});
+
+async function post(path: string, body: unknown, token?: string, method = "POST", workspace?: string): Promise<{ status: number; json: any }> {
+  const res = await fetch(`${API}${path}`, {
+    method,
+    headers: {
+      "content-type": "application/json",
+      origin: ORIGIN,
+      ...(token ? { authorization: `Bearer ${token}` } : {}),
+      ...(workspace ? { "x-jaroku-workspace": workspace } : {}),
+    },
+    ...(method === "GET" ? {} : { body: JSON.stringify(body ?? {}) }),
+  });
+  const text = await res.text();
+  try {
+    return { status: res.status, json: JSON.parse(text) };
+  } catch {
+    return { status: res.status, json: null };
+  }
+}
+
+interface Socket {
+  log: Message[];
+  send: (cmd: Message) => void;
+  clear: () => void;
+  close: () => void;
+  server: (id: string) => Message | null;
+}
+
+async function connect(token: string, workspace?: string): Promise<Socket> {
+  const ticket = await post("/v1/ws-ticket", workspace ? { workspaceId: workspace } : {}, token);
+  const ws = new WebSocket(`ws://127.0.0.1:${PORT}/?ticket=${encodeURIComponent(ticket.json.ticket)}`, {
+    headers: { origin: ORIGIN },
+    maxPayload: 512 * 1024 * 1024,
+  });
+  const log: Message[] = [];
+  ws.on("message", (raw) => {
+    try {
+      log.push(JSON.parse(raw.toString()) as Message);
+    } catch {
+      return;
+    }
+  });
+  await new Promise<void>((done, fail) => {
+    ws.once("open", () => done());
+    ws.once("error", fail);
+  });
+  return {
+    log,
+    send: (cmd) => ws.send(JSON.stringify(cmd)),
+    clear: () => {
+      log.length = 0;
+    },
+    close: () => ws.close(),
+    server: (id) => {
+      const snapshot = [...log].reverse().find((m) => m["channel"] === "mcp" && m["type"] === "servers");
+      return (snapshot?.["servers"] as Message[] | undefined)?.find((s) => s["id"] === id) ?? null;
+    },
+  };
+}
+
+interface Person {
+  c: Socket;
+  token: string;
+  workspace: string;
+  userId: string;
+}
+
+async function person(tag: string): Promise<Person> {
+  const email = `${tag}-${Math.random().toString(36).slice(2, 8)}@reach.test`;
+  const login = await post("/v1/auth/dev-login", { email, name: tag });
+  const token = login.json.token as string;
+  let session = await post("/v1/auth/session", {}, token);
+  for (let i = 0; i < 12 && session.status === 429; i++) {
+    await sleep(6000);
+    session = await post("/v1/auth/session", {}, token);
+  }
+  const c = await connect(token);
+  c.send({
+    cmd: "reportProviderHost",
+    hosts: [{ provider: "anthropic", installed: true, version: "reach", signedIn: true, account: "reach", authMode: "claude" }],
+  });
+  await sleep(200);
+  return { c, token, workspace: session.json.defaultWorkspaceId as string, userId: session.json.user?.id as string };
+}
+
+async function addServer(c: Socket, endpoint: string, label: string, token?: string): Promise<Message | null> {
+  c.clear();
+  c.send({ cmd: "addMcpServer", endpoint, label, ...(token ? { token } : {}) });
+  const id = label.toLowerCase();
+  for (let i = 0; i < 200; i++) {
+    await sleep(100);
+    const row = c.server(id);
+    if (row && row["status"] !== "discovering") return row;
+  }
+  return null;
+}
+
+const SUB = { provider: "anthropic" };
+
+async function generate(c: Socket, name: string, refs: string[]): Promise<string> {
+  c.clear();
+  c.send({ cmd: "planAgent", subscription: SUB, prompt: `agent ${name}`, connectors: [], mcpTools: refs, name });
+  let plan: Message | undefined;
+  for (let i = 0; i < 120 && !plan; i++) {
+    await sleep(250);
+    plan = [...c.log].reverse().find((m) => m["channel"] === "gen" && m["type"] === "plan" && m["planId"]);
+  }
+  if (!plan) throw new Error(`no plan for ${name}: ${JSON.stringify(c.log.filter((m) => m["channel"] === "gen").slice(-2)).slice(0, 300)}`);
+  c.clear();
+  c.send({ cmd: "generate", subscription: SUB, prompt: `agent ${name}`, connectors: [], mcpTools: refs, name, planId: plan["planId"] });
+  for (let i = 0; i < 480; i++) {
+    await sleep(500);
+    const done = c.log.find((m) => m["channel"] === "gen" && ["done", "error", "plan_error"].includes(String(m["type"])));
+    if (done) {
+      if (done["type"] !== "done") throw new Error(`generation of ${name} failed: ${String(done["message"]).slice(0, 400)}`);
+      return String(done["agentId"]);
+    }
+  }
+  throw new Error(`generation of ${name} timed out`);
+}
+
+interface RunResult {
+  asked: Message[];
+  calls: string[];
+  ended: boolean;
+}
+
+async function run(
+  c: Socket,
+  fixture: ScriptedServer,
+  agentId: string,
+  input: string,
+  opts: { verdict?: "once" | "run" | "deny" | null; threadId?: string; ms?: number } = {},
+): Promise<RunResult> {
+  const verdict = opts.verdict === undefined ? "once" : opts.verdict;
+  fixture.seen.length = 0;
+  c.clear();
+  c.send({ cmd: "run", agentId, input, provider: "fake", ...(opts.threadId ? { threadId: opts.threadId } : {}) });
+  const asked: Message[] = [];
+  const nonces = new Set<string>();
+  const started = Date.now();
+  let ended = false;
+  while (Date.now() - started < (opts.ms ?? 60_000)) {
+    await sleep(100);
+    for (const m of c.log) {
+      if (m["channel"] === "mcp" && m["type"] === "confirmRequest" && !nonces.has(String(m["nonce"]))) {
+        nonces.add(String(m["nonce"]));
+        asked.push(m);
+        if (verdict) c.send({ cmd: "resolveMcpConfirm", runId: m["runId"], nonce: m["nonce"], verdict });
+      }
+    }
+    ended = c.log.some((m) => (m["event"] ?? m)["kind"] === "run_end");
+    if (ended) break;
+  }
+  await sleep(2500);
+  return { asked, calls: fixture.seen.filter((r) => r.rpc === "tools/call").map((r) => String(r.tool)), ended };
+}
+
+const manifestOf = (workspace: string, slug: string): Message | null => {
+  const file = join(RUNTIME, ".workspaces", workspace, "agents", slug, "mcp_tools.json");
+  return existsSync(file) ? (JSON.parse(readFileSync(file, "utf8")) as Message) : null;
+};
+
+const manifestTools = (manifest: Message | null): string[] =>
+  ((manifest?.["servers"] as Message[] | undefined) ?? []).flatMap((s) => (s["tools"] as Message[]).map((t) => String(t["name"])));
+
+async function main(): Promise<void> {
+  let up = false;
+  for (let i = 0; i < 120 && !up; i++) {
+    await sleep(500);
+    up = await fetch(`${API}/healthz`).then((r) => r.ok).catch(() => false);
+  }
+  if (!up) throw new Error("the server did not start");
+
+  const fixture = await startScriptedServer();
+
+  console.log("\na fork reaches no tool, whatever the source's files said");
+  {
+    const { c, workspace } = await person("fork");
+    await addServer(c, fixture.url, "Alpha");
+    const agent = await generate(c, "ForkSource", ["alpha/send_message"]);
+    c.clear();
+    c.send({ cmd: "forkAgent", agentId: agent });
+    await sleep(2500);
+    const notice = c.log.find((m) => m["channel"] === "agents" && m["type"] === "notice");
+    const slug = /Forked to (\S+?)\./.exec(String(notice?.["message"] ?? ""))?.[1] ?? "";
+    check(slug.length > 0, "the fork exists", String(notice?.["message"]));
+    check(manifestTools(manifestOf(workspace, slug)).length === 0, "its manifest grants nothing");
+    const forked = await run(c, fixture, slug, "calls");
+    check(forked.ended, "it runs");
+    check(forked.asked.length === 0 && forked.calls.length === 0, "and calls nothing", JSON.stringify(forked.calls));
+    c.close();
+  }
+
+  console.log("\nan override reaches an agent generated before it");
+  {
+    const { c } = await person("override");
+    await addServer(c, fixture.url, "Alpha");
+    const agent = await generate(c, "Existing", ["alpha/read_page", "alpha/send_message"]);
+    c.send({ cmd: "setMcpToolImpact", serverId: "alpha", toolName: "read_page", impact: "high" });
+    c.send({ cmd: "setMcpToolImpact", serverId: "alpha", toolName: "send_message", impact: "low" });
+    await sleep(800);
+    const after = await run(c, fixture, agent, "calls");
+    check(after.asked.map((a) => a["tool"]).join() === "read_page", "the raised tool asks and the lowered one does not", JSON.stringify(after.asked.map((a) => a["tool"])));
+    check(/you marked it/.test(String(after.asked[0]?.["impactReason"])), "and the ask says why", String(after.asked[0]?.["impactReason"]));
+    check(after.calls.length === 2, "and both still run once approved", JSON.stringify(after.calls));
+    c.close();
+  }
+
+  console.log("\nan eval stops at the gate like any other run");
+  {
+    const { c } = await person("eval");
+    await addServer(c, fixture.url, "Alpha");
+    const agent = await generate(c, "Evaluated", ["alpha/send_message"]);
+    c.clear();
+    c.send({ cmd: "createDataset", agentId: agent, name: "reach" });
+    await sleep(1200);
+    const created = [...c.log].reverse().find((m) => m["channel"] === "eval" && (m["dataset"] || m["datasets"]));
+    const dataset = created?.["dataset"]?.["id"] ?? created?.["datasets"]?.[0]?.["id"];
+    c.send({ cmd: "addExamples", datasetId: dataset, rows: [{ input: "dry", expected: null }, { input: "dry", expected: null }] });
+    await sleep(1000);
+    fixture.seen.length = 0;
+    c.clear();
+    c.send({ cmd: "startEval", datasetId: dataset, agentId: agent, targets: [{ provider: "fake", model: "fake-dry-run" }] });
+    let asks: Message[] = [];
+    for (let i = 0; i < 300 && asks.length === 0; i++) {
+      await sleep(100);
+      asks = c.log.filter((m) => m["channel"] === "mcp" && m["type"] === "confirmRequest");
+    }
+    check(asks.length > 0, "it raises an ask");
+    check(fixture.seen.filter((r) => r.rpc === "tools/call").length === 0, "and nothing reaches the server unanswered");
+    for (const ask of asks) c.send({ cmd: "resolveMcpConfirm", runId: ask["runId"], nonce: ask["nonce"], verdict: "deny" });
+    await sleep(2500);
+    c.send({ cmd: "cancelEval", agentId: agent });
+    check(fixture.seen.filter((r) => r.rpc === "tools/call").length === 0, "nor after it is denied");
+    c.close();
+  }
+
+  console.log("\nundo and restore do not hand back a revoked tool");
+  {
+    const { c, workspace } = await person("revoke");
+    await addServer(c, fixture.url, "Alpha");
+    const agent = await generate(c, "Revoked", ["alpha/send_message"]);
+    c.send({ cmd: "setAgentTools", agentId: agent, mcpTools: [] });
+    await sleep(1500);
+    c.clear();
+    c.send({ cmd: "undoEdit", agentId: agent });
+    await sleep(2500);
+    const undone = await run(c, fixture, agent, "calls");
+    check(undone.asked.length === 0 && undone.calls.length === 0, "a run after undo calls nothing", JSON.stringify(undone));
+
+    c.send({ cmd: "setAgentTools", agentId: agent, mcpTools: [] });
+    await sleep(1500);
+    c.clear();
+    c.send({ cmd: "restoreAgentVersion", agentId: agent, version: 2 });
+    await sleep(2500);
+    check(/live again/.test(String(c.log.find((m) => m["channel"] === "agents" && m["message"])?.["message"])), "restore went through");
+    check(manifestTools(manifestOf(workspace, agent)).length === 0, "the restored manifest agrees with the column");
+    const restored = await run(c, fixture, agent, "calls");
+    check(restored.asked.length === 0 && restored.calls.length === 0, "and a run after restore calls nothing", JSON.stringify(restored));
+    c.close();
+  }
+
+  console.log("\na conversation's settings reach the run started in it");
+  {
+    const { c, token, workspace } = await person("conversation");
+    await addServer(c, fixture.url, "Alpha");
+    const agent = await generate(c, "Conversational", ["alpha/read_page", "alpha/send_message"]);
+    c.clear();
+    c.send({ cmd: "createThread", agentId: agent, title: "reach" });
+    await sleep(1000);
+    const threads = [...c.log].reverse().find((m) => m["channel"] === "threads" && (m["threads"] || m["thread"]));
+    const threadId = String(threads?.["thread"]?.["id"] ?? threads?.["threads"]?.[0]?.["id"]);
+
+    const set = await post(`/v1/conversations/${threadId}/settings`, { permission_mode: "strict" }, token, "PATCH", workspace);
+    check(set.status === 200, "Strict is accepted", String(set.status));
+    const strict = await run(c, fixture, agent, "call:read_page", { threadId });
+    check(strict.asked.map((a) => a["tool"]).join() === "read_page", "under Strict a read asks", JSON.stringify(strict.asked.map((a) => a["tool"])));
+    await post(`/v1/conversations/${threadId}/settings`, { permission_mode: "smart" }, token, "PATCH", workspace);
+    await sleep(300);
+    const smart = await run(c, fixture, agent, "call:read_page", { threadId });
+    check(smart.asked.length === 0, "and back under Smart it does not");
+    check(smart.calls.join() === "read_page", "and the read still runs", JSON.stringify(smart.calls));
+
+    const off = await post(`/v1/conversations/${threadId}/connectors`, { connectors: { alpha: false } }, token, "PUT", workspace);
+    check(off.status === 200, "switching the server off is accepted", String(off.status));
+    const scoped = await run(c, fixture, agent, "calls", { threadId });
+    check(scoped.asked.length === 0, "with it off, nothing asks", JSON.stringify(scoped.asked.map((a) => a["tool"])));
+    check(scoped.calls.length === 0, "and nothing reaches it", JSON.stringify(scoped.calls));
+    c.close();
+  }
+
+  await fixture.close();
+}
+
+let crashed: unknown = null;
+try {
+  await main();
+} catch (err) {
+  crashed = err;
+  failures++;
+  console.log(`  FAIL the suite could not finish | ${(err as Error).message}`);
+}
+child.kill();
+await sleep(500);
+rmSync(scratch, { recursive: true, force: true, maxRetries: 3 });
+console.log(failures === 0 ? "\nALL CORRECT" : `\n${failures} FAILURES`);
+process.exit(crashed || failures ? 1 : 0);

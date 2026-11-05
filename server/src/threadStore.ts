@@ -936,14 +936,19 @@ export class ThreadStore {
     agentName: string,
     mode: ThreadMode = "build",
   ): Promise<string> {
+    const found = await this.findForAgent(ctx, agentId, mode);
+    if (found) return found;
+    return (await this.create(ctx, { agentId, agentName, title: agentName, mode })).id;
+  }
+
+  async findForAgent(ctx: TenantContext, agentId: string, mode: ThreadMode = "build"): Promise<string | null> {
     const row = await this.q(ctx).get<Record<string, unknown>>(
       `SELECT id FROM threads
         WHERE workspace_id = ? AND agent_id = ? AND archived_at IS NULL AND mode = ?
         ORDER BY last_activity_at DESC LIMIT 1`,
       [ctx.workspaceId, agentId, mode],
     );
-    if (row) return String(row["id"]);
-    return (await this.create(ctx, { agentId, agentName, title: agentName, mode })).id;
+    return row ? String(row["id"]) : null;
   }
 
   /**
