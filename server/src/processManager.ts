@@ -53,6 +53,15 @@ export interface AgentRunOptions {
  *  ignores fields (limits, workspaceId) it has no use enforcing on a developer's own machine. */
 export type LocalRunOptions = AgentRunOptions | SandboxSpec;
 
+const HOST_CONTROLS = [
+  "JAROKU_MCP_CONFIRM",
+  "JAROKU_MCP_CONFIRM_TIMEOUT_S",
+  "JAROKU_MCP_MAX_RESULT_CHARS",
+  "JAROKU_MCP_SERVERS",
+  "JAROKU_MCP_SCOPE",
+  "JAROKU_PERMISSION_MODE",
+];
+
 export function parseControlLine(line: string, token: string): Record<string, unknown> | null {
   const prefix = `${CTRL_SENTINEL}${token} `;
   if (!token || !line.startsWith(prefix)) return null;
@@ -102,6 +111,10 @@ export class LocalSubprocessSandbox extends EventEmitter<SandboxEvents> implemen
     // or it would read them straight back out of runtime/.env.
     for (const name of Object.keys(env)) {
       if (/^JAROKU_DEPLOY_[A-Z0-9_]+_SERVE_TOKEN$/.test(name)) delete env[name];
+    }
+
+    for (const name of HOST_CONTROLS) {
+      if (!opts.env || !(name in opts.env)) delete env[name];
     }
 
     this.ctrlToken = randomBytes(16).toString("hex");

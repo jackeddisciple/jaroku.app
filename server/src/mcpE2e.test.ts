@@ -19,6 +19,7 @@ import { MCP_DISCOVER_CLASS, McpDiscoveryQueue, type McpDiscoveryPayload } from 
 import { authEnvKeyFor } from "./envWriter.ts";
 import { isConfirmNonce, runScope } from "./mcpScope.ts";
 import { parseControlLine } from "./processManager.ts";
+import { isSecretName, secretNameRefusal } from "./secrets/secretStore.ts";
 import { buildManifest, grantWithout, withGrantOnly, withoutMcpGrant } from "./mcpManifest.ts";
 import { AgentRepository } from "./db/repositories/agents.ts";
 import { startScriptedServer } from "../fixtures/mcp/scriptedServer.ts";
@@ -248,6 +249,21 @@ console.log("\nonly the bridge and the runner can write a control line");
   check(parseControlLine(`@@JAROKU_CTRL@@  ${ok}`, "") === null, "no token means no control lines at all");
   check(parseControlLine("@@JAROKU_CTRL@@ sekrit not json", "sekrit") === null, "a malformed line falls through to stderr");
   check(parseControlLine("@@JAROKU_CTRL@@ sekrit [1]", "sekrit") === null, "and so does one that is not an object");
+}
+
+console.log("\na secret cannot be named after a setting that controls the gate");
+{
+  for (const name of ["JAROKU_MCP_CONFIRM", "JAROKU_MCP_CONFIRM_TIMEOUT_S", "JAROKU_MCP_MAX_RESULT_CHARS", "JAROKU_PERMISSION_MODE", "JAROKU_MCP_SERVERS", "JAROKU_MCP_SCOPE", "JAROKU_CTRL_TOKEN"]) {
+    check(!isSecretName(name), `${name} is refused`);
+    check(/reserved/.test(secretNameRefusal(name)), "...and the refusal says why");
+  }
+  check(isSecretName("JAROKU_MCP_LINEAR_TOKEN"), "a server's own credential name is still a credential");
+  check(isSecretName("OPENAI_API_KEY"), "and an ordinary name is untouched");
+  const A = await workspace("reserved");
+  const stored = await secrets.set(A, "JAROKU_MCP_CONFIRM", "skip").then(() => true).catch(() => false);
+  check(!stored, "the store itself refuses one");
+  const manager = readFileSync(join(fileURLToPath(new URL(".", import.meta.url)), "processManager.ts"), "utf8");
+  check(/"JAROKU_MCP_CONFIRM",/.test(manager) && /delete env\[name\]/.test(manager), "and a run does not inherit one from the server's own environment");
 }
 
 console.log("\nrevoking takes the named refs out of the grant and nothing else");

@@ -269,16 +269,21 @@ export const SECRET_NAME = /^[A-Z][A-Z0-9_]{0,127}$/;
  */
 export const NEVER_FOR_A_RUN: ReadonlySet<string> = new Set([RAILWAY_ENV_KEY]);
 
+const HOST_CONTROL_NAME = /^JAROKU_(?!MCP_[A-Z0-9_]+_TOKEN$|DEPLOY_[A-Z0-9_]+_SERVE_TOKEN$)/;
+
 export function isSecretName(name: unknown): name is string {
-  return typeof name === "string" && SECRET_NAME.test(name);
+  return typeof name === "string" && SECRET_NAME.test(name) && !HOST_CONTROL_NAME.test(name);
+}
+
+export function secretNameRefusal(name: unknown): string {
+  return typeof name === "string" && HOST_CONTROL_NAME.test(name)
+    ? "names starting JAROKU_ are reserved for Jaroku's own settings and cannot hold a credential"
+    : "a credential name must be UPPER_SNAKE_CASE, start with a letter, and be at most 128 characters";
 }
 
 export function assertSecretName(name: unknown): string {
   if (!isSecretName(name)) {
-    throw new Error(
-      `not a usable credential name: ${JSON.stringify(name)} — it must be UPPER_SNAKE_CASE, ` +
-        `start with a letter, and be at most 128 characters`,
-    );
+    throw new Error(`not a usable credential name: ${JSON.stringify(name)} — ${secretNameRefusal(name)}`);
   }
   return name;
 }

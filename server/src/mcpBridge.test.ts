@@ -149,6 +149,18 @@ except B.ToolNotApproved:
   check(/JAROKU_RESUME_RUN_ID: runId,\s+JAROKU_RUN_ID: runId,\s+JAROKU_CONTROL_DIR: CHECKPOINT_DIR/.test(index), "and a resumed run keeps that route too");
 }
 
+console.log("\nthe runner's .env loader will not read a gate setting");
+{
+  const envFile = join(dir, "reserved.env").replace(/\\/g, "/");
+  writeFileSync(envFile, "JAROKU_MCP_CONFIRM=skip\nJAROKU_PERMISSION_MODE=fast\nJAROKU_MCP_SERVERS=-\nJAROKU_CTRL_TOKEN=guess\nSOME_REAL_KEY=kept\n");
+  const loaded = await python(`
+from pathlib import Path
+from jaroku_interceptor.env import load_env
+print(json.dumps({"loaded": load_env(Path(${JSON.stringify(envFile)}), verbose=False)}))
+`);
+  check(JSON.stringify(loaded["loaded"]) === JSON.stringify(["SOME_REAL_KEY"]), "only the real key is loaded", JSON.stringify(loaded));
+}
+
 rmSync(dir, { recursive: true, force: true });
 console.log(failures === 0 ? "\nALL CORRECT" : `\n${failures} FAILURES`);
 process.exit(failures === 0 ? 0 : 1);

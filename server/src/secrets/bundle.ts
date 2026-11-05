@@ -24,7 +24,7 @@
 // locals inside one call and are handed straight to `SecretStore.set` by the caller. `describe`
 // exists precisely so a caller can report what happened WITHOUT holding the values to do it.
 
-import { isSecretName, unstorableReason } from "./secretStore.ts";
+import { isSecretName, secretNameRefusal, unstorableReason } from "./secretStore.ts";
 
 export type BundleFormat = "dotenv" | "json" | "doppler" | "vault";
 
@@ -187,7 +187,7 @@ export function validateBundle(parsed: ParsedBundle): ValidatedBundle {
     if (!isSecretName(entry.name)) {
       rejected.push({
         name: safeName(entry.name),
-        reason: "a credential name must be UPPER_SNAKE_CASE, start with a letter, and be at most 128 characters",
+        reason: secretNameRefusal(entry.name),
       });
       continue;
     }

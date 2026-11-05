@@ -40,7 +40,7 @@ import type { SecretKind } from "../db/repositories/secretRefs.ts";
 import type { TenantContext } from "../db/tenant.ts";
 import { ELEVATION_HEADER, type SecretElevations } from "../secrets/elevation.ts";
 import type { SecretPasscodes } from "../secrets/passcode.ts";
-import { isSecretName } from "../secrets/secretStore.ts";
+import { isSecretName, secretNameRefusal } from "../secrets/secretStore.ts";
 import { PROVIDER_ENV_KEY } from "../providers.ts";
 import { parseSecretBundle, validateBundle } from "../secrets/bundle.ts";
 import type { SecretSummary } from "../secrets/manager.ts";
@@ -518,11 +518,7 @@ export function secretsRoutes(deps: SecretsRouteDeps): SecretsRoute[] {
         const body = await req.json<Record<string, unknown>>();
         const name = body["name"];
         const value = body["value"];
-        if (!isSecretName(name)) {
-          throw badRequest(
-            "a credential name must be UPPER_SNAKE_CASE, start with a letter, and be at most 128 characters",
-          );
-        }
+        if (!isSecretName(name)) throw badRequest(secretNameRefusal(name));
         if (typeof value !== "string" || !value) throw badRequest("a value is required");
         const kind = readKind(body["kind"], name);
         // THE SAME REFUSAL ROTATE MAKES, because this is the same write with a different verb.

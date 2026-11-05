@@ -24,7 +24,12 @@ DEFAULT_ENV_PATH = Path(__file__).resolve().parent.parent / ".env"
 # and a deployed agent's serve token spends that agent's provider key. The process manager strips
 # them from a run's environment — and this loader used to read them straight back out of the
 # file ("loaded 1 var(s) from .env: RAILWAY_API_TOKEN"), handing them to generated code.
-PLATFORM_ONLY = re.compile(r"^(RAILWAY_API_TOKEN|JAROKU_DEPLOY_[A-Z0-9_]+_SERVE_TOKEN)$")
+PLATFORM_ONLY = re.compile(
+    r"^(RAILWAY_API_TOKEN|JAROKU_DEPLOY_[A-Z0-9_]+_SERVE_TOKEN"
+    r"|JAROKU_MCP_CONFIRM|JAROKU_MCP_CONFIRM_TIMEOUT_S|JAROKU_MCP_MAX_RESULT_CHARS"
+    r"|JAROKU_MCP_SERVERS|JAROKU_MCP_SCOPE|JAROKU_PERMISSION_MODE"
+    r"|JAROKU_CONTROL_DIR|JAROKU_CTRL_TOKEN|JAROKU_RUN_ID)$"
+)
 
 
 def _parse_line(line: str) -> tuple[str, str] | None:
