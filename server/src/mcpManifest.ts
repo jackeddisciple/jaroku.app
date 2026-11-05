@@ -126,6 +126,27 @@ export function manifestRefs(manifest: Manifest): string[] {
   return manifest.servers.flatMap((s) => s.tools.map((t) => `${s.id}/${t.name}`));
 }
 
+export function withoutMcpCredentials(names: readonly string[]): string[] {
+  return names.filter((name) => !name.startsWith("JAROKU_MCP_"));
+}
+
+export function withoutMcpGrant<F extends { path: string; content: string }>(files: readonly F[]): F[] {
+  return files.map((file) => {
+    if (file.path === MANIFEST_FILE) {
+      return { ...file, content: `${JSON.stringify({ schema_version: 1, servers: [] }, null, 2)}\n` };
+    }
+    if (file.path !== "jaroku.json") return file;
+    try {
+      const meta = JSON.parse(file.content) as Record<string, unknown>;
+      const names = Array.isArray(meta["required_env"]) ? (meta["required_env"] as string[]) : [];
+      const cleared = { ...meta, mcp_servers: [], mcp_tools: [], required_env: withoutMcpCredentials(names) };
+      return { ...file, content: `${JSON.stringify(cleared, null, 2)}\n` };
+    } catch {
+      return file;
+    }
+  });
+}
+
 export function grantWithout(granted: readonly string[], revoked: readonly string[]): string[] {
   const gone = new Set(revoked);
   return granted.filter((ref) => !gone.has(ref));

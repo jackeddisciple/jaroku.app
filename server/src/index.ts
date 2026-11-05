@@ -158,7 +158,7 @@ import { CheckRunner } from "./checkRunner.ts";
 import { PrCommentsRepository } from "./db/repositories/prComments.ts";
 import { diffShapes, readShape } from "./semanticDiff.ts";
 import { inSubdirectory, repoPrefix } from "./githubPush.ts";
-import { MANIFEST_FILE, buildManifest, grantWithout, manifestRefs } from "./mcpManifest.ts";
+import { MANIFEST_FILE, buildManifest, grantWithout, manifestRefs, withoutMcpCredentials, withoutMcpGrant } from "./mcpManifest.ts";
 import type { McpImpact } from "./mcpStore.ts";
 import { fetchGoogleAvatar, putAvatar } from "./storage/avatars.ts";
 import { agentPrefix } from "./storage/keys.ts";
@@ -7161,7 +7161,7 @@ async function forkAgent(ctx: TenantContext, slug: string): Promise<void> {
     // third-party tools to a brand-new agent without anybody ticking a box, and the entire MCP
     // design rests on access being granted per tool, deliberately.
     mcp_tools: [],
-    required_env: source.required_env,
+    required_env: withoutMcpCredentials(source.required_env),
     default_provider: source.default_provider,
     hand_written: false,
     // NULL, NOT THE ORIGINAL'S FIGURE. A fork cost a database row; claiming the original's
@@ -7191,7 +7191,7 @@ async function forkAgent(ctx: TenantContext, slug: string): Promise<void> {
   // of it threw and every write path refused. `publish` reserves the number, writes the objects
   // under this agent's own prefix, and promotes — one operation, which is the invariant it exists
   // to hold and the reason it should have been the call here from the start.
-  const { version: published } = await projects.publish(ctx, id, sourceFiles, {
+  const { version: published } = await projects.publish(ctx, id, withoutMcpGrant(sourceFiles), {
     source: "import",
     summary: `forked from ${source.slug} v${version.version}`,
   });

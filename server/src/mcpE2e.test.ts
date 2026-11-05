@@ -17,7 +17,7 @@ import { McpStore } from "./mcpStore.ts";
 import { McpRegistry, type RegistrationResult } from "./mcpRegistry.ts";
 import { MCP_DISCOVER_CLASS, McpDiscoveryQueue, type McpDiscoveryPayload } from "./mcpDiscovery.ts";
 import { authEnvKeyFor } from "./envWriter.ts";
-import { buildManifest, grantWithout } from "./mcpManifest.ts";
+import { buildManifest, grantWithout, withoutMcpGrant } from "./mcpManifest.ts";
 import { startScriptedServer } from "../fixtures/mcp/scriptedServer.ts";
 
 let failures = 0;
@@ -216,6 +216,36 @@ console.log("\nrevoking takes the named refs out of the grant and nothing else")
   const granted = ["a/send", "a/read", "b/delete"];
   check(JSON.stringify(grantWithout(granted, ["a/send", "b/delete"])) === JSON.stringify(["a/read"]), "both named refs go, the other stays");
   check(JSON.stringify(grantWithout(granted, ["a/gone"])) === JSON.stringify(granted), "a ref it does not hold changes nothing");
+}
+
+console.log("\na fork starts with no MCP grant in any of its files");
+{
+  const manifest = {
+    schema_version: 1,
+    servers: [{ id: "alpha", endpoint: "https://a.test/mcp", auth_env_key: "JAROKU_MCP_ALPHA_TOKEN", tools: [{ name: "send", impact: "high" }] }],
+  };
+  const files = [
+    { path: "agent.py", content: "print('kept')\n" },
+    { path: "mcp_tools.json", content: JSON.stringify(manifest) },
+    { path: "tools/mcp_bridge.py", content: "kept = 1\n" },
+    {
+      path: "jaroku.json",
+      content: JSON.stringify({
+        agent_id: "src", mcp_servers: ["alpha"], mcp_tools: ["alpha/send"],
+        required_env: ["GMAIL_ACCESS_TOKEN", "JAROKU_MCP_ALPHA_TOKEN"],
+      }),
+    },
+  ];
+  const forked = withoutMcpGrant(files);
+  const read = (path: string) => forked.find((f) => f.path === path)?.content ?? "";
+  check((JSON.parse(read("mcp_tools.json")) as { servers: unknown[] }).servers.length === 0, "its manifest grants nothing");
+  check(!read("mcp_tools.json").includes("a.test"), "...and names no endpoint");
+  const meta = JSON.parse(read("jaroku.json")) as { mcp_tools: unknown[]; mcp_servers: unknown[]; required_env: string[]; agent_id: string };
+  check(meta.mcp_tools.length === 0 && meta.mcp_servers.length === 0, "its metadata records no grant to resync from");
+  check(JSON.stringify(meta.required_env) === JSON.stringify(["GMAIL_ACCESS_TOKEN"]), "it needs only its reviewed connectors' keys");
+  check(meta.agent_id === "src", "...and the rest of its metadata is untouched");
+  check(read("agent.py") === "print('kept')\n", "its code is the source's, byte for byte");
+  check(read("tools/mcp_bridge.py") === "kept = 1\n", "and the bridge stays, so a later grant can take effect");
 }
 
 check(errors.length === 0, "no handler threw", String(errors[0] ?? ""));
