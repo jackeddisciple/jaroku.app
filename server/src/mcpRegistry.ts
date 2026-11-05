@@ -483,8 +483,10 @@ export class McpRegistry {
   }
 
   async removeServer(ctx: TenantContext, id: string): Promise<boolean> {
-    if (!(await this.store.getServer(ctx, id))) return false;
+    const server = await this.store.getServer(ctx, id);
+    if (!server) return false;
     await this.store.deleteServer(ctx, id);
+    if (server.auth_env_key) await this.secrets?.delete(ctx, server.auth_env_key);
     return true;
   }
 

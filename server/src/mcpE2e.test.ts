@@ -284,6 +284,19 @@ console.log("\na run receives credentials only for servers it can still reach");
   check(!names.includes("JAROKU_MCP_UNGRANTED_TOKEN"), "nor is one for a server it was never granted");
 }
 
+console.log("\ndisconnecting removes the credential with the server");
+{
+  const A = await workspace("disconnect");
+  const fixture = await startScriptedServer({ token: "goes-with-the-server" });
+  await connect(A, { endpoint: fixture.url, label: "Holder", token: "goes-with-the-server" });
+  const key = authEnvKeyFor("holder");
+  check(key in (await secrets.getForPlatformCall(A, [key])), "the credential is stored while it is connected");
+  await registry.removeServer(A, "holder");
+  check(!(key in (await secrets.getForPlatformCall(A, [key]))), "disconnect removes it from the store");
+  check((await registry.get(A, "holder")) === null, "and the row is gone");
+  await fixture.close();
+}
+
 console.log("\nrevoking takes the named refs out of the grant and nothing else");
 {
   const granted = ["a/send", "a/read", "b/delete"];
