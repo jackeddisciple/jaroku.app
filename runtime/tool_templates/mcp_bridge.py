@@ -702,6 +702,21 @@ def _content_text(result: Any) -> str:
 # --- tool construction ------------------------------------------------------
 
 
+class _ScopedTool(StructuredTool):
+    def _to_args_and_kwargs(self, tool_input: Any, tool_call_id: Any = None) -> tuple[tuple, dict]:
+        args, kwargs = super()._to_args_and_kwargs(tool_input, tool_call_id)
+        if args and isinstance(args[0], str):
+            properties = list((self.args or {}).keys())
+            kwargs = {**kwargs, (properties[0] if properties else "input"): args[0]}
+        return (kwargs,), {}
+
+    def _run(self, arguments: dict) -> Any:
+        return self.func(**arguments)
+
+    async def _arun(self, arguments: dict) -> Any:
+        return await asyncio.to_thread(self._run, arguments)
+
+
 def _make_tool(server: dict[str, Any], spec: dict[str, Any]) -> StructuredTool:
     endpoint = str(server.get("endpoint") or "")
     server_id = str(server.get("id") or "unknown")
@@ -766,7 +781,7 @@ def _make_tool(server: dict[str, Any], spec: dict[str, Any]) -> StructuredTool:
     # whether to call it. The badge in the UI tells the human; this tells the agent.
     description = f"{description}\n\n(From the {server_id} MCP server — external, unreviewed.)"
 
-    return StructuredTool.from_function(
+    return _ScopedTool(
         func=_invoke,
         name=name,
         description=description,

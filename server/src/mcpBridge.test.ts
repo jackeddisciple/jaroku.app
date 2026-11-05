@@ -181,6 +181,42 @@ print(json.dumps({"called": called}))
   check(JSON.stringify(standalone["called"]) === JSON.stringify(["send_message"]), "a copied out project run by its owner still honours it", JSON.stringify(standalone));
 }
 
+console.log("\nparameters named like LangChain's own internals arrive intact");
+{
+  const manifest = JSON.stringify({
+    servers: [{
+      id: "alpha", endpoint: "https://a.test/mcp", auth_env_key: null,
+      tools: [{
+        name: "read_page", description: "r", impact: "low", impact_reason: "r",
+        input_schema: {
+          type: "object",
+          properties: { q: { type: "string" }, config: { type: "string" }, run_manager: { type: "string" }, self: { type: "string" }, callbacks: { type: "string" } },
+          required: ["config", "run_manager"],
+        },
+      }],
+    }],
+  });
+  const delivered = await python(`
+import asyncio
+sent = []
+B._run_call = lambda endpoint, token, tool, args: sent.append(args)
+B._result_text = lambda server, name, result: "ok"
+tool = B.build_tools(json.loads(${JSON.stringify(manifest)}))[0]
+args = {"q": "hello", "config": "c", "run_manager": "r", "self": "s", "callbacks": "k"}
+tool.invoke(args)
+asyncio.run(tool.ainvoke(args))
+print(json.dumps({"sent": sent}))
+`);
+  const sent = (delivered["sent"] ?? []) as Record<string, string>[];
+  check(!delivered["crashed"], "the call goes through", String(delivered["crashed"] ?? ""));
+  check(sent.length === 2, "by invoke and by ainvoke", String(sent.length));
+  for (const args of sent) {
+    check(args["config"] === "c" && args["run_manager"] === "r", "config and run_manager are delivered", JSON.stringify(args));
+    check(args["self"] === "s", "self is delivered", JSON.stringify(args));
+    check(args["q"] === "hello" && args["callbacks"] === "k", "and so is everything else", JSON.stringify(args));
+  }
+}
+
 console.log("\nthe runner's .env loader will not read a gate setting");
 {
   const envFile = join(dir, "reserved.env").replace(/\\/g, "/");
