@@ -25,6 +25,7 @@ import {
 import { ACCENT, ICON, STATUS, TEXT } from "../lib/tokens.ts";
 import { Chip } from "./Chip.tsx";
 import { Truncate } from "./Truncate.tsx";
+import { SecretField } from "./SecretField.tsx";
 import { EmptyState } from "./EmptyState.tsx";
 import { primaryBtn, quietBtn, secondaryBtn } from "./buttons.ts";
 import { StatusBadge } from "./StatusBadge.tsx";
@@ -243,9 +244,8 @@ function ServerDetail({ server }: { server: McpServer }) {
         {showToken && (
           <div className="mt-2 rounded-card border border-edge bg-panel p-2">
             <div className="flex items-center gap-2">
-              <input
-                type="password"
-                autoComplete="off"
+              <SecretField
+                name="mcp-server-credential"
                 className="min-w-0 flex-1 rounded-input border border-edge bg-elevated px-2 py-1 text-tiny text-ink outline-none focus-visible:shadow-focusring placeholder:text-faint"
                 placeholder="bearer token or API key"
                 value={token}
@@ -404,9 +404,11 @@ export function McpPanel() {
 
       {canManage && adding && (
         <div className="shrink-0 px-4 pb-2">
-          <div className="rounded-card border border-edge bg-panel p-2">
+          <form autoComplete="off" onSubmit={(e) => e.preventDefault()} className="rounded-card border border-edge bg-panel p-2">
             <input
               autoFocus
+              name="mcp-server-endpoint"
+              autoComplete="off"
               className="w-full rounded-input border border-edge bg-elevated px-2 py-1 text-tiny text-ink outline-none focus-visible:shadow-focusring placeholder:text-faint"
               placeholder="https://example.com/mcp"
               value={endpoint}
@@ -415,22 +417,23 @@ export function McpPanel() {
             />
             <div className="mt-1.5 flex items-center gap-2">
               <input
+                name="mcp-server-label"
+                autoComplete="off"
                 className="min-w-0 flex-1 rounded-input border border-edge bg-elevated px-2 py-1 text-tiny text-ink outline-none focus-visible:shadow-focusring placeholder:text-faint"
                 placeholder="name (optional)"
                 value={label}
                 onChange={(e) => setLabel(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && submit()}
               />
-              <input
-                type="password"
-                autoComplete="off"
+              <SecretField
+                name="mcp-server-token"
                 className="min-w-0 flex-1 rounded-input border border-edge bg-elevated px-2 py-1 text-tiny text-ink outline-none focus-visible:shadow-focusring placeholder:text-faint"
                 placeholder="token (if it needs one)"
                 value={token}
                 onChange={(e) => setToken(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && submit()}
               />
-              <button className={primaryBtn} disabled={!endpoint.trim() || Boolean(addingEndpoint)}
+              <button type="button" className={primaryBtn} disabled={!endpoint.trim() || Boolean(addingEndpoint)}
                 onClick={submit}>
                 {addingEndpoint ? "connecting…" : "Connect"}
               </button>
@@ -440,7 +443,7 @@ export function McpPanel() {
               granted to any agent until you select it while planning. Only http(s) endpoints
               are supported — stdio would mean running someone else's binary on your machine.
             </p>
-          </div>
+          </form>
         </div>
       )}
 

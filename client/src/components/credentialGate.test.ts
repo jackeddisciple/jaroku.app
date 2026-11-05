@@ -81,7 +81,7 @@ console.log("\nand the value still never enters a store");
   check("the credential is component state, handed straight to the request",
     ACTIONS.includes("const [value, setValue] = useState(\"\")"));
   check("...and the field is cleared the moment it is sent", ACTIONS.includes('setValue("")'));
-  check("...and it is a password field", /type=\{isCeiling \? "text" : "password"\}/.test(ACTIONS));
+  check("...and its characters are hidden", /<SecretField \{\.\.\.field\}/.test(ACTIONS));
 }
 
 console.log(fail === 0 ? "\nALL CORRECT" : `\n${fail} FAILURES`);
