@@ -3184,6 +3184,8 @@ function handleHostedMcpConfirmRequest(runId: string, payload: Record<string, un
         pending.workItemId = item.id;
         const agent = await agentRepo.byId(runCtx, item.agent_id);
         pending.agentName = agent?.display_name ?? agent?.slug ?? null;
+        pending.agentSlug = agent?.slug ?? null;
+        if (!runBarred.has(runId)) await noteRunAudience(runCtx, runId, agent?.slug);
       }
     } catch (err) {
       console.error("[work] could not name the job a confirmation belongs to:", (err as Error).message);
@@ -3193,7 +3195,7 @@ function handleHostedMcpConfirmRequest(runId: string, payload: Record<string, un
     scheduleFleetRefresh(runCtx);
     // Unless it was answered or ran out while the job was being looked up.
     if (!pendingConfirms.has(confirmKey(runId, nonce))) return;
-    relay.broadcastMcp(runCtx, confirmRequestOf(pending));
+    relay.broadcastMcp(runCtx, confirmRequestOf(pending), runBarred.get(runId));
   })();
 }
 
@@ -4393,6 +4395,33 @@ for (const route of conversationRoutes({
  */
 const runPermissionModes = new Map<string, PermissionMode>();
 const runMcpServers = new Map<string, Set<string>>();
+const runBarred = new Map<string, Set<string>>();
+
+async function barredFromAgent(ctx: TenantContext, slug: string | null | undefined): Promise<Set<string>> {
+  const barred = new Set<string>();
+  const agent = slug ? await agentForCommand(ctx, slug) : undefined;
+  if (!agent) return barred;
+  if ((await agentGrantRepo.listForAgent(ctx, agent.id)).length === 0) return barred;
+  for (const member of await identityRepo.listMembers(ctx)) {
+    const asThem: TenantContext = { ...ctx, actorUserId: member.user_id, role: member.role as TenantContext["role"] };
+    if (!holds(await resolveCapabilities(asThem, agent.id, agentGrantRepo), "view")) barred.add(member.user_id);
+  }
+  return barred;
+}
+
+async function noteRunAudience(ctx: TenantContext, runId: string, slug: string | null | undefined): Promise<void> {
+  try {
+    runBarred.set(runId, await barredFromAgent(ctx, slug));
+  } catch (err) {
+    console.warn(`[access] could not read who may see run ${runId}:`, (err as Error)?.message ?? err);
+  }
+}
+
+async function refreshAudiences(ctx: TenantContext, slug: string): Promise<void> {
+  for (const [runId, live] of liveRuns) {
+    if (live.workspaceId === ctx.workspaceId && live.agentId === slug) await noteRunAudience(ctx, runId, slug);
+  }
+}
 
 async function permissionModeForRun(ctx: TenantContext, runId: string, conversation?: string | null): Promise<PermissionMode> {
   const cached = runPermissionModes.get(runId);
@@ -5026,6 +5055,7 @@ const relay = new WsRelay({
       // every workspace's blocked runs; the workspace id is on the record precisely so answering
       // one can be checked against who is answering, and the same field is what filters this.
       .filter((p) => p.workspaceId === ctx.workspaceId)
+      .filter((p) => !runBarred.get(p.runId)?.has(ctx.actorUserId ?? ""))
       // THE ORIGINAL CLOCK — see `confirmRequestOf`. The client counts down from `requestedAt` plus
       // `timeoutS`, so sending what was left against the original start counted the wait twice.
       .map(confirmRequestOf),
@@ -5778,6 +5808,7 @@ evalRunner = new EvalRunner({
     if (credentials.refusal) return { refusal: credentials.refusal };
     const projectDir = await ensureProjectDir(ctx, job.agentId);
     const mcpScope = await mcpScopeEnv(ctx, job.agentId, projectDir);
+    await noteRunAudience(ctx, runId, job.agentId);
     runWorkspaces.set(runId, ctx);
     liveRuns.set(runId, { workspaceId: ctx.workspaceId, agentId: job.agentId, kind: "eval", ended: false });
     return {
@@ -5937,6 +5968,7 @@ interface PendingConfirm {
   /** The deployed job this run is, once looked up. Null for a local run, which is no job. */
   workItemId: string | null;
   agentName: string | null;
+  agentSlug?: string | null;
 }
 const pendingConfirms = new Map<string, PendingConfirm>();
 const confirmKey = (runId: string, nonce: string): string => `${runId}.${nonce}`;
@@ -6071,10 +6103,12 @@ async function handleMcpCommand(ctx: TenantContext, cmd: McpCommand): Promise<vo
         const verdict = cmd.verdict === "once" || cmd.verdict === "run" ? cmd.verdict : "deny";
         const key = confirmKey(cmd.runId, cmd.nonce);
         const pending = pendingConfirms.get(key);
+        const agentSlug = pending ? (pending.agentSlug ?? liveRuns.get(pending.runId)?.agentId ?? null) : null;
+        const answerRefusal = pending && agentSlug ? await agentAccessRefusalFor(ctx, agentSlug, "run", cmd.cmd) : null;
         // An ask belonging to another workspace answers exactly as an absent one does. Same
         // message on purpose: a different answer would tell somebody holding a run id and a
         // nonce that they had guessed a real pair.
-        if (!pending || pending.workspaceId !== ctx.workspaceId) {
+        if (!pending || pending.workspaceId !== ctx.workspaceId || answerRefusal) {
           // Already answered, timed out, or the run died. Saying so beats silence: two
           // people clicking the same modal should not both think they decided it.
           //
@@ -9422,6 +9456,7 @@ async function writeGrant(
     expiresAt,
     note,
   });
+  await refreshAudiences(ctx, agent.slug);
 
   await identityRepo.appendAudit(ctx, {
     action: cmd.cmd === "grantAccess" ? "access.granted" : "access.modified",
@@ -9461,6 +9496,7 @@ async function revokeGrant(ctx: TenantContext, cmd: RevokeGrantCommand): Promise
   }
 
   const removed = await agentGrantRepo.remove(ctx, agent.id, userId);
+  await refreshAudiences(ctx, agent.slug);
   if (!removed) {
     refuseAccess(ctx, "that grant is already gone");
     return;
@@ -12037,7 +12073,7 @@ onBothPools("event", ({ runId, event }) => {
     } catch (err) {
       console.error("[store] failed to persist event:", (err as Error).message);
     }
-    if (!isEvalRun(runId)) relay.broadcastTrace(runCtx, event);
+    if (!isEvalRun(runId)) relay.broadcastTrace(runCtx, event, runBarred.get(runId));
     // §3.3'S DERIVATION READS `runs.status`, SO A RUN ENDING IS A GENUINE STATE TRANSITION.
     //
     // `noteThreadItem` was the only broadcast point, and an item is written when work STARTS —
@@ -12121,13 +12157,13 @@ onBothPools("event", ({ runId, event }) => {
 
 onBothPools("parseError", ({ runId, line, error }) => {
   console.error(`[manager] non-event stdout line (${error}):`, line.slice(0, 200));
-  if (!isEvalRun(runId)) relay.broadcastLog(contextForRun(runId), "parseError", `${error}: ${line.slice(0, 200)}`);
+  if (!isEvalRun(runId)) relay.broadcastLog(contextForRun(runId), "parseError", `${error}: ${line.slice(0, 200)}`, runBarred.get(runId));
 });
 
 onBothPools("stderr", ({ runId, line }) => {
   console.error("[agent]", line);
   // An agent's stderr is its workspace's: it can carry a stack trace over the user's own data.
-  if (!isEvalRun(runId)) relay.broadcastLog(contextForRun(runId), "stderr", line);
+  if (!isEvalRun(runId)) relay.broadcastLog(contextForRun(runId), "stderr", line, runBarred.get(runId));
 });
 
 // Debug-depth control events (off the trace stream). A `boundary` correlates the durable
@@ -12170,7 +12206,7 @@ onBothPools("control", ({ runId: slotRunId, ctrl }) => {
           runBoundaries.note(runId, seqHigh, checkpointId);
           await store.setCheckpointUpto(runCtx, runId, seqHigh, checkpointId);
         }
-        relay.broadcastDebug(runCtx, { type: "boundary", runId, seq: seqHigh, next });
+        relay.broadcastDebug(runCtx, { type: "boundary", runId, seq: seqHigh, next }, runBarred.get(runId));
       });
     } else if (ctrl.ctrl === "paused") {
       // The id is recorded immediately — resume reads it, and a pause the process does not
@@ -12178,7 +12214,7 @@ onBothPools("control", ({ runId: slotRunId, ctrl }) => {
       pausedRuns.add(runId);
       ingest(async () => {
         await store.setRunStatus(runCtx, runId, "paused");
-        relay.broadcastDebug(runCtx, { type: "paused", runId, seq: seqHigh });
+        relay.broadcastDebug(runCtx, { type: "paused", runId, seq: seqHigh }, runBarred.get(runId));
       });
     } else if (ctrl.ctrl === "tool_confirm") {
       // A run has stopped before a high-impact MCP tool's first call. It is blocked right
@@ -12233,7 +12269,7 @@ onBothPools("control", ({ runId: slotRunId, ctrl }) => {
       };
       pendingConfirms.set(confirmKey(runId, nonce), local);
       console.log(`[mcp] ${runId} is waiting for confirmation of ${server}/${tool}`);
-      relay.broadcastMcp(runCtx, confirmRequestOf(local));
+      relay.broadcastMcp(runCtx, confirmRequestOf(local), runBarred.get(runId));
       // A halted graph waiting on a person is §3.3's `needs_you`, and the derivation reads
       // `pendingConfirms` live — so the fact is already true and nothing was telling the list.
       // The row turns amber while the run is blocked, and back when `clearConfirms` fires.
@@ -12358,6 +12394,7 @@ onBothPools("exit", ({ runId, code, signal, timedOut, elapsedMs }) => {
     // ...and the mode it ran under, which is only ever a cache of that conversation's row.
     runPermissionModes.delete(runId);
     runMcpServers.delete(runId);
+    runBarred.delete(runId);
     runPayers.delete(runId);
     // Same condition, same reason: a resumed segment's steps still need to know what the run
     // is executing on, and the meter's fallback would otherwise re-read the run row once.
@@ -13468,6 +13505,7 @@ async function runAgent(
     const projectDir = await ensureProjectDir(ctx, agentId);
     if (!shadow) env.JAROKU_AGENT_DIR = projectDir;
     Object.assign(env, await mcpScopeEnv(ctx, agentId, shadow ? shadow.projectDir : projectDir));
+    await noteRunAudience(ctx, runId, agentId);
   }
   runWorkspaces.set(runId, ctx); // before the start: its first events arrive on their own tick
   // Before the start, for the same reason: `run_start` is what the ingest chain caches provider
@@ -13664,6 +13702,7 @@ async function resumeRun(ctx: TenantContext, runId: string): Promise<void> {
   await store.setRunStatus(ctx, runId, "running");
   console.log(`[debug] resuming run ${runId} from seq ${seqOffset} (agent ${run.agent_id})`);
   const projectDir = run.agent_id ? await ensureProjectDir(ctx, run.agent_id) : null;
+  await noteRunAudience(ctx, runId, run.agent_id);
   const env: NodeJS.ProcessEnv = {
     ...credentials.env,
     ...(await mcpScopeEnv(ctx, run.agent_id, projectDir)),
@@ -13828,6 +13867,7 @@ async function branchRun(
     return;
   }
   const projectDir = parent.agent_id ? await ensureProjectDir(ctx, parent.agent_id) : null;
+  await noteRunAudience(ctx, branchId, parent.agent_id);
   const env: NodeJS.ProcessEnv = {
     ...credentials.env,
     ...(await mcpScopeEnv(ctx, parent.agent_id, projectDir)),

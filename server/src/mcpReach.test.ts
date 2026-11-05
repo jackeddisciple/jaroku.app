@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import WebSocket from "ws";
 import { startScriptedServer, type ScriptedServer } from "../fixtures/mcp/scriptedServer.ts";
+import { SqliteDb } from "./db/sqlite.ts";
 
 let failures = 0;
 const check = (ok: boolean, msg: string, detail = ""): void => {
@@ -328,6 +329,56 @@ async function main(): Promise<void> {
     check(scoped.asked.length === 0, "with it off, nothing asks", JSON.stringify(scoped.asked.map((a) => a["tool"])));
     check(scoped.calls.length === 0, "and nothing reaches it", JSON.stringify(scoped.calls));
     c.close();
+  }
+
+  console.log("\na member barred from an agent neither sees nor answers its asks");
+  {
+    const owner = await person("owner");
+    await addServer(owner.c, fixture.url, "Alpha");
+    const agent = await generate(owner.c, "Barred", ["alpha/send_message"]);
+    const member = await person("member");
+
+    const db = new SqliteDb(join(scratch, "reach.db"));
+    const now = new Date().toISOString();
+    await db.run(`INSERT INTO workspace_members (workspace_id, user_id, role, created_at) VALUES (?, ?, 'member', ?)`, [owner.workspace, member.userId, now]);
+    const row = await db.get<{ id: string }>(`SELECT id FROM agents WHERE workspace_id = ? AND slug = ?`, [owner.workspace, agent]);
+    await db.run(
+      `INSERT INTO agent_grants (workspace_id, agent_id, user_id, capabilities, granted_by, granted_at) VALUES (?, ?, ?, '[]', ?, ?)`,
+      [owner.workspace, row?.id, member.userId, owner.userId, now],
+    );
+    await db.close?.();
+
+    const barred = await connect(member.token, owner.workspace);
+    await sleep(500);
+    barred.clear();
+    fixture.seen.length = 0;
+    owner.c.clear();
+    owner.c.send({ cmd: "run", agentId: agent, input: "call:send_message customer-data", provider: "fake" });
+    let ask: Message | undefined;
+    for (let i = 0; i < 300 && !ask; i++) {
+      await sleep(100);
+      ask = owner.c.log.find((m) => m["channel"] === "mcp" && m["type"] === "confirmRequest");
+    }
+    check(Boolean(ask), "the owner is asked");
+    check(!barred.log.some((m) => m["type"] === "confirmRequest"), "the barred member's socket is not");
+    check(!barred.log.some((m) => m["channel"] === "trace"), "and it receives none of the run's trace");
+
+    const replayed = await connect(member.token, owner.workspace);
+    await sleep(700);
+    check(!replayed.log.some((m) => m["type"] === "confirmRequest"), "and a reconnect does not hand it over");
+
+    barred.send({ cmd: "resolveMcpConfirm", runId: ask?.["runId"], nonce: ask?.["nonce"], verdict: "once" });
+    await sleep(2500);
+    check(barred.log.some((m) => m["channel"] === "mcp" && m["type"] === "error"), "their Allow is refused");
+    check(fixture.seen.filter((r) => r.rpc === "tools/call").length === 0, "and the tool does not run on it");
+
+    owner.c.send({ cmd: "resolveMcpConfirm", runId: ask?.["runId"], nonce: ask?.["nonce"], verdict: "once" });
+    await sleep(3000);
+    check(fixture.seen.filter((r) => r.rpc === "tools/call").length === 1, "the owner's answer still works");
+    barred.close();
+    replayed.close();
+    owner.c.close();
+    member.c.close();
   }
 
   await fixture.close();

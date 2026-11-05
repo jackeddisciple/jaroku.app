@@ -2273,6 +2273,8 @@ export type EvalEvent =
 // hold a half-applied view of what a third-party server said.
 //
 // Nothing on this channel ever carries a credential. `configured` says a key is set.
+export const BARRED_USERS_KEY = "__barredUsers";
+
 export type McpEvent =
   | { type: "servers"; servers: unknown[] }
   // A handshake is a network round trip against someone else's server; the UI needs to be
@@ -5644,11 +5646,12 @@ export class WsRelay {
    * is mid-handshake and about to get a full snapshot anyway; guessing would be the only way
    * to get this wrong.
    */
-  private broadcastTo(ctx: TenantContext, payload: unknown): void {
+  private broadcastTo(ctx: TenantContext, payload: unknown, barred?: ReadonlySet<string>): void {
     const msg = JSON.stringify(payload);
     for (const ws of this.clients) {
       if (ws.readyState !== WebSocket.OPEN) continue;
       if (this.contexts.get(ws)?.workspaceId !== ctx.workspaceId) continue;
+      if (barred?.has(this.contexts.get(ws)?.actorUserId ?? "")) continue;
       ws.send(msg);
     }
     // Session 5: fan this SAME decision out to every other gateway replica, so a client
@@ -5659,7 +5662,7 @@ export class WsRelay {
     // decided to broadcast — an eval run's events that isEvalRun() kept off "trace" never
     // reach broadcastTo for "trace" in the first place, so they never reach this hook either,
     // with no separate cross-replica bookkeeping needed to preserve that.
-    this.opts.onBroadcast?.(ctx, payload);
+    this.opts.onBroadcast?.(ctx, barred?.size ? { ...(payload as object), [BARRED_USERS_KEY]: [...barred] } : payload);
   }
 
   /**
@@ -5675,10 +5678,13 @@ export class WsRelay {
    * was hard.
    */
   deliverFromPeer(ctx: TenantContext, payload: unknown): void {
-    const msg = JSON.stringify(payload);
+    const { [BARRED_USERS_KEY]: barredList, ...rest } = payload as Record<string, unknown>;
+    const barred = new Set(Array.isArray(barredList) ? (barredList as string[]) : []);
+    const msg = JSON.stringify(rest);
     for (const ws of this.clients) {
       if (ws.readyState !== WebSocket.OPEN) continue;
       if (this.contexts.get(ws)?.workspaceId !== ctx.workspaceId) continue;
+      if (barred.has(this.contexts.get(ws)?.actorUserId ?? "")) continue;
       ws.send(msg);
     }
   }
@@ -5751,13 +5757,13 @@ export class WsRelay {
   }
 
   // Broadcast a trace event to every connected client.
-  broadcastTrace(ctx: TenantContext, event: TraceEvent): void {
-    this.broadcastTo(ctx, { channel: "trace", event });
+  broadcastTrace(ctx: TenantContext, event: TraceEvent, barred?: ReadonlySet<string>): void {
+    this.broadcastTo(ctx, { channel: "trace", event }, barred);
   }
 
   // Broadcast a diagnostic (stderr line, parse error) for visibility in the client.
-  broadcastLog(ctx: TenantContext, level: "stderr" | "parseError", text: string): void {
-    this.broadcastTo(ctx, { channel: "log", level, text });
+  broadcastLog(ctx: TenantContext, level: "stderr" | "parseError", text: string, barred?: ReadonlySet<string>): void {
+    this.broadcastTo(ctx, { channel: "log", level, text }, barred);
   }
 
   /**
@@ -5783,7 +5789,7 @@ export class WsRelay {
 
   // Broadcast a debug-depth control event (pause/resume/boundary/branched). Separate channel by
   // design — the run's steps still arrive as normal schema-v1 events on "trace".
-  broadcastDebug(ctx: TenantContext, event: DebugEvent): void {
+  broadcastDebug(ctx: TenantContext, event: DebugEvent, barred?: ReadonlySet<string>): void {
     this.broadcastTo(ctx, { channel: "debug", ...event });
   }
 
@@ -5803,8 +5809,8 @@ export class WsRelay {
 
   // Broadcast an MCP registry event. Separate channel by design — an MCP tool call itself
   // is an ordinary tool_call Step and still arrives on "trace" like any other.
-  broadcastMcp(ctx: TenantContext, event: McpEvent): void {
-    this.broadcastTo(ctx, { channel: "mcp", ...event });
+  broadcastMcp(ctx: TenantContext, event: McpEvent, barred?: ReadonlySet<string>): void {
+    this.broadcastTo(ctx, { channel: "mcp", ...event }, barred);
   }
 
   /** Broadcast a connections event. Separate channel by design — see ConnectionEvent. */
