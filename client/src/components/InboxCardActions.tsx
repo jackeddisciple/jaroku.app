@@ -52,9 +52,8 @@ const SNOOZE_CHOICES: { id: SnoozeDuration; label: string }[] = [
  * `submitCredential`, and never put in a store — the same discipline the reveal dialog keeps, and
  * the reason there is no `useState` for a credential anywhere near the item that named it.
  *
- * A `SecretField`, because a browser offering to save a workspace credential into a personal
- * password manager is a copy of it nobody decided to make, and one filling a saved login in here
- * would store a personal password as a workspace credential.
+ * A `SecretField`, because a browser offering to save a workspace
+ * credential into a personal password manager is a copy of it nobody decided to make.
  */
 function McpCredentialForm({ item }: { item: InboxItemView }) {
   const [value, setValue] = useState("");

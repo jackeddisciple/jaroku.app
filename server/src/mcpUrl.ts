@@ -152,9 +152,11 @@ export interface ValidatedMcpUrl {
  * Throws `McpUrlError` (a message written here and safe to show) or `EgressPolicyError` (the
  * shared private-range refusal) on anything that must not be connected to.
  *
- * THE CREDENTIAL-IN-URL REFUSAL IS NOT HERE, and that is not an omission: the registry refuses a
- * URL carrying a credential before anything is stored, and `mcpClient.discover` refuses it again
- * before anything is sent. Neither quotes the URL back.
+ * THE CREDENTIAL-IN-URL REFUSAL IS NOT HERE, and that is not an omission: `mcpClient.discover`
+ * already refuses a URL carrying userinfo, before anything is sent, and deliberately does not
+ * quote the URL back — because the error text lands in `mcp_servers.last_error`, on every
+ * client's registry snapshot, and in the log. Repeating the check here would be a second place
+ * for that rule to be got subtly wrong.
  */
 export async function validateMcpUrl(
   raw: string,
