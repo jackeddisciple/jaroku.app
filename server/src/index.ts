@@ -158,7 +158,8 @@ import { CheckRunner } from "./checkRunner.ts";
 import { PrCommentsRepository } from "./db/repositories/prComments.ts";
 import { diffShapes, readShape } from "./semanticDiff.ts";
 import { inSubdirectory, repoPrefix } from "./githubPush.ts";
-import { MANIFEST_FILE, buildManifest, grantWithout, manifestRefs, withoutMcpCredentials, withoutMcpGrant } from "./mcpManifest.ts";
+import { MANIFEST_FILE, buildManifest, grantWithout, manifestRefs, withoutMcpCredentials, withoutMcpGrant, type Manifest } from "./mcpManifest.ts";
+import { SCOPE_ENV, runScope } from "./mcpScope.ts";
 import type { McpImpact } from "./mcpStore.ts";
 import { fetchGoogleAvatar, putAvatar } from "./storage/avatars.ts";
 import { agentPrefix } from "./storage/keys.ts";
@@ -4458,6 +4459,19 @@ async function permissionModeForRun(ctx: TenantContext, runId: string): Promise<
  * was there, and the run's own error about a missing `agent.py` is a better answer than a dispatch
  * refused for a reason nobody can see. The failure is logged with the version in it.
  */
+async function mcpScopeEnv(ctx: TenantContext, projectDir: string | null | undefined): Promise<NodeJS.ProcessEnv> {
+  if (!projectDir) return {};
+  const path = join(projectDir, MANIFEST_FILE);
+  if (!existsSync(path)) return {};
+  try {
+    const manifest = JSON.parse(readFileSync(path, "utf8")) as Manifest;
+    return { [SCOPE_ENV]: JSON.stringify(runScope(manifest, await mcpRegistry.list(ctx))) };
+  } catch (err) {
+    console.warn(`[mcp] no tool scope for ${projectDir}, so the run gets no MCP tools:`, (err as Error)?.message ?? err);
+    return { [SCOPE_ENV]: JSON.stringify({ servers: {} }) };
+  }
+}
+
 async function ensureProjectDir(ctx: TenantContext, slug: string): Promise<string> {
   const dir = agentProjectDir(RUNTIME_DIR, ctx.workspaceId, slug);
   const stamp = join(dir, ".jaroku-version");
@@ -5755,9 +5769,10 @@ evalRunner = new EvalRunner({
     const credentials = await continuationCredentials(ctx, runId, job.provider, job.agentId);
     if (credentials.refusal) return { refusal: credentials.refusal };
     const projectDir = await ensureProjectDir(ctx, job.agentId);
+    const mcpScope = await mcpScopeEnv(ctx, projectDir);
     runWorkspaces.set(runId, ctx);
     liveRuns.set(runId, { workspaceId: ctx.workspaceId, agentId: job.agentId, kind: "eval", ended: false });
-    return { workspaceId: ctx.workspaceId, host: ctx, env: { ...credentials.env, JAROKU_AGENT_DIR: projectDir } };
+    return { workspaceId: ctx.workspaceId, host: ctx, env: { ...credentials.env, ...mcpScope, JAROKU_AGENT_DIR: projectDir } };
   },
   releaseRun: (runId) => {
     liveRuns.delete(runId);
@@ -13422,6 +13437,7 @@ async function runAgent(
   if (agentId) {
     const projectDir = await ensureProjectDir(ctx, agentId);
     if (!shadow) env.JAROKU_AGENT_DIR = projectDir;
+    Object.assign(env, await mcpScopeEnv(ctx, shadow ? shadow.projectDir : projectDir));
   }
   runWorkspaces.set(runId, ctx); // before the start: its first events arrive on their own tick
   // Before the start, for the same reason: `run_start` is what the ingest chain caches provider
@@ -13617,10 +13633,12 @@ async function resumeRun(ctx: TenantContext, runId: string): Promise<void> {
   clearControl(runId); // drop the pause request so it doesn't immediately re-pause
   await store.setRunStatus(ctx, runId, "running");
   console.log(`[debug] resuming run ${runId} from seq ${seqOffset} (agent ${run.agent_id})`);
+  const projectDir = run.agent_id ? await ensureProjectDir(ctx, run.agent_id) : null;
   const env: NodeJS.ProcessEnv = {
     ...credentials.env,
+    ...(await mcpScopeEnv(ctx, projectDir)),
     // This workspace's copy of the agent — see `agentProjectDir` and runAgent.
-    ...(run.agent_id ? { JAROKU_AGENT_DIR: await ensureProjectDir(ctx, run.agent_id) } : {}),
+    ...(projectDir ? { JAROKU_AGENT_DIR: projectDir } : {}),
     JAROKU_RESUME_RUN_ID: runId,
     // The same workspace the run was dispatched in — a resume continues the SAME thread, so it
     // has to compute the same thread id. See runAgent.
@@ -13777,10 +13795,12 @@ async function branchRun(
     relay.broadcastDebug(ctx, { type: "error", runId: fromRunId, message: credentials.refusal });
     return;
   }
+  const projectDir = parent.agent_id ? await ensureProjectDir(ctx, parent.agent_id) : null;
   const env: NodeJS.ProcessEnv = {
     ...credentials.env,
+    ...(await mcpScopeEnv(ctx, projectDir)),
     // This workspace's copy of the agent — see `agentProjectDir` and runAgent.
-    ...(parent.agent_id ? { JAROKU_AGENT_DIR: await ensureProjectDir(ctx, parent.agent_id) } : {}),
+    ...(projectDir ? { JAROKU_AGENT_DIR: projectDir } : {}),
     JAROKU_RUN_ID: branchId,
     JAROKU_CONTROL_DIR: CHECKPOINT_DIR,
     JAROKU_WORKSPACE_ID: ctx.workspaceId,

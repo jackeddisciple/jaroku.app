@@ -145,6 +145,20 @@ def _allowed_servers() -> set[str] | None:
         return set()
     return {part.strip() for part in raw.split(",") if part.strip()}
 
+def _run_scope() -> dict[str, Any] | None:
+    raw = os.environ.get("JAROKU_MCP_SCOPE")
+    if raw is None:
+        return None
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise ManifestError(f"JAROKU_MCP_SCOPE is not valid JSON: {exc}") from exc
+    servers = data.get("servers") if isinstance(data, dict) else None
+    if not isinstance(servers, dict):
+        raise ManifestError("JAROKU_MCP_SCOPE must hold a servers object")
+    return servers
+
+
 # Must match jaroku_runner/debug.py:CTRL_SENTINEL and processManager.ts:CTRL_SENTINEL.
 # Three copies, because this file is copied into projects that import nothing from Jaroku —
 # a generated agent stays plain LangGraph, and that is worth one duplicated constant.
@@ -777,6 +791,7 @@ def build_tools(manifest: dict[str, Any] | None = None) -> list[StructuredTool]:
     """
     data = manifest if manifest is not None else load_manifest()
     allowed = _allowed_servers()
+    scope = _run_scope()
     tools: list[StructuredTool] = []
     owners: dict[str, str] = {}
     for server in data.get("servers") or []:
@@ -788,12 +803,29 @@ def build_tools(manifest: dict[str, Any] | None = None) -> list[StructuredTool]:
         # between scoping a conversation and refusing every call it makes.
         if allowed is not None and server_id not in allowed:
             continue
+        scoped_tools = None
+        if scope is not None:
+            scoped_server = scope.get(server_id)
+            if not isinstance(scoped_server, dict):
+                continue
+            scoped_tools = scoped_server.get("tools")
+            if not isinstance(scoped_tools, dict):
+                continue
         for spec in server.get("tools") or []:
             if not isinstance(spec, dict):
                 continue
             name = spec.get("name")
             if not isinstance(name, str) or not name:
                 continue
+            if scoped_tools is not None:
+                scoped = scoped_tools.get(name)
+                if not isinstance(scoped, dict):
+                    continue
+                spec = {
+                    **spec,
+                    "impact": scoped.get("impact") or "high",
+                    "impact_reason": scoped.get("reason") or spec.get("impact_reason"),
+                }
             prior = owners.get(name)
             if prior is not None:
                 # One server listing a tool twice is a duplicate, not an ambiguity: both

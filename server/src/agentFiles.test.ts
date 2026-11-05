@@ -223,7 +223,7 @@ console.log("\nrunnable is answered by the manifest, and by the disk only for wh
     (index.match(/ensureProjectDir\(ctx, /g) ?? []).length === 6,
   );
   check("...and every run is pointed at the directory it returned, not left to find `agents.<slug>`",
-    (index.match(/JAROKU_AGENT_DIR: await ensureProjectDir\(ctx, /g) ?? []).length === 2
+    (index.match(/const projectDir = \w+\.agent_id \? await ensureProjectDir\(ctx, /g) ?? []).length === 2
       && /env\.JAROKU_AGENT_DIR = projectDir/.test(index) && /JAROKU_AGENT_DIR: projectDir/.test(index));
 
   // AND THAT DIRECTORY IS THE WORKSPACE'S OWN. A slug is unique per workspace, and one shared

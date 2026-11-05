@@ -17,6 +17,7 @@ import { McpStore } from "./mcpStore.ts";
 import { McpRegistry, type RegistrationResult } from "./mcpRegistry.ts";
 import { MCP_DISCOVER_CLASS, McpDiscoveryQueue, type McpDiscoveryPayload } from "./mcpDiscovery.ts";
 import { authEnvKeyFor } from "./envWriter.ts";
+import { runScope } from "./mcpScope.ts";
 import { buildManifest, grantWithout, withoutMcpGrant } from "./mcpManifest.ts";
 import { startScriptedServer } from "../fixtures/mcp/scriptedServer.ts";
 
@@ -246,6 +247,38 @@ console.log("\na fork starts with no MCP grant in any of its files");
   check(meta.agent_id === "src", "...and the rest of its metadata is untouched");
   check(read("agent.py") === "print('kept')\n", "its code is the source's, byte for byte");
   check(read("tools/mcp_bridge.py") === "kept = 1\n", "and the bridge stays, so a later grant can take effect");
+}
+
+console.log("\nan override reaches an agent that already exists, and a server cannot lower a gate");
+{
+  const frozen = (name: string, impact: "high" | "low") => ({ name, description: null, input_schema: {}, impact, impact_reason: "frozen" });
+  const manifest = {
+    schema_version: 1 as const,
+    servers: [{
+      id: "alpha", label: "Alpha", endpoint: "https://a.test/mcp", transport: "http", auth_env_key: null,
+      server_name: null, server_version: null, protocol_version: null, discovered_at: null,
+      tools: [frozen("read_page", "low"), frozen("send_message", "high"), frozen("was_destructive", "high"), frozen("gone_quiet", "low"), frozen("now_flagged", "low")],
+    }],
+  };
+  const live = (name: string, computed: "high" | "low", override: "high" | "low" | null) => ({
+    server_id: "alpha", name, description: null, input_schema: {}, schema_hash: "h",
+    impact: override ?? computed, computed_impact: computed, impact_reason: `classifier on ${name}`,
+    overridden: override !== null, override_voided: false, annotations: null,
+  });
+  const servers = [{
+    id: "alpha", label: "Alpha", endpoint: "https://a.test/mcp", transport: "http" as const, auth_env_key: null,
+    server_name: null, server_version: null, protocol_version: null, status: "connected" as const,
+    last_error: null, discovered_at: null, created_at: "", configured: false,
+    tools: [live("read_page", "low", "high"), live("send_message", "high", "low"), live("was_destructive", "low", null), live("now_flagged", "high", null)],
+  }];
+  const tools = runScope(manifest, servers).servers["alpha"]?.tools ?? {};
+  check(tools["read_page"]?.impact === "high", "a raise applies to the existing agent");
+  check(tools["read_page"]?.reason === "you marked it high impact", "...and says who raised it", tools["read_page"]?.reason);
+  check(tools["send_message"]?.impact === "low", "a person's lowering applies too");
+  check(tools["was_destructive"]?.impact === "high", "a server dropping its own hint cannot lower the gate");
+  check(tools["gone_quiet"]?.impact === "low", "a tool the server stopped listing keeps its recorded impact");
+  check(tools["now_flagged"]?.impact === "high", "the classifier raising a tool applies");
+  check(tools["now_flagged"]?.reason === "classifier on now_flagged", "...with the classifier's reason");
 }
 
 check(errors.length === 0, "no handler threw", String(errors[0] ?? ""));
