@@ -26,6 +26,7 @@ import {
   sendRemoveMcpServer,
   sendSetMcpServerAuth,
   sendSetMcpToolImpact,
+  sendUpdateMcpServer,
 } from "../lib/socket.ts";
 import { ACCENT, ICON, STATUS, TEXT } from "../lib/tokens.ts";
 import { Chip } from "./Chip.tsx";
@@ -176,6 +177,78 @@ function ToolRow({ tool, serverId }: { tool: McpTool; serverId: string }) {
 
 // --- one server --------------------------------------------------------------
 
+export const ENDPOINT_SETTLED =
+  "This server has connected, so its endpoint stays as it is: agents were granted its tools at that address. Disconnect it and connect a new one to move.";
+
+export function EditServerForm({ server, onDone }: { server: McpServer; onDone: () => void }) {
+  const fixed = server.discovered_at !== null || server.status === "connecting";
+  const [label, setLabel] = useState(server.label);
+  const [endpoint, setEndpoint] = useState(server.endpoint);
+  const [failed, setFailed] = useState<string | null>(null);
+  const save = () => {
+    const patch = {
+      ...(label.trim() && label.trim() !== server.label ? { label: label.trim() } : {}),
+      ...(!fixed && endpoint.trim() && endpoint.trim() !== server.endpoint ? { endpoint: endpoint.trim() } : {}),
+    };
+    if (Object.keys(patch).length === 0) {
+      onDone();
+      return;
+    }
+    if (!sendUpdateMcpServer(server.id, patch)) {
+      setFailed(NOT_SENT);
+      return;
+    }
+    onDone();
+  };
+  return (
+    <form
+      autoComplete="off"
+      aria-label={`Edit ${server.label}`}
+      onSubmit={(e) => {
+        e.preventDefault();
+        save();
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Escape") {
+          e.preventDefault();
+          onDone();
+        }
+      }}
+      className="mt-2 rounded-card border border-edge bg-panel p-2"
+    >
+      <input
+        name="mcp-server-edit-label"
+        aria-label="Name"
+        autoComplete="off"
+        className="w-full rounded-input border border-edge bg-elevated px-2 py-1 text-tiny text-ink outline-none focus-visible:shadow-focusring placeholder:text-faint"
+        placeholder="name"
+        value={label}
+        onChange={(e) => setLabel(e.target.value)}
+      />
+      <input
+        name="mcp-server-edit-endpoint"
+        aria-label="Server URL"
+        autoComplete="off"
+        readOnly={fixed}
+        className="mt-1.5 w-full rounded-input border border-edge bg-elevated px-2 py-1 text-tiny text-ink outline-none focus-visible:shadow-focusring placeholder:text-faint read-only:text-muted"
+        placeholder="https://example.com/mcp"
+        value={endpoint}
+        onChange={(e) => setEndpoint(e.target.value)}
+      />
+      {fixed && server.discovered_at !== null && <p className="mt-1.5 text-tiny leading-[1.5] text-muted">{ENDPOINT_SETTLED}</p>}
+      {failed && <p role="alert" className="mt-1.5 text-tiny leading-[1.5] text-err">{failed}</p>}
+      <div className="mt-2 flex items-center gap-2">
+        <button type="submit" className={primaryBtn} disabled={!label.trim()}>
+          Save
+        </button>
+        <button type="button" className={quietBtn} onClick={onDone}>
+          Cancel
+        </button>
+      </div>
+    </form>
+  );
+}
+
 export function RemovalConfirm({ server, onKeep }: { server: McpServer; onKeep: () => void }) {
   const agents = useBuildStore((s) => s.agents);
   const [failed, setFailed] = useState(false);
@@ -228,6 +301,7 @@ function ServerDetail({ server }: { server: McpServer }) {
   const [showToken, setShowToken] = useState(false);
   const [credentialError, setCredentialError] = useState<string | null>(null);
   const [confirming, setConfirming] = useState<null | "disconnect" | "credential">(null);
+  const [editing, setEditing] = useState(false);
   const saveCredential = () => {
     const value = token.trim();
     if (!value) return;
@@ -303,6 +377,9 @@ function ServerDetail({ server }: { server: McpServer }) {
               <KeyIcon size={ICON.xs} />
               {server.configured ? "replace credential" : "add a credential"}
             </button>
+            <button className={secondaryBtn} aria-expanded={editing} onClick={() => setEditing((v) => !v)}>
+              edit
+            </button>
             <button className={secondaryBtn + " ml-auto hover:!text-err"}
               aria-expanded={confirming === "disconnect"}
               onClick={() => setConfirming((v) => (v === "disconnect" ? null : "disconnect"))}>
@@ -312,6 +389,7 @@ function ServerDetail({ server }: { server: McpServer }) {
           </div>
         )}
 
+        {editing && <EditServerForm server={server} onDone={() => setEditing(false)} />}
         {confirming === "disconnect" && <RemovalConfirm server={server} onKeep={() => setConfirming(null)} />}
         {confirming === "credential" && (
           <CredentialRemovalConfirm

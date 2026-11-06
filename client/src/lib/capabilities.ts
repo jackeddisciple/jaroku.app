@@ -250,6 +250,7 @@ export const COMMAND_CAPABILITY: Record<string, string> = {
   addMcpServer: "mcp:manage",
   removeMcpServer: "mcp:manage",
   rediscoverMcpServer: "mcp:manage",
+  updateMcpServer: "mcp:manage",
   setMcpServerAuth: "mcp:manage",
   setMcpToolImpact: "mcp:manage",
   resolveMcpConfirm: "mcp:confirm",

@@ -30,6 +30,7 @@ import { ENDPOINT_CREDENTIAL_REFUSAL, McpUrlError, endpointCarriesCredential, va
 import { EgressPolicyError, realResolver, type Resolver } from "./sandbox/egressPolicy.ts";
 import type { TenantContext } from "./db/tenant.ts";
 import { classify } from "./mcpImpact.ts";
+import { cleanText } from "./mcpText.ts";
 import {
   McpStore,
   SERVER_ID_RE,
@@ -526,7 +527,9 @@ export class McpRegistry {
 
     const result = await discover({ endpoint: server.endpoint, token: await this.token(ctx, server), ...(pin ? { pin } : {}) });
 
-    if (!(await this.store.getServer(ctx, id))) return { ok: false, server: null, message: null };
+    const current = await this.store.getServer(ctx, id);
+    if (!current) return { ok: false, server: null, message: null };
+    if (current.endpoint !== server.endpoint) return { ok: false, server: await this.get(ctx, id), message: null };
 
     if (!result.ok) {
       await this.store.setServerStatus(ctx, id, result.status, result.error, new Date().toISOString());
@@ -550,6 +553,50 @@ export class McpRegistry {
     const storing = await this.storeTools(ctx, id, result);
     if (storing) return { ok: false, server: await this.get(ctx, id), message: storing };
     return { ok: true, server: await this.get(ctx, id), message: truncationNote(result) };
+  }
+
+  async updateServer(
+    ctx: TenantContext,
+    id: string,
+    patch: { label?: string; endpoint?: string },
+  ): Promise<{ ok: boolean; message: string | null; endpointChanged: boolean; server: McpServerView | null }> {
+    const server = await this.store.getServer(ctx, id);
+    if (!server) return { ok: false, message: `no server called "${id}"`, endpointChanged: false, server: null };
+    const refuse = (message: string) => ({ ok: false, message, endpointChanged: false, server: null });
+
+    let label: string | undefined;
+    if (patch.label !== undefined) {
+      label = cleanLabel(patch.label);
+      if (!label) return refuse("a server needs a name");
+      if (label === server.label) label = undefined;
+    }
+
+    let endpoint: string | undefined;
+    let dropped = false;
+    if (patch.endpoint !== undefined && patch.endpoint.trim() !== server.endpoint) {
+      endpoint = patch.endpoint.trim();
+      if (!endpoint) return refuse("an endpoint is required");
+      if (endpointCarriesCredential(endpoint)) return refuse(ENDPOINT_CREDENTIAL_REFUSAL);
+      const next = originOf(endpoint);
+      if (!next || !/^https?:$/.test(new URL(endpoint).protocol)) return refuse("not a valid URL: it must start with http:// or https://");
+      if (server.discovered_at !== null) return refuse(ENDPOINT_FIXED);
+      if (server.status === "connecting") return refuse(ENDPOINT_BUSY);
+      dropped = server.auth_env_key !== null && originOf(server.endpoint) !== next;
+    }
+
+    if (!(await this.store.updateServer(ctx, id, { label, endpoint }))) {
+      return { ok: false, message: null, endpointChanged: false, server: null };
+    }
+    if (dropped && server.auth_env_key) {
+      await this.store.setServerAuthEnvKey(ctx, id, null);
+      await this.release(ctx, server.auth_env_key);
+    }
+    return {
+      ok: true,
+      message: dropped ? CREDENTIAL_LEFT_BEHIND : null,
+      endpointChanged: endpoint !== undefined,
+      server: await this.get(ctx, id),
+    };
   }
 
   async removeServer(ctx: TenantContext, id: string): Promise<boolean> {
@@ -663,6 +710,30 @@ export class McpRegistry {
         impact_reason: verdict.reason,
       };
     });
+  }
+}
+
+export const MAX_LABEL_CHARS = 80;
+
+export function cleanLabel(raw: string): string {
+  return cleanText(raw, raw.length).replace(/\s+/g, " ").trim().slice(0, MAX_LABEL_CHARS).trim();
+}
+
+export const ENDPOINT_FIXED =
+  "this server has connected, so its endpoint is part of what agents were granted. Disconnect it and connect the new " +
+  "endpoint as a server of its own.";
+
+export const ENDPOINT_BUSY = "this server is still being connected. Change its endpoint once that check has finished.";
+
+export const CREDENTIAL_LEFT_BEHIND =
+  "the stored credential was removed, because the endpoint now points at a different host. Add it again if this " +
+  "server needs one.";
+
+function originOf(endpoint: string): string | null {
+  try {
+    return new URL(endpoint).origin;
+  } catch {
+    return null;
   }
 }
 

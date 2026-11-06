@@ -1853,6 +1853,9 @@ export function sendRemoveMcpServer(serverId: string): boolean {
   return send({ cmd: "removeMcpServer", serverId });
 }
 /** Re-run the handshake. On failure the previously discovered tools are kept. */
+export function sendUpdateMcpServer(serverId: string, patch: { label?: string; endpoint?: string }): boolean {
+  return send({ cmd: "updateMcpServer", serverId, ...patch, origin: EVAL_ORIGIN });
+}
 export function sendRediscoverMcpServer(serverId: string): void {
   send({ cmd: "rediscoverMcpServer", serverId, origin: EVAL_ORIGIN });
 }

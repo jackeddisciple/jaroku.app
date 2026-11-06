@@ -804,6 +804,7 @@ export const COMMAND_CAPABILITY: Record<string, Capability> = {
   addMcpServer: "mcp:manage",
   removeMcpServer: "mcp:manage",
   rediscoverMcpServer: "mcp:manage",
+  updateMcpServer: "mcp:manage",
   setMcpServerAuth: "mcp:manage",
   setMcpToolImpact: "mcp:manage",
   // Not mcp:manage. The gate halts a RUN, and whoever started it has to be able to answer —

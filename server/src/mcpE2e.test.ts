@@ -1014,7 +1014,7 @@ console.log("\nwhat a command or a check has to say goes to the person who asked
   check(handler.length > 0 && !/relay\.broadcastMcp\(ctx, \{\s*type: "(error|notice)"/.test(handler), "no refusal or notice from a command is broadcast to the workspace");
   check(/action === "mcp\.discover"\) relay\.sendMcpTo\(ctx, ctx\.requestId, \{ type: "error", message[,}]/.test(index), "a rate or standing refusal goes to the person refused");
   check((index.match(/serverId: payload\.serverId,\s*\.\.\.originOf\(payload\)/g) ?? []).length === 3, "a finished check's error or notice names the tab that asked for it");
-  check((handler.match(/\.\.\.originOf\(cmd\)/g) ?? []).length === 3, "...for an add, a re-check and a new credential alike");
+  check((handler.match(/\.\.\.originOf\(cmd\)/g) ?? []).length === 4, "...for an add, a re-check, a new credential and an edit alike");
 
   const A = await workspace("origin");
   const fixture = await startScriptedServer();
@@ -1060,6 +1060,73 @@ console.log("\na server that never connected does not use up the plan");
   const relaySource = readFileSync(join(fileURLToPath(new URL(".", import.meta.url)), "wsRelay.ts"), "utf8");
   const authorized = /private async authorized\([\s\S]*?\n {2}\}\n/.exec(relaySource)?.[0] ?? "";
   check((authorized.match(/\.\.\.ref,|\.\.\.ref \}/g) ?? []).length === 5, "every refusal the relay itself makes names the form too", String((authorized.match(/\.\.\.ref,|\.\.\.ref \}/g) ?? []).length));
+}
+
+console.log("\na server's name can be changed, and an endpoint that never connected can be fixed");
+{
+  const A = await workspace("edit");
+  const fixture = await startScriptedServer({
+    token: "edit-token",
+    hook: ({ path, res }) => (path === "/wrong" ? (res.writeHead(404, { "content-type": "text/plain" }).end("no"), true) : false),
+  });
+  const typo = `${fixture.origin}/wrong`;
+  const added = await connect(A, { endpoint: typo, label: "Typo", token: "edit-token" });
+  const id = "id" in added ? added.id : "";
+  const broken = await registry.get(A, id);
+  check(broken?.status === "error" && broken.discovered_at === null, "a mistyped path never connects", `${broken?.status} ${broken?.discovered_at}`);
+
+  const renamed = await registry.updateServer(A, id, { label: "  Fixed\u0007 Name  " });
+  check(renamed.ok && renamed.server?.label === "Fixed Name" && renamed.server.id === id, "its name changes, cleaned, and its id does not", JSON.stringify(renamed.server?.label));
+  check(!(await registry.updateServer(A, id, { label: "   " })).ok, "a name cannot be emptied");
+  check(!(await registry.updateServer(A, id, { endpoint: "https://u:p@example.com/mcp" })).ok, "an endpoint with a credential in it is refused");
+  check(!(await registry.updateServer(A, id, { endpoint: "ftp://example.com/mcp" })).ok, "and so is one that is not http(s)");
+
+  const fixed = await registry.updateServer(A, id, { endpoint: fixture.url });
+  check(fixed.ok && fixed.endpointChanged && fixed.server?.endpoint === fixture.url, "the endpoint can be corrected while the server has never connected");
+  check(fixed.message === null && fixed.server?.auth_env_key === broken?.auth_env_key, "a fix on the same host keeps the credential typed for it");
+  await queue.enqueue(A, { kind: "rediscover", serverId: id });
+  await drain();
+  const healthy = await registry.get(A, id);
+  check(healthy?.status === "connected" && (healthy.tools.length ?? 0) > 0, "and the corrected server connects", `${healthy?.status} ${healthy?.last_error}`);
+  check(fixture.seen.some((r) => r.path === "/mcp" && r.auth === "Bearer edit-token"), "presenting that credential");
+  const settled = await registry.updateServer(A, id, { endpoint: `${fixture.origin}/elsewhere` });
+  check(!settled.ok && /Disconnect it and connect the new endpoint/.test(settled.message ?? ""), "once connected, its endpoint is part of what agents were granted and stays", String(settled.message));
+
+  const nowhere = new McpRegistry(store, secrets, async () => ({ v4: [], v6: [] }), refs);
+  const far = await nowhere.prepare(A, { endpoint: "https://typo-host.invalid/mcp", label: "Far", token: "far-token" });
+  await nowhere.addServer(A, { endpoint: "https://typo-host.invalid/mcp", label: "Far", id: far.id, authEnvKey: far.authEnvKey, reserved: true });
+  const moved = await registry.updateServer(A, far.id, { endpoint: fixture.url });
+  check(moved.ok && /stored credential was removed/.test(moved.message ?? ""), "a fix to a different host leaves the credential behind, and says so", String(moved.message));
+  check(moved.server?.auth_env_key === null && moved.server.configured === false, "...so it is never presented to a host it was not typed for");
+  check((await secrets.getForPlatformCall(A, [far.authEnvKey ?? ""]))[far.authEnvKey ?? ""] === undefined, "...and it is deleted, not just unlinked");
+
+  const pending = await registry.prepare(A, { endpoint: fixture.url, label: "Pending" });
+  check(!(await registry.updateServer(A, pending.id, { endpoint: `${fixture.origin}/other` })).ok, "an endpoint cannot change while its first check is running");
+
+  const slow = await startScriptedServer({
+    hook: async ({ rpc }) => {
+      if (rpc === "initialize") await new Promise((r) => setTimeout(r, 300));
+      return false;
+    },
+  });
+  await store.upsertServer(A, {
+    id: "racing", label: "Racing", endpoint: slow.url, transport: "http", auth_env_key: null,
+    server_name: null, server_version: null, protocol_version: null, status: "error", last_error: "old", discovered_at: null,
+  });
+  const inFlight = registry.rediscover(A, "racing");
+  await new Promise((r) => setTimeout(r, 80));
+  check((await registry.updateServer(A, "racing", { endpoint: `${fixture.origin}/moved` })).ok, "an endpoint can be fixed while an old check is still out");
+  const stale = await inFlight;
+  const raced = await registry.get(A, "racing");
+  check(!stale.ok && raced?.status !== "connected" && raced?.tools.length === 0, "and that old check's answer is thrown away rather than recorded against the new one", `${raced?.status} ${raced?.tools.length}`);
+  await slow.close();
+  await fixture.close();
+
+  const index = readFileSync(join(fileURLToPath(new URL(".", import.meta.url)), "index.ts"), "utf8");
+  const update = /case "updateMcpServer": \{[\s\S]*?\n {6}\}\n/.exec(index)?.[0] ?? "";
+  check(/if \(!updated\.endpointChanged\) \{\s*broadcastMcpServers\(ctx\);\s*return;/.test(update) && /mcpDiscovery\.enqueue\(ctx, \{ kind: "rediscover", serverId: cmd\.serverId, \.\.\.originOf\(cmd\) \}\)/.test(update), "the command checks a changed endpoint again and nothing else");
+  check(/updateMcpServer: "mcp\.discover"/.test(index), "it is rate limited like the other commands that reach a server");
+  check(/auditMcp\(ctx, "mcp\.server\.updated"/.test(update), "and recorded");
 }
 
 console.log("\nadds that derive one id each keep their own row");

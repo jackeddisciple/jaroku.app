@@ -5680,6 +5680,7 @@ const COMMAND_RATE_ACTIONS: Partial<Record<string, RateAction>> = {
   deploy: "deploy.start",
   addMcpServer: "mcp.discover",
   rediscoverMcpServer: "mcp.discover",
+  updateMcpServer: "mcp.discover",
   setMcpServerAuth: "mcp.discover",
   inviteMember: "member.invite",
   connectConnector: "connector.connect",
@@ -5982,7 +5983,7 @@ setInterval(() => {
 // which is the name of a key being set, and never the value behind it.
 
 const MCP_COMMAND_NAMES = new Set([
-  "addMcpServer", "removeMcpServer", "rediscoverMcpServer", "setMcpToolImpact",
+  "addMcpServer", "removeMcpServer", "rediscoverMcpServer", "updateMcpServer", "setMcpToolImpact",
   "setMcpServerAuth", "resolveMcpConfirm",
 ]);
 
@@ -6189,6 +6190,39 @@ async function handleMcpCommand(ctx: TenantContext, cmd: McpCommand): Promise<vo
         return;
       }
 
+      case "updateMcpServer": {
+        if (typeof cmd.serverId !== "string") return;
+        const patch = {
+          ...(typeof cmd.label === "string" ? { label: cmd.label } : {}),
+          ...(typeof cmd.endpoint === "string" ? { endpoint: cmd.endpoint } : {}),
+        };
+        const updated = await mcpRegistry.updateServer(ctx, cmd.serverId, patch);
+        if (!updated.ok) {
+          relay.sendMcpTo(ctx, ctx.requestId, {
+            type: "error",
+            message: updated.message ?? "that server could not be changed",
+            serverId: cmd.serverId,
+          });
+          broadcastMcpServers(ctx);
+          return;
+        }
+        console.log(`[mcp] ${cmd.serverId} updated${updated.endpointChanged ? ", endpoint changed" : ""}`);
+        auditMcp(ctx, "mcp.server.updated", cmd.serverId, {
+          label: patch.label !== undefined,
+          endpoint: updated.endpointChanged,
+          ...(updated.endpointChanged ? { host: endpointHost(updated.server?.endpoint ?? "") } : {}),
+        });
+        if (updated.message) relay.sendMcpTo(ctx, ctx.requestId, { type: "notice", message: updated.message, serverId: cmd.serverId });
+        if (!updated.endpointChanged) {
+          broadcastMcpServers(ctx);
+          return;
+        }
+        relay.broadcastMcp(ctx, { type: "discovering", serverId: cmd.serverId, endpoint: updated.server?.endpoint ?? "" });
+        broadcastMcpServers(ctx);
+        await mcpDiscovery.enqueue(ctx, { kind: "rediscover", serverId: cmd.serverId, ...originOf(cmd) });
+        return;
+      }
+
       case "removeMcpServer": {
         if (typeof cmd.serverId !== "string") return;
         const removed = await mcpRegistry.removeServer(ctx, cmd.serverId);
@@ -6291,7 +6325,7 @@ async function handleMcpCommand(ctx: TenantContext, cmd: McpCommand): Promise<vo
     const message = (err as Error)?.message ?? String(err);
     console.error(`[mcp] ${cmd.cmd} failed: ${message}`);
     relay.sendMcpTo(ctx, ctx.requestId, { type: "error", message: `${cmd.cmd} failed: ${message}`, ...(cmd.cmd === "addMcpServer" ? echoedRef(cmd) : {}) });
-    if ((cmd.cmd === "rediscoverMcpServer" || cmd.cmd === "setMcpServerAuth") && typeof cmd.serverId === "string") {
+    if ((cmd.cmd === "rediscoverMcpServer" || cmd.cmd === "setMcpServerAuth" || cmd.cmd === "updateMcpServer") && typeof cmd.serverId === "string") {
       relay.broadcastMcp(ctx, { type: "discovered", serverId: cmd.serverId });
     }
   }

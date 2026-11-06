@@ -1,7 +1,7 @@
 import React from "react";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { ConnectForm, CredentialRemovalConfirm, McpPanel, RemovalConfirm, TOKEN_DROPPED, startAdd } from "./McpPanel.tsx";
+import { ConnectForm, CredentialRemovalConfirm, ENDPOINT_SETTLED, EditServerForm, McpPanel, RemovalConfirm, TOKEN_DROPPED, startAdd } from "./McpPanel.tsx";
 import { useBuildStore } from "../store/buildStore.ts";
 import { ADD_INTERRUPTED, DISCOVERY_STALE_MS, agentsUsing, isDiscovering, removalConsequences, useMcpStore } from "../store/mcpStore.ts";
 import { useSessionStore } from "../store/sessionStore.ts";
@@ -408,6 +408,31 @@ console.log("\ndisconnecting and removing a credential ask first, and say what i
   const detail = /function ServerDetail\([\s\S]*?\n\}\n/.exec(source)?.[0] ?? "";
   check("disconnect opens the question rather than disconnecting", /onClick=\{\(\) => setConfirming\(\(v\) => \(v === "disconnect" \? null : "disconnect"\)\)\}/.test(detail) && !/sendRemoveMcpServer/.test(detail));
   check("...and Remove does the same for the credential", /onClick=\{\(\) => setConfirming\("credential"\)\}/.test(detail) && !/sendSetMcpServerAuth\(server\.id, null\)/.test(detail));
+}
+
+console.log("\na server can be renamed, and a mistyped endpoint fixed before it ever connects");
+{
+  const typo = server({ status: "error", discovered_at: null, endpoint: "https://alpha.example/mpc" });
+  const draft = markup(React.createElement(EditServerForm, { server: typo, onDone: () => {} }));
+  check("the edit form holds the current name", /name="mcp-server-edit-label"[^>]*value="Alpha"|value="Alpha"[^>]*name="mcp-server-edit-label"/.test(draft));
+  const endpointField = /<input[^>]*name="mcp-server-edit-endpoint"[^>]*>/.exec(draft)?.[0] ?? "";
+  check("...and an endpoint that can still be corrected", /value="https:\/\/alpha\.example\/mpc"/.test(endpointField) && !/readOnly/i.test(endpointField), endpointField);
+  const settled = markup(React.createElement(EditServerForm, { server: server(), onDone: () => {} }));
+  const fixedField = /<input[^>]*name="mcp-server-edit-endpoint"[^>]*>/.exec(settled)?.[0] ?? "";
+  check("a server that has connected keeps its endpoint", /readOnly=""/i.test(fixedField), fixedField);
+  check("...and says why", settled.includes(ENDPOINT_SETTLED));
+  check("it can be cancelled", /<button type="button"[^>]*>Cancel<\/button>/.test(settled));
+
+  seed(useSessionStore, sessionAs("admin"));
+  seed(useMcpStore, { servers: [server()], selectedId: null });
+  const panel = markup(React.createElement(McpPanel));
+  check("an admin is offered edit", /<button[^>]*aria-expanded="false"[^>]*>edit<\/button>/.test(panel));
+  seed(useSessionStore, sessionAs("member"));
+  check("a member is not", !/>edit<\/button>/.test(markup(React.createElement(McpPanel))));
+  seed(useSessionStore, sessionAs("admin"));
+
+  const socket = readFileSync(fileURLToPath(new URL("../lib/socket.ts", import.meta.url)), "utf8");
+  check("the edit says whether it left the tab, and which tab sent it", /export function sendUpdateMcpServer\([^)]*\): boolean \{\s*return send\(\{ cmd: "updateMcpServer", serverId, \.\.\.patch, origin: EVAL_ORIGIN \}\);/.test(socket));
 }
 
 console.log(fail === 0 ? "\nALL CORRECT" : `\n${fail} FAILURES`);

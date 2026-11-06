@@ -588,6 +588,7 @@ export type AddMcpServerCommand = {
 export type RemoveMcpServerCommand = { cmd: "removeMcpServer"; serverId: string };
 /** Re-run the handshake. On failure the previously discovered tools are kept. */
 export type RediscoverMcpServerCommand = { cmd: "rediscoverMcpServer"; serverId: string; origin?: string };
+export type UpdateMcpServerCommand = { cmd: "updateMcpServer"; serverId: string; label?: string; endpoint?: string; origin?: string };
 export type ListMcpServersCommand = { cmd: "listMcpServers" };
 /**
  * A user's explicit override of the impact classification. `impact: null` clears it and
@@ -1238,12 +1239,13 @@ export type McpCommand =
   | AddMcpServerCommand
   | RemoveMcpServerCommand
   | RediscoverMcpServerCommand
+  | UpdateMcpServerCommand
   | SetMcpToolImpactCommand
   | SetMcpServerAuthCommand
   | ResolveMcpConfirmCommand;
 
 const MCP_COMMANDS = new Set([
-  "addMcpServer", "removeMcpServer", "rediscoverMcpServer", "setMcpToolImpact",
+  "addMcpServer", "removeMcpServer", "rediscoverMcpServer", "updateMcpServer", "setMcpToolImpact",
   "setMcpServerAuth", "resolveMcpConfirm",
 ]);
 
@@ -4060,7 +4062,7 @@ export const COMMAND_CHANNEL: Record<string, string> = {
   promoteTestInput: "eval", startEval: "eval", cancelEval: "eval", retryEval: "eval", loadRubric: "eval",
   saveRubric: "eval", resetRubric: "eval", loadJudge: "eval", setJudgeOwnKey: "eval", setDatasetCheck: "eval", duplicateDataset: "eval", loadEvalResults: "eval", listEvals: "eval", estimateEval: "eval",
   listMcpServers: "mcp", addMcpServer: "mcp", removeMcpServer: "mcp", rediscoverMcpServer: "mcp",
-  setMcpServerAuth: "mcp", setMcpToolImpact: "mcp", resolveMcpConfirm: "mcp",
+  updateMcpServer: "mcp", setMcpServerAuth: "mcp", setMcpToolImpact: "mcp", resolveMcpConfirm: "mcp",
   listProviders: "providers", setOwnKeyForPlatform: "providers",
   reportProviderHost: "providers",
   // An execution handed to a desktop app — see sandbox/desktopExec.ts. Nothing about one is shown on a

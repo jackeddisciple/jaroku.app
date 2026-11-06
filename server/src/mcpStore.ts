@@ -393,6 +393,26 @@ export class McpStore {
     return res.changes > 0;
   }
 
+  async updateServer(ctx: TenantContext, id: string, patch: { label?: string; endpoint?: string }): Promise<boolean> {
+    const sets: string[] = [];
+    const params: unknown[] = [];
+    if (patch.label !== undefined) {
+      sets.push("label = ?");
+      params.push(patch.label);
+    }
+    if (patch.endpoint !== undefined) {
+      sets.push("endpoint = ?");
+      params.push(withoutEndpointCredential(patch.endpoint));
+    }
+    if (sets.length === 0) return (await this.getServer(ctx, id)) !== null;
+    const res = await this.q(ctx).run(`UPDATE mcp_servers SET ${sets.join(", ")} WHERE id = ? AND workspace_id = ?`, [
+      ...params,
+      id,
+      ctx.workspaceId,
+    ]);
+    return res.changes > 0;
+  }
+
   /** Records the env var NAME. The value never passes through this module. */
   async setServerAuthEnvKey(ctx: TenantContext, id: string, envKey: string | null): Promise<void> {
     await this.q(ctx).run(`UPDATE mcp_servers SET auth_env_key = ? WHERE id = ? AND workspace_id = ?`, [

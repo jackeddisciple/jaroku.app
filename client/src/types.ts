@@ -2657,6 +2657,7 @@ export type ClientCommand =
   | { cmd: "addMcpServer"; endpoint: string; label?: string; token?: string; clientRef?: string; origin?: string }
   | { cmd: "removeMcpServer"; serverId: string }
   | { cmd: "rediscoverMcpServer"; serverId: string; origin?: string }
+  | { cmd: "updateMcpServer"; serverId: string; label?: string; endpoint?: string; origin?: string }
   | { cmd: "setMcpServerAuth"; serverId: string; token: string | null; origin?: string }
   | { cmd: "setMcpToolImpact"; serverId: string; toolName: string; impact: McpImpact | null }
   | { cmd: "resolveMcpConfirm"; runId: string; nonce: string; verdict: McpConfirmVerdict }
