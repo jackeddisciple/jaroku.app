@@ -204,5 +204,18 @@ console.log("\nconnecting keeps what was typed until the server answers");
   check("a reconnect settles an add left waiting", /forgetDiscovering\(\);\s*useMcpStore\.getState\(\)\.interruptAdd\(\);/.test(socket));
 }
 
+console.log("\nEnter submits a form only as its button would");
+{
+  const source = readFileSync(fileURLToPath(new URL("./McpPanel.tsx", import.meta.url)), "utf8");
+  check("no field in the panel handles Enter by itself", !/onKeyDown/.test(source));
+  const form = markup(React.createElement(ConnectForm, { onDone: () => {} }));
+  check("the connect form is a form", /^<div[^>]*><form/.test(form));
+  check("...whose Connect is its submit button", /<button type="submit"[^>]*disabled=""[^>]*>Connect<\/button>/.test(form), form.slice(0, 400));
+  check("...and submitting it goes through the guarded start", /onSubmit=\{\(e\) => \{\s*e\.preventDefault\(\);\s*submit\(\);/.test(source) && /const started = startAdd\(/.test(source));
+  check("the credential form is a form too", /onSubmit=\{\(e\) => \{\s*e\.preventDefault\(\);\s*saveCredential\(\);/.test(source));
+  check("...whose Save submits and whose Remove does not", /<button type="submit" className=\{primaryBtn\} disabled=\{!token\.trim\(\)\}>\s*Save/.test(source) && /<button type="button" className=\{quietBtn\}[\s\S]{0,120}Remove/.test(source));
+  check("...and a credential the socket did not send is kept, with the reason", /if \(!sendSetMcpServerAuth\(server\.id, value\)\) \{\s*setCredentialError\(NOT_SENT\);\s*return;/.test(source));
+}
+
 console.log(fail === 0 ? "\nALL CORRECT" : `\n${fail} FAILURES`);
 (globalThis as { process?: { exit(code: number): void } }).process?.exit(fail === 0 ? 0 : 1);

@@ -179,6 +179,18 @@ function ServerDetail({ server }: { server: McpServer }) {
   const discovering = useMcpStore((s) => isDiscovering(s.discovering, server.id));
   const [token, setToken] = useState("");
   const [showToken, setShowToken] = useState(false);
+  const [credentialError, setCredentialError] = useState<string | null>(null);
+  const saveCredential = () => {
+    const value = token.trim();
+    if (!value) return;
+    if (!sendSetMcpServerAuth(server.id, value)) {
+      setCredentialError(NOT_SENT);
+      return;
+    }
+    setToken("");
+    setCredentialError(null);
+    setShowToken(false);
+  };
   const highCount = server.tools.filter((t) => t.impact === "high").length;
   const lastChecked = server.checked_at ?? server.discovered_at;
 
@@ -247,7 +259,14 @@ function ServerDetail({ server }: { server: McpServer }) {
         )}
 
         {showToken && (
-          <div className="mt-2 rounded-card border border-edge bg-panel p-2">
+          <form
+            autoComplete="off"
+            onSubmit={(e) => {
+              e.preventDefault();
+              saveCredential();
+            }}
+            className="mt-2 rounded-card border border-edge bg-panel p-2"
+          >
             <div className="flex items-center gap-2">
               <SecretField
                 name="mcp-server-credential"
@@ -255,36 +274,27 @@ function ServerDetail({ server }: { server: McpServer }) {
                 placeholder="bearer token or API key"
                 value={token}
                 onChange={(e) => setToken(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && token.trim()) {
-                    sendSetMcpServerAuth(server.id, token.trim());
-                    setToken("");
-                    setShowToken(false);
-                  }
-                }}
               />
-              <button className={primaryBtn} disabled={!token.trim()}
-                onClick={() => {
-                  sendSetMcpServerAuth(server.id, token.trim());
-                  setToken("");
-                  setShowToken(false);
-                }}>
+              <button type="submit" className={primaryBtn} disabled={!token.trim()}>
                 Save
               </button>
               {server.configured && (
-                <button className={quietBtn}
+                <button type="button" className={quietBtn}
                   onClick={() => { sendSetMcpServerAuth(server.id, null); setShowToken(false); }}>
                   Remove
                 </button>
               )}
             </div>
+            {credentialError && (
+              <p role="alert" className="mt-1.5 break-words text-tiny leading-[1.5] text-err">{credentialError}</p>
+            )}
             {/* Saying where it goes matters more than saying it is safe. */}
             <p className="mt-1.5 text-tiny leading-[1.5] text-faint">
               Stored in <span className="font-mono">runtime/.env</span>
               {server.auth_env_key ? <> as <span className="font-mono">{server.auth_env_key}</span></> : null}
               , which is gitignored. It is never logged and never sent back to this page.
             </p>
-          </div>
+          </form>
         )}
       </div>
 
@@ -385,7 +395,14 @@ export function ConnectForm({ onDone }: { onDone: () => void }) {
 
   return (
       <div className="shrink-0 px-4 pb-2">
-        <form autoComplete="off" onSubmit={(e) => e.preventDefault()} className="rounded-card border border-edge bg-panel p-2">
+        <form
+          autoComplete="off"
+          onSubmit={(e) => {
+            e.preventDefault();
+            submit();
+          }}
+          className="rounded-card border border-edge bg-panel p-2"
+        >
           <input
             autoFocus
             name="mcp-server-endpoint"
@@ -395,7 +412,6 @@ export function ConnectForm({ onDone }: { onDone: () => void }) {
             value={endpoint}
             readOnly={sending}
             onChange={(e) => setEndpoint(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && submit()}
           />
           <div className="mt-1.5 flex items-center gap-2">
             <input
@@ -406,7 +422,6 @@ export function ConnectForm({ onDone }: { onDone: () => void }) {
               value={label}
               readOnly={sending}
               onChange={(e) => setLabel(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && submit()}
             />
             <SecretField
               name="mcp-server-token"
@@ -415,10 +430,8 @@ export function ConnectForm({ onDone }: { onDone: () => void }) {
               value={token}
               readOnly={sending}
               onChange={(e) => setToken(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && submit()}
             />
-            <button type="button" className={primaryBtn} disabled={!endpoint.trim() || sending}
-              onClick={submit}>
+            <button type="submit" className={primaryBtn} disabled={!endpoint.trim() || sending}>
               {sending ? "connecting…" : "Connect"}
             </button>
           </div>
