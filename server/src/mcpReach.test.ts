@@ -130,7 +130,7 @@ async function addServer(c: Socket, endpoint: string, label: string, token?: str
   for (let i = 0; i < 200; i++) {
     await sleep(100);
     const row = c.server(id);
-    if (row && row["status"] !== "discovering") return row;
+    if (row && row["status"] !== "connecting") return row;
   }
   return null;
 }

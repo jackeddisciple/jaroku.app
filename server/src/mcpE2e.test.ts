@@ -970,6 +970,32 @@ console.log("\na workspace has at most its limit of discoveries running at once"
   await slow.close();
 }
 
+console.log("\nan add in flight is visible before its handshake ends");
+{
+  const index = readFileSync(join(fileURLToPath(new URL(".", import.meta.url)), "index.ts"), "utf8");
+  const add = /case "addMcpServer": \{[\s\S]*?\n {6}\}\n/.exec(index)?.[0] ?? "";
+  const prepared = add.indexOf("mcpRegistry.prepare(");
+  const snapshot = add.indexOf("broadcastMcpServers();", prepared);
+  const queued = add.indexOf("mcpDiscovery.enqueue(");
+  check(prepared > 0 && snapshot > prepared && snapshot < queued, "the reserved row is broadcast once the add is accepted, before the handshake is queued");
+  check(/type: "discovering", serverId: prepared\.id/.test(add), "and the discovering message names the row it reserved");
+
+  const A = await workspace("inflight");
+  const slow = await startScriptedServer({
+    hook: async ({ rpc }) => {
+      if (rpc === "initialize") await new Promise((r) => setTimeout(r, 200));
+      return false;
+    },
+  });
+  const accepted = await registry.prepare(A, { endpoint: slow.url, label: "Pending" });
+  const listed = await registry.list(A);
+  check(listed.some((s) => s.id === accepted.id && s.status === "connecting"), "the snapshot taken then lists it as connecting", JSON.stringify(listed.map((s) => [s.id, s.status])));
+  await queue.enqueue(A, { kind: "add", serverId: accepted.id, endpoint: slow.url, label: "Pending", authEnvKey: accepted.authEnvKey });
+  await drain();
+  check((await registry.get(A, accepted.id))?.status === "connected", "and the same row becomes connected when the handshake ends");
+  await slow.close();
+}
+
 console.log("\nadds that derive one id each keep their own row");
 {
   const A = await workspace("collide");

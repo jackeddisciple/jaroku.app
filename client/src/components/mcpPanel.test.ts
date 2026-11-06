@@ -98,5 +98,13 @@ console.log("\na server named after an object's own property is not stuck checki
   check("...and can be pressed", !/disabled=""/.test(recheck), recheck);
 }
 
+console.log("\nan add in flight shows as a server connecting");
+{
+  const pending = render([server({ id: "pending", label: "Pending", status: "connecting", discovered_at: null })]);
+  check("the reserved row has its own chip", />Pending</.test(pending));
+  check("...marked as connecting", /title="connecting…"/.test(pending));
+  check("...and its detail says so", /connecting…<\/span>/.test(pending));
+}
+
 console.log(fail === 0 ? "\nALL CORRECT" : `\n${fail} FAILURES`);
 (globalThis as { process?: { exit(code: number): void } }).process?.exit(fail === 0 ? 0 : 1);

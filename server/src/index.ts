@@ -6134,7 +6134,8 @@ async function handleMcpCommand(ctx: TenantContext, cmd: McpCommand): Promise<vo
         }
         // A handshake against someone else's server takes as long as it takes. Saying so
         // is the difference between "connecting" and "the button did nothing".
-        relay.broadcastMcp(ctx, { type: "discovering", serverId: null, endpoint: cmd.endpoint });
+        relay.broadcastMcp(ctx, { type: "discovering", serverId: prepared.id, endpoint: cmd.endpoint });
+        broadcastMcpServers();
         await mcpDiscovery.enqueue(ctx, {
           kind: "add",
           serverId: prepared.id,
