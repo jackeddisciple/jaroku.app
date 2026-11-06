@@ -1,7 +1,7 @@
 import React from "react";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { ConnectForm, CredentialRemovalConfirm, ENDPOINT_SETTLED, EditServerForm, MCP_EMPTY_ADMIN, MCP_EMPTY_MEMBER, McpPanel, RemovalConfirm, TOKEN_DROPPED, controlBtn, startAdd } from "./McpPanel.tsx";
+import { ConnectForm, CredentialRemovalConfirm, ENDPOINT_SETTLED, EditServerForm, MCP_EMPTY_ADMIN, MCP_EMPTY_MEMBER, McpPanel, RemovalConfirm, SCHEMA_DISPLAY_CHARS, SCHEMA_SHORTENED, TOKEN_DROPPED, controlBtn, schemaText, startAdd } from "./McpPanel.tsx";
 import { useBuildStore } from "../store/buildStore.ts";
 import { ADD_INTERRUPTED, DISCOVERY_STALE_MS, agentsUsing, isDiscovering, removalConsequences, useMcpStore } from "../store/mcpStore.ts";
 import { useSessionStore } from "../store/sessionStore.ts";
@@ -491,6 +491,34 @@ console.log("\nwhat a person reads to decide is readable, and the controls are b
     check(`${label} is at least 24px tall`, new RegExp(`<button[^>]*class="[^"]*min-h-6[^"]*"[^>]*>(?:(?!</button>).)*${label}</button>`, "s").test(html));
   }
   check("every control in that row shares the taller class", controlBtn.includes("min-h-6"));
+}
+
+console.log("\nlong text wraps inside the panel, and a big schema is bounded");
+{
+  const longName = `read_${"x".repeat(123)}`;
+  const wide = server({
+    server_name: "S".repeat(600),
+    tools: [tool(longName, { description: "d".repeat(4000) })],
+  });
+  seed(useSessionStore, sessionAs("admin"));
+  seed(useMcpStore, { servers: [wide], selectedId: null, discovering: {} });
+  const html = markup(React.createElement(McpPanel));
+  check("an unbroken description can break anywhere", /<p class="[^"]*\[overflow-wrap:anywhere\][^"]*">d{4000}<\/p>/.test(html));
+  check("...and so can a long tool name", new RegExp(`<span class="[^"]*\\[overflow-wrap:anywhere\\][^"]*">${longName}</span>`).test(html));
+  check("...and the server's own description of itself", /<p class="mt-1 text-tiny text-muted \[overflow-wrap:anywhere\]">Identifies itself as/.test(html));
+
+  let deep: Record<string, unknown> = { type: "string" };
+  for (let i = 0; i < 64; i++) deep = { type: "object", properties: { [`level_${i}`]: deep } };
+  const pretty = JSON.stringify(deep, null, 2).length;
+  const shown = schemaText(deep);
+  check("a deep schema is never laid out as megabytes of indentation", pretty > SCHEMA_DISPLAY_CHARS && shown.length <= SCHEMA_DISPLAY_CHARS + SCHEMA_SHORTENED.length + 1, `${pretty} -> ${shown.length}`);
+  check("...it is shown compactly instead", shown === JSON.stringify(deep) || shown.endsWith(SCHEMA_SHORTENED));
+  const huge = { type: "object", properties: Object.fromEntries(Array.from({ length: 4000 }, (_, i) => [`p${i}`, { type: "string", description: "padding" }])) };
+  check("and a schema too long even then says it was shortened", schemaText(huge).endsWith(SCHEMA_SHORTENED));
+  const small = { type: "object", properties: { url: { type: "string" } } };
+  check("an ordinary schema is pretty printed as before", schemaText(small) === JSON.stringify(small, null, 2));
+  const source = readFileSync(fileURLToPath(new URL("./McpPanel.tsx", import.meta.url)), "utf8");
+  check("the schema block has a height of its own", /<pre className="[^"]*max-h-80 overflow-auto[^"]*">\s*\{schemaText\(tool\.input_schema\)\}/.test(source));
 }
 
 console.log(fail === 0 ? "\nALL CORRECT" : `\n${fail} FAILURES`);

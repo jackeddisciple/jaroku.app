@@ -55,6 +55,17 @@ import { Icon } from "../lib/icons/registry.ts";
  */
 export const controlBtn = `${secondaryBtn} min-h-6`;
 
+export const SCHEMA_DISPLAY_CHARS = 20_000;
+export const SCHEMA_SHORTENED = "… shortened for display: this schema is longer than the panel shows";
+
+export function schemaText(schema: unknown): string {
+  const pretty = JSON.stringify(schema, null, 2) ?? "";
+  if (pretty.length <= SCHEMA_DISPLAY_CHARS) return pretty;
+  const compact = JSON.stringify(schema) ?? "";
+  if (compact.length <= SCHEMA_DISPLAY_CHARS) return compact;
+  return `${compact.slice(0, SCHEMA_DISPLAY_CHARS)}\n${SCHEMA_SHORTENED}`;
+}
+
 const STATUS_LABEL: Record<McpServer["status"], string> = {
   connecting: "connecting…",
   connected: "connected",
@@ -82,7 +93,7 @@ function ToolRow({ tool, serverId }: { tool: McpTool; serverId: string }) {
         </span>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-caption text-ink">{tool.name}</span>
+            <span className="min-w-0 text-caption text-ink [overflow-wrap:anywhere]">{tool.name}</span>
             {high ? (
               <StatusBadge state="pending" label="high impact" icon={ShieldAlertIcon}
                 title="A generated agent must ask before running this for the first time." />
@@ -110,7 +121,7 @@ function ToolRow({ tool, serverId }: { tool: McpTool; serverId: string }) {
             )}
           </div>
           {tool.description && (
-            <p className="mt-0.5 text-tiny leading-[1.5] text-muted">{tool.description}</p>
+            <p className="mt-0.5 text-tiny leading-[1.5] text-muted [overflow-wrap:anywhere]">{tool.description}</p>
           )}
           <p className="mt-0.5 text-tiny leading-[1.5] text-muted">
             {tool.overridden ? `Jaroku said ${tool.computed_impact}: ` : ""}
@@ -167,8 +178,8 @@ function ToolRow({ tool, serverId }: { tool: McpTool; serverId: string }) {
           </div>
 
           {open && (
-            <pre className="mt-1.5 overflow-x-auto rounded-control border border-hair bg-void p-2 font-mono text-tiny leading-[1.5] text-muted">
-              {JSON.stringify(tool.input_schema, null, 2)}
+            <pre className="mt-1.5 max-h-80 overflow-auto rounded-control border border-hair bg-void p-2 font-mono text-tiny leading-[1.5] text-muted">
+              {schemaText(tool.input_schema)}
             </pre>
           )}
         </div>
@@ -343,7 +354,7 @@ function ServerDetail({ server }: { server: McpServer }) {
         </div>
 
         {server.server_name && (
-          <p className="mt-1 text-tiny text-muted">
+          <p className="mt-1 text-tiny text-muted [overflow-wrap:anywhere]">
             Identifies itself as{" "}
             <span className="text-ink">
               {server.server_name}
