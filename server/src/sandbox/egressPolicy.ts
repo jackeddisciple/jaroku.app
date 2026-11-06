@@ -35,7 +35,17 @@ export interface EgressPolicy {
   rules: EgressRule[];
 }
 
-export class EgressPolicyError extends Error {}
+export interface EgressRefusal {
+  host?: string;
+  denied?: string[];
+  unresolved?: boolean;
+}
+
+export class EgressPolicyError extends Error {
+  constructor(message: string, readonly refusal: EgressRefusal = {}) {
+    super(message);
+  }
+}
 
 const HTTPS_PORT = 443;
 
@@ -253,6 +263,7 @@ export async function resolveAndPin(host: string, resolver: Resolver = realResol
     if (isDeniedAddress(literal)) {
       throw new EgressPolicyError(
         `${JSON.stringify(host)} is a private/link-local/reserved address and cannot be granted to a sandbox`,
+        { host, denied: [literal] },
       );
     }
     return [literal];
@@ -263,16 +274,20 @@ export async function resolveAndPin(host: string, resolver: Resolver = realResol
     const { v4, v6 } = await resolver(host);
     records = [...v4, ...v6];
   } catch (err) {
-    throw new EgressPolicyError(`could not resolve ${JSON.stringify(host)}: ${(err as Error).message}`);
+    throw new EgressPolicyError(`could not resolve ${JSON.stringify(host)}: ${(err as Error).message}`, {
+      host,
+      unresolved: true,
+    });
   }
   if (records.length === 0) {
-    throw new EgressPolicyError(`${JSON.stringify(host)} did not resolve to any address`);
+    throw new EgressPolicyError(`${JSON.stringify(host)} did not resolve to any address`, { host, unresolved: true });
   }
   const denied = records.filter(isDeniedAddress);
   if (denied.length > 0) {
     throw new EgressPolicyError(
       `${JSON.stringify(host)} resolves to a private/link-local/reserved address ` +
         `(${denied.join(", ")}) and cannot be granted to a sandbox`,
+      { host, denied },
     );
   }
   return records;

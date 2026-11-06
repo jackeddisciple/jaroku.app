@@ -543,6 +543,55 @@ console.log("\na failure is classified by what happened, not by words in the bod
   check(!refused.ok && refused.status === "unreachable", "a refused connection is unreachable", JSON.stringify(refused));
 }
 
+console.log("\na failure says what happened, in words a person can act on");
+{
+  const A = await workspace("words");
+  const nowhere = new McpRegistry(store, secrets, async () => ({ v4: [], v6: [] }), refs);
+  const lost = await nowhere.prepare(A, { endpoint: "https://no-such-host.invalid/mcp", label: "Lost" });
+  const missing = await nowhere.addServer(A, { endpoint: "https://no-such-host.invalid/mcp", label: "Lost", id: lost.id, reserved: true });
+  check(missing.server?.status === "unreachable", "a name that does not resolve is unreachable, not a permanent error", String(missing.server?.status));
+  check(/could not find/.test(missing.message ?? ""), "...and says the name was not found", missing.message ?? "");
+
+  const plain = await startScriptedServer();
+  const local = plain.url.replace("127.0.0.1", "localhost");
+  await connect(A, { endpoint: local, label: "Localhost" });
+  const viaName = await registry.get(A, "localhost");
+  check(viaName?.status === "connected", "a localhost URL connects in development", `${viaName?.status} ${viaName?.last_error}`);
+  await plain.close();
+
+  const unversioned = await startScriptedServer({ serverInfo: { name: "nameless" } });
+  await connect(A, { endpoint: unversioned.url, label: "Unversioned" });
+  const invalid = await registry.get(A, "unversioned");
+  check(!/ZodError|"expected"/.test(invalid?.last_error ?? ""), "an invalid handshake does not show raw validator output", invalid?.last_error ?? "");
+  check(/not valid MCP \(serverInfo\.version: /.test(invalid?.last_error ?? ""), "...it names the field that was wrong", invalid?.last_error ?? "");
+  await unversioned.close();
+
+  const guarded = await startScriptedServer({ token: "right-token" });
+  await connect(A, { endpoint: guarded.url, label: "NoToken" });
+  const none = await registry.get(A, "notoken");
+  check(none?.status === "auth_required" && /requires authorization\. Add a credential for it/.test(none.last_error ?? ""), "with no token the server asks for one", none?.last_error ?? "");
+  check(!/\[redacted\]/.test(none?.last_error ?? ""), "...in words that survive being stored", none?.last_error ?? "");
+  await connect(A, { endpoint: guarded.url, label: "WrongToken", token: "wrong-token" });
+  const wrong = await registry.get(A, "wrongtoken");
+  check(wrong?.status === "auth_required", "a rejected token still needs a credential", String(wrong?.status));
+  check(/rejected the credential Jaroku presented/.test(wrong?.last_error ?? ""), "...and says the token given was refused", wrong?.last_error ?? "");
+  check(!/Add a credential/.test(wrong?.last_error ?? ""), "...rather than asking for one that was just given", wrong?.last_error ?? "");
+  check(!/\[redacted\]/.test(wrong?.last_error ?? ""), "...in words that survive being stored", wrong?.last_error ?? "");
+  check(!(wrong?.last_error ?? "").includes("wrong-token"), "...without quoting it");
+
+  const seenBefore = guarded.seen.length;
+  for (const [what, token] of [["a bell character", "abc\u0007def"], ["a NUL", "abc\u0000def"], ["a line break", "abc\ndef"], ["a curly quote", "\u201cabc\u201d"]] as const) {
+    const refused = await registry.prepare(A, { endpoint: guarded.url, label: `Bad ${what}`, token });
+    check(!refused.ok && /HTTP header cannot carry/.test(refused.message ?? ""), `a token with ${what} is refused before anything is stored`, refused.message ?? "");
+  }
+  check(guarded.seen.length === seenBefore, "and the server never saw a request for any of them", String(guarded.seen.length - seenBefore));
+  check(!(await store.listServers(A)).some((s) => s.label.startsWith("Bad ")), "nor was a row left behind");
+  const kept = await registry.setCredential(A, "wrongtoken", "abc\u0007def");
+  check(!kept.result.ok && /HTTP header cannot carry/.test(kept.result.message ?? ""), "replacing a credential with one is refused the same way", kept.result.message ?? "");
+  check((await secrets.getForPlatformCall(A, [wrong?.auth_env_key ?? ""]))[wrong?.auth_env_key ?? ""] === "wrong-token", "and the stored credential is left as it was");
+  await guarded.close();
+}
+
 console.log("\none unusable tool does not take the others with it");
 {
   const A = await workspace("deep");

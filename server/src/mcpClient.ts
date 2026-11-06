@@ -201,11 +201,11 @@ export interface DiscoverOptions {
 /**
  * Turn a thrown error into the status a user can act on.
  */
-export function classifyDiscoveryFailure(err: unknown): {
+export function classifyDiscoveryFailure(err: unknown, presented = false): {
   status: DiscoveryFailure["status"];
   error: string;
 } {
-  const raw = boundedError(err instanceof Error ? `${err.name}: ${err.message}` : String(err));
+  const raw = boundedError(describeFailure(err));
   const kind = failureKind(err);
 
   if (kind === "auth") {
@@ -215,12 +215,44 @@ export function classifyDiscoveryFailure(err: unknown): {
       // needs an interactive OAuth flow will keep rejecting a pasted token forever, and
       // "unauthorized" alone sends the user off to hunt for a key that does not exist.
       error:
-        `${raw} — this server requires authorization. Add a bearer token or API key for it. ` +
-        `If it uses an interactive OAuth flow, that isn't supported yet.`,
+        (presented
+          ? "this server rejected the credential Jaroku presented. Replace it with a valid one. "
+          : "this server requires authorization. Add a credential for it, such as an API key. ") +
+        `If it uses an interactive OAuth flow, that isn't supported yet. The server said: ${raw}`,
     };
   }
 
+  const invalid = invalidAnswer(err);
+  if (invalid) return { status: "error", error: boundedError(invalid) };
+
   return { status: kind === "unreachable" ? "unreachable" : "error", error: raw };
+}
+
+function describeFailure(err: unknown): string {
+  if (!(err instanceof Error)) return String(err);
+  if (err instanceof AggregateError && !err.message) {
+    const inner = err.errors.map((e: unknown) => (e instanceof Error ? e.message : String(e))).filter(Boolean);
+    if (inner.length > 0) return `${err.name}: ${[...new Set(inner)].join("; ")}`;
+  }
+  return `${err.name}: ${err.message}`;
+}
+
+function invalidAnswer(failure: unknown): string | null {
+  let err = failure;
+  for (let depth = 0; depth < 5 && err; depth++) {
+    const { name, issues, cause } = err as { name?: unknown; issues?: unknown; cause?: unknown };
+    if (typeof name === "string" && /ZodError$/.test(name) && Array.isArray(issues) && issues.length > 0) {
+      const said = issues.slice(0, 3).map((issue) => {
+        const { path, message } = (issue ?? {}) as { path?: unknown; message?: unknown };
+        const where = Array.isArray(path) && path.length > 0 ? path.map(String).join(".") : "the answer";
+        return `${where}: ${typeof message === "string" ? message : "not what MCP allows"}`;
+      });
+      const more = issues.length > 3 ? `, and ${issues.length - 3} more` : "";
+      return `this server's answer is not valid MCP (${said.join("; ")}${more})`;
+    }
+    err = cause;
+  }
+  return null;
 }
 
 const NETWORK_ERRORS = new Set([
@@ -444,7 +476,7 @@ export async function discover(opts: DiscoverOptions): Promise<DiscoveryResult> 
   try {
     return await Promise.race([handshake(), expired]);
   } catch (err) {
-    return { ok: false, ...classifyDiscoveryFailure(err) };
+    return { ok: false, ...classifyDiscoveryFailure(err, Boolean(opts.token)) };
   } finally {
     // Best effort: a server that refuses to close must not turn discovery into a hang.
     await Promise.race([client.close().catch(() => {}), new Promise((done) => setTimeout(done, 1000))]);

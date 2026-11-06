@@ -188,17 +188,18 @@ export class McpRegistry {
    * the point of entry, which is the same reason `connectorSecrets` re-resolves a DATABASE_URL
    * per run instead of trusting what was saved.
    */
-  private async checkEndpoint(endpoint: string): Promise<{ refusal: string | null; pin?: AddressPin }> {
+  private async checkEndpoint(endpoint: string): Promise<{ refusal: string | null; status: McpServer["status"]; pin?: AddressPin }> {
     try {
       const { host, ips } = await validateMcpUrl(endpoint, this.resolver);
-      return { refusal: null, pin: { host, ips } };
+      return { refusal: null, status: "connecting", pin: { host, ips } };
     } catch (err) {
       // Both carry a message written in this codebase. `validateMcpUrl` deliberately does not
       // quote a credentialed URL back, and neither does the shared egress refusal — which
       // matters because this text lands in `mcp_servers.last_error`, on every client's registry
       // snapshot, and in the log.
-      if (err instanceof McpUrlError || err instanceof EgressPolicyError) return { refusal: err.message };
-      return { refusal: "that endpoint could not be checked" };
+      if (err instanceof McpUrlError) return { refusal: err.message, status: err.unreachable ? "unreachable" : "error" };
+      if (err instanceof EgressPolicyError) return { refusal: err.message, status: "error" };
+      return { refusal: "that endpoint could not be checked", status: "error" };
     }
   }
 
@@ -328,6 +329,8 @@ export class McpRegistry {
     if (endpointCarriesCredential(endpoint)) {
       return { ok: false, id: "", authEnvKey: null, message: ENDPOINT_CREDENTIAL_REFUSAL };
     }
+    const badToken = opts.token ? tokenRefusal(opts.token) : null;
+    if (badToken) return { ok: false, id: "", authEnvKey: null, message: badToken };
 
     const requested = opts.id?.trim() || slugifyServerId(opts.label?.trim() || endpoint);
     if (!SERVER_ID_RE.test(requested)) {
@@ -385,6 +388,8 @@ export class McpRegistry {
     if (endpointCarriesCredential(endpoint)) {
       return { ok: false, server: null, message: ENDPOINT_CREDENTIAL_REFUSAL };
     }
+    const badToken = opts.token ? tokenRefusal(opts.token) : null;
+    if (badToken) return { ok: false, server: null, message: badToken };
 
     const requested = opts.id?.trim() || slugifyServerId(opts.label?.trim() || endpoint);
     if (!SERVER_ID_RE.test(requested)) {
@@ -430,14 +435,14 @@ export class McpRegistry {
     // BEFORE ANYTHING CONNECTS. A user-supplied URL fetched by the CONTROL PLANE is the SSRF
     // vector the migration spec names, and unlike a sandbox's egress there is no second wall
     // here — this check is the wall. See mcpUrl.ts.
-    const { refusal, pin } = await this.checkEndpoint(endpoint);
+    const { refusal, status, pin } = await this.checkEndpoint(endpoint);
     if (refusal) {
       const kept = await settle({
         id, label, endpoint, transport: "http", auth_env_key: authEnvKey,
         server_name: null, server_version: null, protocol_version: null,
         // `error`, not `unreachable`. Unreachable invites a retry, and this endpoint will be
         // refused identically every time until the user changes it.
-        status: "error", last_error: refusal, discovered_at: null,
+        status, last_error: refusal, discovered_at: null,
       });
       if (!kept) return { ok: false, server: null, message: null };
       return { ok: false, server: await this.get(ctx, id), message: joinMessages(credentialWarning, refusal) };
@@ -510,12 +515,12 @@ export class McpRegistry {
     // RE-CHECKED, not trusted from registration. A hostname is not a promise: the owner of
     // `mcp.example.com` can repoint it at `169.254.169.254` the day after it was added, and a
     // re-discovery is exactly when that would be used.
-    const { refusal, pin } = await this.checkEndpoint(server.endpoint);
+    const { refusal, status, pin } = await this.checkEndpoint(server.endpoint);
     if (refusal) {
       // The tool list is LEFT ALONE, like every other rediscover failure — see this method's
       // own note. A repointed server must not silently strip every agent scoped to it; it must
       // stop being talked to and say why.
-      await this.store.setServerStatus(ctx, id, "error", refusal);
+      await this.store.setServerStatus(ctx, id, status, refusal);
       return { ok: false, server: await this.get(ctx, id), message: refusal };
     }
 
@@ -609,6 +614,8 @@ export class McpRegistry {
       return { result: { ok: true, server: await this.get(ctx, id), message: null }, warning: null };
     }
 
+    const badToken = tokenRefusal(token);
+    if (badToken) return { result: { ok: false, server: await this.get(ctx, id), message: badToken }, warning: null };
     const written = (await this.secrets?.set(ctx, key, token)) ?? { ok: true, warning: null };
     if (!written.ok) {
       return {
@@ -657,6 +664,16 @@ export class McpRegistry {
       };
     });
   }
+}
+
+export function tokenRefusal(token: string): string | null {
+  if (!/^[\x20-\x7e]*$/.test(token)) {
+    return (
+      "that credential has a character an HTTP header cannot carry, such as a control character or a letter " +
+      "outside plain ASCII, so a server would never receive it as typed. Paste it again on its own"
+    );
+  }
+  return null;
 }
 
 /** Two things can be worth saying at once; neither should hide the other. */

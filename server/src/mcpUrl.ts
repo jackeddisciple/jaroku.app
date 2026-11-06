@@ -26,7 +26,11 @@
 
 import { EgressPolicyError, isDeniedAddress, resolveAndPin, type EgressRule, type Resolver, realResolver } from "./sandbox/egressPolicy.ts";
 
-export class McpUrlError extends Error {}
+export class McpUrlError extends Error {
+  constructor(message: string, readonly unreachable = false) {
+    super(message);
+  }
+}
 
 const CREDENTIAL_WORDS = new Set([
   "key", "apikey", "token", "secret", "password", "passwd", "pwd", "sig", "signature",
@@ -120,6 +124,28 @@ function isLoopback(ip: string): boolean {
   return /^127\./.test(ip) || ip === "::1" || ip === "0:0:0:0:0:0:0:1";
 }
 
+function isLoopbackName(host: string): boolean {
+  return host === "localhost" || host.endsWith(".localhost");
+}
+
+const LOOPBACK_PIN = ["127.0.0.1", "::1"];
+
+function publicOnly(url: URL, err: EgressPolicyError): Error {
+  if (err.refusal.unresolved) {
+    return new McpUrlError(
+      `could not find ${JSON.stringify(url.hostname)}: the name did not resolve to an address. Check the URL, ` +
+        `or re-check once the name has been set up`,
+      true,
+    );
+  }
+  const denied = err.refusal.denied ?? [];
+  if (denied.length === 0) return err;
+  const named = denied.length === 1 && url.hostname.replace(/^\[(.*)\]$/, "$1") === denied[0]
+    ? `${JSON.stringify(url.hostname)} is a private, link-local or reserved address`
+    : `${JSON.stringify(url.hostname)} resolves to a private, link-local or reserved address (${denied.join(", ")})`;
+  return new EgressPolicyError(`${named}. Jaroku only connects to MCP servers at public addresses`, err.refusal);
+}
+
 /**
  * Ports an MCP endpoint may not target, whatever it resolves to.
  *
@@ -182,9 +208,15 @@ export async function validateMcpUrl(
   }
 
   if (url.protocol !== "http:" && url.protocol !== "https:") {
-    throw new McpUrlError(
-      `an MCP endpoint must be http(s), not ${JSON.stringify(url.protocol)} — stdio is deliberately unsupported`,
-    );
+    if (url.protocol === "stdio:") {
+      throw new McpUrlError(
+        "stdio is deliberately unsupported: it would mean running a third-party program on this machine. Give the server's http(s) URL",
+      );
+    }
+    if (/^[^:/?#]+:\d+(?:[/?#]|$)/.test(raw.trim())) {
+      throw new McpUrlError("this endpoint has no scheme: it must start with http:// or https://");
+    }
+    throw new McpUrlError(`an MCP endpoint must be http(s), not ${JSON.stringify(url.protocol)}`);
   }
   if (!url.hostname) throw new McpUrlError("that endpoint has no host");
 
@@ -204,15 +236,26 @@ export async function validateMcpUrl(
   // does not qualify — that is the rebinding shape, and admitting it would make the seam the
   // vulnerability. See loopbackAllowed.
   const literal = url.hostname.replace(/^\[(.*)\]$/, "$1");
-  if (isLoopback(literal) && loopbackAllowed(env)) {
-    return { host: url.hostname, port, ips: [literal] };
+  const loopbackName = isLoopbackName(literal);
+  if ((isLoopback(literal) || loopbackName) && loopbackAllowed(env)) {
+    return { host: url.hostname, port, ips: loopbackName ? LOOPBACK_PIN : [literal] };
+  }
+  if (isLoopback(literal) || loopbackName) {
+    throw new McpUrlError(
+      `${JSON.stringify(url.hostname)} is this machine's own address, which an MCP endpoint may not use` +
+        (env["NODE_ENV"] === "production" ? "" : ` while ${MCP_ALLOW_LOOPBACK_ENV} is 0`),
+    );
   }
 
   // Otherwise it delegates to the exact refusal every other egress host goes through: resolved
   // fresh, pinned, and refused whole on ANY denied answer — not the first, because a round-robin
   // resolver could hand out the dangerous one on the very next lookup.
-  const ips = await resolveAndPin(url.hostname, resolver);
-  return { host: url.hostname, port, ips };
+  try {
+    const ips = await resolveAndPin(url.hostname, resolver);
+    return { host: url.hostname, port, ips };
+  } catch (err) {
+    throw err instanceof EgressPolicyError ? publicOnly(url, err) : err;
+  }
 }
 
 /**

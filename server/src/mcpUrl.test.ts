@@ -108,6 +108,35 @@ console.log("\nand endpoints that are the wrong shape entirely");
   check((await refused("https://")) instanceof McpUrlError, "...or has no host");
 }
 
+console.log("\na refusal says what was wrong with the endpoint");
+{
+  const noScheme = await refused("localhost:8940/ok");
+  check(noScheme instanceof McpUrlError && /no scheme/.test(noScheme.message), "an endpoint with no scheme is told so", noScheme?.message);
+  check(!/stdio/.test(noScheme?.message ?? ""), "...and is not told about stdio", noScheme?.message);
+  const host = await refused("mcp.example.com:443/sse");
+  check(host instanceof McpUrlError && /no scheme/.test(host.message), "...whatever the host is", host?.message);
+  const stdio = await refused("stdio:///usr/local/bin/some-server");
+  check(/stdio is deliberately unsupported/.test(stdio?.message ?? ""), "stdio is still named when it is what was asked for", stdio?.message);
+  const ftp = await refused("ftp://example.com/mcp");
+  check(/"ftp:"/.test(ftp?.message ?? "") && !/stdio/.test(ftp?.message ?? ""), "another scheme is named without mentioning stdio", ftp?.message);
+
+  const literal = await refused("http://10.0.0.5/mcp");
+  check(literal instanceof EgressPolicyError, "a private address is still the shared refusal");
+  check(/public addresses/.test(literal?.message ?? "") && !/sandbox/.test(literal?.message ?? ""), "...in words about MCP rather than about a sandbox", literal?.message);
+  const named = await refused("https://mcp.attacker.example/sse", metadataAnswer);
+  check(/resolves to a private, link-local or reserved address \(169\.254\.169\.254\)/.test(named?.message ?? ""), "a name that resolves somewhere private names the address", named?.message);
+  check(!/sandbox/.test(named?.message ?? ""), "...without mentioning a sandbox either", named?.message);
+
+  const nowhere = await refused("https://no-such-host.invalid/mcp", async () => ({ v4: [], v6: [] }));
+  check(nowhere instanceof McpUrlError && nowhere.unreachable, "a name that resolves to nothing is unreachable, which a retry can fix", nowhere?.message);
+  check(/could not find "no-such-host\.invalid"/.test(nowhere?.message ?? ""), "...and says the name was not found", nowhere?.message);
+  const flaky = await refused("https://flaky.example.com/mcp", async () => {
+    throw new Error("DNS server unreachable");
+  });
+  check(flaky instanceof McpUrlError && flaky.unreachable, "so does a resolver that fails outright", flaky?.message);
+  check(!(literal instanceof McpUrlError && literal.unreachable), "a refused address is never called unreachable");
+}
+
 console.log("\nports that are never an MCP server");
 {
   for (const [port, what] of [[6379, "redis — the queue, the semaphores, the tickets"], [5432, "postgres"], [22, "ssh"], [25, "smtp"], [27017, "mongodb"]] as const) {
@@ -180,6 +209,18 @@ console.log("\nloopback: allowed for the mock server, never in production");
   check((await refusedIn("http://[::1]:8940/ok", prodAsking)) !== null, "...and in production, whatever is asked");
   check((await refusedIn("http://[::ffff:127.0.0.1]:8940/ok", dev)) !== null, "an IPv4 mapped loopback address is not the seam");
   check((await refusedIn("http://[fe80::1]:8940/ok", dev)) !== null, "...and nor is any other IPv6 address in brackets");
+
+  const named = await validateMcpUrl("http://localhost:8940/mcp", async () => {
+    throw new Error("localhost must never be looked up");
+  }, dev).catch((e: Error) => e);
+  check(!(named instanceof Error) && named.ips.join(",") === "127.0.0.1,::1", "localhost takes the seam, pinned to the loopback addresses without a lookup", String(named instanceof Error ? named.message : named.ips));
+  const sub = await validateMcpUrl("http://mock.localhost:8940/mcp", publicAnswer, dev).catch((e: Error) => e);
+  check(!(sub instanceof Error) && sub.ips.join(",") === "127.0.0.1,::1", "...and so does a name under it");
+  const prodName = await refusedIn("http://localhost:8940/mcp", prodAsking);
+  check(prodName instanceof McpUrlError && /this machine's own address/.test(prodName.message), "in production localhost is refused as this machine's own address", prodName?.message);
+  check(!/did not resolve/.test(prodName?.message ?? "") && !/JAROKU_MCP_ALLOW_LOOPBACK/.test(prodName?.message ?? ""), "...not as a name that did not resolve, and without a switch production ignores", prodName?.message);
+  const offName = await refusedIn("http://127.0.0.1:8940/mcp", off);
+  check(/JAROKU_MCP_ALLOW_LOOPBACK is 0/.test(offName?.message ?? ""), "with the seam switched off locally, the refusal names the switch", offName?.message);
 
   // The seam is a LITERAL loopback host, not a name that resolves to one. Admitting the second
   // would make the seam the rebinding hole it exists alongside.
