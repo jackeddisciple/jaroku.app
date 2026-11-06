@@ -317,6 +317,27 @@ async function main(): Promise<void> {
     const strict = await run(c, fixture, agent, "call:read_page", { threadId });
     check(strict.asked.map((a) => a["tool"]).join() === "read_page", "under Strict a read asks", JSON.stringify(strict.asked.map((a) => a["tool"])));
     check(/^Strict mode/.test(String(strict.asked[0]?.["impactReason"])), "and it says Strict is why", String(strict.asked[0]?.["impactReason"]));
+    const parent = await run(c, fixture, agent, "dry", { threadId });
+    check(parent.asked.length > 0, "a dry run under Strict asks", JSON.stringify(parent.asked.map((a) => a["tool"])));
+    const step = c.log.find((m) => m["channel"] === "debug" && m["type"] === "boundary" && Array.isArray(m["next"]) && m["next"].includes("tools"));
+    check(Boolean(step), "and leaves a step before a tool call to branch from", JSON.stringify(c.log.filter((m) => m["channel"] === "debug").slice(0, 3)));
+    fixture.seen.length = 0;
+    c.clear();
+    c.send({ cmd: "branchRun", fromRunId: step?.["runId"], atSeq: step?.["seq"] });
+    const answered = new Set<string>();
+    let branchAsks: Message[] = [];
+    for (let i = 0; i < 400 && !c.log.some((m) => (m["event"] ?? m)["kind"] === "run_end"); i++) {
+      await sleep(100);
+      branchAsks = c.log.filter((m) => m["channel"] === "mcp" && m["type"] === "confirmRequest");
+      for (const ask of branchAsks) {
+        if (answered.has(String(ask["nonce"]))) continue;
+        answered.add(String(ask["nonce"]));
+        c.send({ cmd: "resolveMcpConfirm", runId: ask["runId"], nonce: ask["nonce"], verdict: "deny" });
+      }
+    }
+    await sleep(1500);
+    check(branchAsks[0]?.["tool"] === "read_page", "a branch of it asks before the read too", JSON.stringify(branchAsks.map((a) => a["tool"])));
+    check(fixture.seen.filter((r) => r.rpc === "tools/call").length === 0, "and nothing in the branch runs unanswered", JSON.stringify(fixture.seen.map((r) => r.tool)));
     await post(`/v1/conversations/${threadId}/settings`, { permission_mode: "smart" }, token, "PATCH", workspace);
     await sleep(300);
     const smart = await run(c, fixture, agent, "call:read_page", { threadId });

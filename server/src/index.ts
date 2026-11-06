@@ -8214,6 +8214,34 @@ async function conversationForNewRun(
   return agent ? threadStore.findForAgent(ctx, agent.id) : null;
 }
 
+async function continuationSettings(
+  ctx: TenantContext,
+  runId: string,
+  fromRunId: string,
+  agentSlug: string | null | undefined,
+): Promise<NodeJS.ProcessEnv> {
+  const conversation = (await threadStore.threadForRef(ctx, "run", fromRunId).catch(() => undefined)) ?? null;
+  const env: NodeJS.ProcessEnv = { JAROKU_PERMISSION_MODE: await permissionModeForRun(ctx, runId, conversation) };
+  const effort = await (async () =>
+    conversation
+      ? (await conversationSettings.effective(ctx, conversation)).effort
+      : (await conversationSettings.workspaceDefaults(ctx)).effort)().catch(() => null);
+  if (effort) env.JAROKU_REASONING_EFFORT = effort;
+  if (!conversation) return env;
+  const decisions = await conversationConnectors.decisionsFor(ctx, conversation).catch(() => new Map<string, boolean>());
+  if (decisions.size === 0) return env;
+  const servers = await mcpStore.listServers(ctx).catch(() => []);
+  const allowed = servers.map((sv) => sv.id).filter((id) => decisions.get(id) ?? true);
+  env.JAROKU_MCP_SERVERS = allowed.length > 0 ? allowed.join(",") : "-";
+  runMcpServers.set(runId, new Set(allowed));
+  const declared = (agentSlug ? await agentRepo.bySlug(ctx, agentSlug).catch(() => undefined) : undefined)?.connectors ?? [];
+  if (declared.length > 0) {
+    const kept = declared.filter((id) => decisions.get(id) ?? true);
+    env.JAROKU_CONNECTORS = kept.length > 0 ? kept.join(",") : "-";
+  }
+  return env;
+}
+
 async function threadForWork(
   ctx: TenantContext,
   threadId: string | undefined,
@@ -13798,6 +13826,7 @@ async function resumeRun(ctx: TenantContext, runId: string): Promise<void> {
   await noteRunAudience(ctx, runId, run.agent_id);
   const env: NodeJS.ProcessEnv = {
     ...credentials.env,
+    ...(await continuationSettings(ctx, runId, runId, run.agent_id)),
     ...(await mcpScopeEnv(ctx, runId, run.agent_id, projectDir)),
     // This workspace's copy of the agent — see `agentProjectDir` and runAgent.
     ...(projectDir ? { JAROKU_AGENT_DIR: projectDir } : {}),
@@ -13963,6 +13992,7 @@ async function branchRun(
   await noteRunAudience(ctx, branchId, parent.agent_id);
   const env: NodeJS.ProcessEnv = {
     ...credentials.env,
+    ...(await continuationSettings(ctx, branchId, fromRunId, parent.agent_id)),
     ...(await mcpScopeEnv(ctx, branchId, parent.agent_id, projectDir)),
     // This workspace's copy of the agent — see `agentProjectDir` and runAgent.
     ...(projectDir ? { JAROKU_AGENT_DIR: projectDir } : {}),
