@@ -1,7 +1,8 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import React from "react";
-import { CONFIRM_ACTIONS } from "./InboxActions.tsx";
+import { CONFIRM_ACTIONS, actionFailure, runAction } from "./InboxActions.tsx";
+import { useTraceStore } from "../store/traceStore.ts";
 import { ConfirmRemoveServer } from "./InboxCardActions.tsx";
 import { markup, seed } from "../lib/testRender.ts";
 import { useMcpStore } from "../store/mcpStore.ts";
@@ -67,6 +68,21 @@ console.log("\nRemove this server asks first, and says what goes with it");
   check("Keep it is offered beside Remove", /Keep it/.test(html) && /Remove Linear/.test(html));
   seed(useMcpStore, { servers: [] });
   seed(useBuildStore, { agents: [] });
+}
+
+console.log("\nan Inbox action whose command never left the tab does not report success");
+{
+  const item = { id: "i2", type: "mcp_unreachable", subject_type: "mcp_server", subject_id: "linear", subject: "Linear", payload: {} } as unknown as InboxItemView;
+  useTraceStore.setState({ connection: "reconnecting" } as never);
+  check("a re-check sent with no socket is not called done", runAction("rediscover", item) === false);
+  check("...nor is removing a server", runAction("remove_server", item) === false);
+  check("the person is told it was not sent, not that the card is broken", /was not sent: Jaroku is not connected right now/.test(actionFailure("rediscover")));
+  useTraceStore.setState({ connection: "open" } as never);
+  check("with the socket open, a refusal is about the card", /this card is missing what that needs/.test(actionFailure("rediscover")));
+  const bare = { ...item, subject_id: null } as unknown as InboxItemView;
+  check("a card with no server sends nothing", runAction("rediscover", bare) === false);
+  const CARD = readFileSync(`${HERE}InboxCardActions.tsx`, "utf8");
+  check("every failed action is explained the same way", (CARD.match(/setError\(actionFailure\(/g) ?? []).length === 3 && !/this card is missing what that needs/.test(CARD));
 }
 
 console.log(fail === 0 ? "\nALL CORRECT" : `\n${fail} FAILURES`);

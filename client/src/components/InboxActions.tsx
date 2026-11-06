@@ -19,6 +19,7 @@
 // somebody to where it can be, and those two are visibly different things rather than one button
 // that sometimes navigates.
 
+import { useTraceStore } from "../store/traceStore.ts";
 import { createSecret } from "../lib/secrets.ts";
 import { openAgentDetail } from "../lib/agentNav.ts";
 import {
@@ -218,14 +219,20 @@ const num = (item: InboxItemView, key: string): number | null =>
  * sweep notices the problem is gone. That is Law 2 rather than an omission — an item that left
  * because a button was pressed is an item that stays when the same fix arrives by another door.
  */
+export function actionFailure(action: InboxActionName): string {
+  return useTraceStore.getState().connection === "open"
+    ? `${ACTION_LABEL[action]} — this card is missing what that needs`
+    : `${ACTION_LABEL[action]} was not sent: Jaroku is not connected right now. Try again once it reconnects.`;
+}
+
 export function runAction(action: InboxActionName, item: InboxItemView): boolean {
   switch (action) {
     // --- inline, no input -----------------------------------------------------------------------
     case "rediscover":
       // THE COMMAND THAT ALREADY EXISTS. A failed refresh still never destroys a working tool list —
       // v0.2.0's rule, and it holds here because this is the same call the MCP panel makes.
-      sendRediscoverMcpServer(item.subject_id ?? "");
-      return true;
+      if (!item.subject_id) return false;
+      return sendRediscoverMcpServer(item.subject_id);
     case "retry_deploy":
     case "redeploy": {
       const agentId = str(item, "agent_slug");
@@ -273,8 +280,7 @@ export function runAction(action: InboxActionName, item: InboxItemView): boolean
       // and `mcp_unreachable` — are about a server that cannot be reached, and removing it is the
       // answer when re-authenticating is not.
       if (!item.subject_id) return false;
-      sendRemoveMcpServer(item.subject_id);
-      return true;
+      return sendRemoveMcpServer(item.subject_id);
     }
     case "dismiss_all": {
       // EVERY CARD OF THIS TYPE, BY ID, because that is what the command takes. The audit's sketch

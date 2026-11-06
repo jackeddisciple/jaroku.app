@@ -20,6 +20,7 @@ import { SecretField } from "./SecretField.tsx";
 import { sendSetMcpServerAuth } from "../lib/socket.ts";
 import {
   ACTION_LABEL,
+  actionFailure,
   FORM_ACTIONS,
   CONFIRM_ACTIONS,
   useAllowedActions,
@@ -287,7 +288,7 @@ export function ConfirmRemoveServer({ item, onKeep }: { item: InboxItemView; onK
         <button type="button" className={primaryBtn}
           onClick={() => {
             if (runAction("remove_server", item)) onKeep();
-            else useInboxStore.getState().setError(`${ACTION_LABEL.remove_server} — this card is missing what that needs`);
+            else useInboxStore.getState().setError(actionFailure("remove_server"));
           }}>
           Remove {name}
         </button>
@@ -329,7 +330,7 @@ function Overflow({ item, onClose, onConfirm }: { item: InboxItemView; onClose: 
                 // command that failed, so the honest answer is to leave the menu open and say so
                 // rather than to close it as though something had been done.
                 if (runAction(action, item)) onClose();
-                else useInboxStore.getState().setError(`${ACTION_LABEL[action]} — this card is missing what that needs`);
+                else useInboxStore.getState().setError(actionFailure(action));
               }}
               className="block w-full px-3 py-1.5 text-left text-caption text-muted transition-colors hover:bg-active active:bg-chrome hover:text-ink"
             >
@@ -385,7 +386,7 @@ export function InboxCardActions({ item, expanded }: { item: InboxItemView; expa
               // failure this whole pass is about, and a refusal here means the payload lacked what
               // the command needed rather than that the command failed.
               if (!runAction(primary, item)) {
-                useInboxStore.getState().setError(`${ACTION_LABEL[primary]} — this card is missing what that needs`);
+                useInboxStore.getState().setError(actionFailure(primary));
               }
             }}
           />

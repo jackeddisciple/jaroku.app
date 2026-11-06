@@ -1856,8 +1856,8 @@ export function sendRemoveMcpServer(serverId: string): boolean {
 export function sendUpdateMcpServer(serverId: string, patch: { label?: string; endpoint?: string }): boolean {
   return send({ cmd: "updateMcpServer", serverId, ...patch, origin: EVAL_ORIGIN });
 }
-export function sendRediscoverMcpServer(serverId: string): void {
-  send({ cmd: "rediscoverMcpServer", serverId, origin: EVAL_ORIGIN });
+export function sendRediscoverMcpServer(serverId: string): boolean {
+  return send({ cmd: "rediscoverMcpServer", serverId, origin: EVAL_ORIGIN });
 }
 /** Store or clear a credential. `null` removes the key from runtime/.env entirely. */
 export function sendSetMcpServerAuth(serverId: string, token: string | null): boolean {
