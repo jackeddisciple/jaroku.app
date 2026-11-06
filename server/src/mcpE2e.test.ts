@@ -794,6 +794,42 @@ console.log("\na slow job does not undo a credential added while it ran");
   await fixture.close();
 }
 
+console.log("\nan add still connecting cannot bring a row back or undo a credential");
+{
+  const A = await workspace("firsthand");
+  const fixture = await startScriptedServer();
+  fixture.set({
+    hook: async ({ rpc }) => {
+      if (rpc === "tools/list") await new Promise((done) => setTimeout(done, 700));
+      return false;
+    },
+  });
+  const slowAdd = async (label: string, during: (id: string) => Promise<unknown>, token?: string) => {
+    const prepared = await registry.prepare(A, { endpoint: fixture.url, label, ...(token ? { token } : {}) });
+    await queue.enqueue(A, { kind: "add", serverId: prepared.id, endpoint: fixture.url, label, authEnvKey: prepared.authEnvKey });
+    const running = drain();
+    await new Promise((done) => setTimeout(done, 250));
+    await during(prepared.id);
+    await running;
+    return prepared;
+  };
+
+  const gone = await slowAdd("Gone Mid Connect", (id) => registry.removeServer(A, id));
+  check((await registry.get(A, gone.id)) === null, "a server disconnected during its first handshake stays gone");
+  check((await store.listTools(A, gone.id)).length === 0, "and none of its tools come back");
+
+  const keyed = await slowAdd("Keyed Mid Connect", (id) => registry.setCredential(A, id, "added-mid-connect"));
+  const row = await registry.get(A, keyed.id);
+  check(Boolean(row?.auth_env_key), "a credential added during the first handshake keeps its key name", String(row?.auth_env_key));
+  check(row?.configured === true, "and the panel still says one is stored");
+
+  const given = await slowAdd("Given At Connect", async () => null, "given-at-connect");
+  const linked = await registry.get(A, given.id);
+  check(linked?.auth_env_key === given.authEnvKey && linked?.configured === true, "a token given at connect stays linked", String(linked?.auth_env_key));
+  check(linked?.status === "connected", "and that add still connects", String(linked?.status));
+  await fixture.close();
+}
+
 console.log("\nparallel adds cannot pass a plan's server limit");
 {
   const A = await workspace("quota");

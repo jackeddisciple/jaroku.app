@@ -358,6 +358,7 @@ export class McpRegistry {
         await this.store.deleteServer(ctx, id);
         return { ok: false, id: "", authEnvKey: null, message: written.warning ?? "could not store the credential" };
       }
+      await this.store.setServerAuthEnvKey(ctx, id, key);
       authEnvKey = key;
       message = written.warning;
     }
@@ -393,11 +394,20 @@ export class McpRegistry {
     }
     const id = opts.id ?? (await uniqueServerId(ctx, this.store, requested));
     const label = opts.label?.trim() || id;
+    const settle = async (row: Omit<McpServer, "created_at">): Promise<boolean> => {
+      if (!opts.reserved) {
+        await this.store.upsertServer(ctx, row);
+        return true;
+      }
+      if (row.status === "connected") return this.store.recordHandshake(ctx, id, row);
+      await this.store.setServerStatus(ctx, id, row.status, row.last_error);
+      return (await this.store.getServer(ctx, id)) !== null;
+    };
 
     // A token the user just typed is written to runtime/.env under a derived name, then
     // forgotten. From here on the value is only ever read back out of the environment, so
     // there is exactly one place in the codebase holding it and it is not this one.
-    let authEnvKey = opts.authEnvKey ?? null;
+    let authEnvKey = (opts.reserved ? existing?.auth_env_key : null) ?? opts.authEnvKey ?? null;
     let credentialWarning: string | null = null;
     if (opts.token) {
       authEnvKey = authEnvKey ?? this.credentialKey(ctx, id);
@@ -415,13 +425,14 @@ export class McpRegistry {
     // here — this check is the wall. See mcpUrl.ts.
     const { refusal, pin } = await this.checkEndpoint(endpoint);
     if (refusal) {
-      await this.store.upsertServer(ctx, {
+      const kept = await settle({
         id, label, endpoint, transport: "http", auth_env_key: authEnvKey,
         server_name: null, server_version: null, protocol_version: null,
         // `error`, not `unreachable`. Unreachable invites a retry, and this endpoint will be
         // refused identically every time until the user changes it.
         status: "error", last_error: refusal, discovered_at: null,
       });
+      if (!kept) return { ok: false, server: null, message: null };
       return { ok: false, server: await this.get(ctx, id), message: joinMessages(credentialWarning, refusal) };
     }
 
@@ -445,7 +456,7 @@ export class McpRegistry {
     };
 
     if (!result.ok) {
-      await this.store.upsertServer(ctx, {
+      const kept = await settle({
         ...base,
         server_name: null,
         server_version: null,
@@ -454,10 +465,11 @@ export class McpRegistry {
         last_error: result.error,
         discovered_at: null,
       });
+      if (!kept) return { ok: false, server: null, message: null };
       return { ok: false, server: await this.get(ctx, id), message: joinMessages(credentialWarning, result.error) };
     }
 
-    await this.store.upsertServer(ctx, {
+    const recorded = await settle({
       ...base,
       server_name: result.server_name,
       server_version: result.server_version,
@@ -466,6 +478,7 @@ export class McpRegistry {
       last_error: null,
       discovered_at: null, // set by replaceTools, so the timestamp matches the list it stamps
     });
+    if (!recorded) return { ok: false, server: null, message: null };
     const storing = await this.storeTools(ctx, id, result);
     if (storing) return { ok: false, server: await this.get(ctx, id), message: joinMessages(credentialWarning, storing) };
 
