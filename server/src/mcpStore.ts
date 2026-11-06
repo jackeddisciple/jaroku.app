@@ -463,7 +463,7 @@ export class McpStore {
    */
   async resolveTools(ctx: TenantContext, refs: string[]): Promise<McpTool[]> {
     const out: McpTool[] = [];
-    for (const ref of refs) {
+    for (const ref of new Set(refs)) {
       const parsed = parseToolRef(ref);
       if (!parsed) continue;
       const tool = await this.getTool(ctx, parsed.serverId, parsed.toolName);

@@ -2487,7 +2487,7 @@ async function setAgentTools(ctx: TenantContext, slug: string, refs: unknown, re
     refuseAgent(ctx, `no agent called ${slug} in this workspace`, slug);
     return;
   }
-  const wanted = revoked ? grantWithout(agent.mcp_tools, revoked) : (requested ?? []);
+  const wanted = [...new Set(revoked ? grantWithout(agent.mcp_tools, revoked) : (requested ?? []))];
 
   // THE REGISTRY DECIDES WHAT EXISTS, not the request. Same call the plan path makes, and the same
   // posture: a ref naming a server or tool that has gone away resolves to nothing rather than to a
@@ -2510,6 +2510,18 @@ async function setAgentTools(ctx: TenantContext, slug: string, refs: unknown, re
   }
 
   const dropped = wanted.filter((r) => !granted.includes(r));
+  const content = `${JSON.stringify(manifest, null, 2)}\n`;
+  const currentManifest = projectFiles.find((f) => f.path === MANIFEST_FILE)?.content;
+  const sameManifest = currentManifest === content || (currentManifest === undefined && granted.length === 0 && projectFiles.length > 0);
+  if (sameManifest && [...agent.mcp_tools].sort().join("\n") === [...granted].sort().join("\n")) {
+    noticeAgent(
+      ctx,
+      `${slug} already has exactly ${granted.length === 1 ? "this tool" : `these ${granted.length} tools`}, so nothing changed and no version was made.` +
+        (dropped.length > 0 ? ` ${dropped.length} no longer exist in this workspace and were left out.` : ""),
+      slug,
+    );
+    return;
+  }
   await agentRepo.setMcpTools(ctx, agent.id, granted);
 
   // AND THE MANIFEST, republished as a version. Skipped when this agent has no readable project —
@@ -2519,7 +2531,7 @@ async function setAgentTools(ctx: TenantContext, slug: string, refs: unknown, re
     const files = await projects.readCurrent(ctx, agent.id, agent.current_version);
     if (files.length > 0) {
       const next = files.filter((f) => f.path !== MANIFEST_FILE);
-      next.push({ path: MANIFEST_FILE, content: `${JSON.stringify(manifest, null, 2)}\n` });
+      next.push({ path: MANIFEST_FILE, content });
       // THE LIVE VERSION'S SOURCE, NOT `import`. Only the host-owned manifest changed — the agent's
       // code is the live version's, byte for byte — so what the validator said of that code still
       // holds, and a grant change must not be the thing that marks an agent Unverified.

@@ -553,6 +553,39 @@ async function main(): Promise<void> {
     c.close();
   }
 
+  console.log("\nsaving the same grant makes no new version, and a tool listed twice is granted once");
+  {
+    const { c, workspace } = await person("regrant");
+    await addServer(c, fixture.url, "Alpha");
+    const agent = await generate(c, "Regrant", ["alpha/send_message"]);
+    const db = new SqliteDb(join(scratch, "reach.db"));
+    const versions = async () =>
+      Number((await db.get<{ n: number }>(
+        `SELECT count(*) AS n FROM agent_versions v JOIN agents a ON a.id = v.agent_id WHERE a.workspace_id = ? AND a.slug = ?`,
+        [workspace, agent],
+      ))?.n ?? 0);
+    const column = async () =>
+      (await db.get<{ mcp_tools: string }>(`SELECT mcp_tools FROM agents WHERE workspace_id = ? AND slug = ?`, [workspace, agent]))?.mcp_tools ?? "";
+    const saved = async (refs: string[]) => {
+      c.clear();
+      c.send({ cmd: "setAgentTools", agentId: agent, mcpTools: refs });
+      await sleep(1500);
+      return String(c.log.find((m) => m["channel"] === "agents" && m["type"] === "notice")?.["message"] ?? "");
+    };
+    const before = await versions();
+    const twice = await saved(["alpha/send_message", "alpha/read_page", "alpha/send_message"]);
+    check(/now has 2 tool/.test(twice), "a ref listed twice is counted once", twice);
+    check(manifestTools(manifestOf(workspace, agent)).sort().join() === "read_page,send_message", "and written once into the manifest", manifestTools(manifestOf(workspace, agent)).join());
+    check(JSON.parse(await column()).length === 2, "and the column", await column());
+    const afterChange = await versions();
+    check(afterChange === before + 1, "a real change makes one version", `${before} -> ${afterChange}`);
+    const again = await saved(["alpha/read_page", "alpha/send_message"]);
+    check(/already has exactly these 2 tools, so nothing changed and no version was made/.test(again), "saving the same grant says nothing changed", again);
+    check((await versions()) === afterChange, "and makes no version", `${afterChange} -> ${await versions()}`);
+    await db.close?.();
+    c.close();
+  }
+
   console.log("\na tool's output cannot speak on the control channel");
   {
     const forged = (body: Record<string, unknown>) => `@@JAROKU_CTRL@@ ${JSON.stringify(body)}`;
