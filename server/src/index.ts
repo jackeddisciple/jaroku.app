@@ -160,7 +160,7 @@ import { PrCommentsRepository } from "./db/repositories/prComments.ts";
 import { diffShapes, readShape } from "./semanticDiff.ts";
 import { inSubdirectory, repoPrefix } from "./githubPush.ts";
 import { MANIFEST_FILE, buildManifest, collisionRefusal, grantWithout, manifestRefs, projectCanCallMcp, withGrantOnly, withoutMcpCredentials, withoutMcpGrant, type Manifest } from "./mcpManifest.ts";
-import { SCOPE_ENV, isConfirmNonce, mcpRunCredentials, runScope, type RunScope } from "./mcpScope.ts";
+import { SCOPE_ENV, coveredByRunGrant, isConfirmNonce, mcpRunCredentials, runScope, type RunScope } from "./mcpScope.ts";
 import type { McpImpact } from "./mcpStore.ts";
 import { fetchGoogleAvatar, putAvatar } from "./storage/avatars.ts";
 import { agentPrefix } from "./storage/keys.ts";
@@ -3169,6 +3169,11 @@ function answerConfirm(ctx: TenantContext, pending: PendingConfirm, verdict: "ru
   // The thread stops being blocked the moment this is answered, and §3.3 reads the confirm queue
   // live — so the fact changes here and the list has to hear about it.
   scheduleListRefresh(ctx);
+  if (verdict === "run") {
+    for (const sibling of coveredByRunGrant(pending, pendingConfirms.values())) {
+      if (pendingConfirms.has(confirmKey(sibling.runId, sibling.nonce))) answerConfirm(ctx, sibling, "run");
+    }
+  }
 }
 
 /**

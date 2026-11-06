@@ -22,7 +22,7 @@ import { McpRegistry, type RegistrationResult } from "./mcpRegistry.ts";
 import { MCP_DISCOVER_CLASS, McpDiscoveryQueue, type McpDiscoveryPayload } from "./mcpDiscovery.ts";
 import { authEnvKeyFor } from "./envWriter.ts";
 import { discover } from "./mcpClient.ts";
-import { isConfirmNonce, mcpRunCredentials, runScope } from "./mcpScope.ts";
+import { coveredByRunGrant, isConfirmNonce, mcpRunCredentials, runScope } from "./mcpScope.ts";
 import { parseControlLine } from "./processManager.ts";
 import { echoedRef } from "./wsRelay.ts";
 import { PeerConfirms } from "./mcpConfirmPeers.ts";
@@ -1127,6 +1127,22 @@ console.log("\na server's name can be changed, and an endpoint that never connec
   check(/if \(!updated\.endpointChanged\) \{\s*broadcastMcpServers\(ctx\);\s*return;/.test(update) && /mcpDiscovery\.enqueue\(ctx, \{ kind: "rediscover", serverId: cmd\.serverId, \.\.\.originOf\(cmd\) \}\)/.test(update), "the command checks a changed endpoint again and nothing else");
   check(/updateMcpServer: "mcp\.discover"/.test(index), "it is rate limited like the other commands that reach a server");
   check(/auditMcp\(ctx, "mcp\.server\.updated"/.test(update), "and recorded");
+}
+
+console.log("\nallowing a tool for the run answers every ask for it in that run");
+{
+  const ask = (nonce: string, patch: Record<string, string> = {}) => ({
+    workspaceId: "ws", runId: "run-1", nonce, server: "alpha", tool: "send_message", ...patch,
+  });
+  const answered = ask("a");
+  const waiting = [answered, ask("b"), ask("c", { tool: "delete_row" }), ask("d", { runId: "run-2" }), ask("e", { workspaceId: "other" }), ask("f", { server: "beta" })];
+  const covered = coveredByRunGrant(answered, waiting).map((w) => w.nonce);
+  check(covered.join() === "b", "the parallel ask for the same tool in the same run is covered by the answer", covered.join());
+  check(!covered.includes("c") && !covered.includes("f"), "...not an ask for another tool, or the same name on another server");
+  check(!covered.includes("d") && !covered.includes("e"), "...nor one in another run or another workspace");
+  const index = readFileSync(join(fileURLToPath(new URL(".", import.meta.url)), "index.ts"), "utf8");
+  const answer = /function answerConfirm\([\s\S]*?\n\}\n/.exec(index)?.[0] ?? "";
+  check(/if \(verdict === "run"\) \{\s*for \(const sibling of coveredByRunGrant\(pending, pendingConfirms\.values\(\)\)\) \{\s*if \(pendingConfirms\.has\(confirmKey\(sibling\.runId, sibling\.nonce\)\)\) answerConfirm\(ctx, sibling, "run"\);/.test(answer), "and the answer is given to each of them, once, as allowed for the run");
 }
 
 console.log("\nadds that derive one id each keep their own row");

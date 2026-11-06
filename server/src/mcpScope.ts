@@ -4,6 +4,25 @@ import type { McpServerView, McpToolView } from "./mcpRegistry.ts";
 
 export const SCOPE_ENV = "JAROKU_MCP_SCOPE";
 
+export interface AskedCall {
+  workspaceId: string;
+  runId: string;
+  nonce: string;
+  server: string;
+  tool: string;
+}
+
+export function coveredByRunGrant<T extends AskedCall>(answered: AskedCall, waiting: Iterable<T>): T[] {
+  return [...waiting].filter(
+    (ask) =>
+      ask.nonce !== answered.nonce &&
+      ask.workspaceId === answered.workspaceId &&
+      ask.runId === answered.runId &&
+      ask.server === answered.server &&
+      ask.tool === answered.tool,
+  );
+}
+
 export function isConfirmNonce(nonce: unknown): nonce is string {
   return typeof nonce === "string" && /^[A-Za-z0-9_-]{1,64}$/.test(nonce);
 }
