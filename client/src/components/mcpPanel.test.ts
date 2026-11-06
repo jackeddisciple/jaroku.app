@@ -561,5 +561,15 @@ console.log("\nthe grant editor marks a tool that asks first, as the composer do
   check("the row shows the same confirms chip the composer shows", /\{high && \(\s*<Chip size="sm" caps variant="bare" color=\{STATUS\.pending\}[^>]*title="Asks before it runs the first time">\s*confirms/.test(tabs));
 }
 
+console.log("\nthe panel's own words match what actually grants a tool");
+{
+  seed(useSessionStore, sessionAs("admin"));
+  seed(useMcpStore, { servers: [], selectedId: null, formOpen: true, draft: { endpoint: "", label: "" }, pendingAdd: null, tokenDropped: false });
+  const html = markup(React.createElement(McpPanel));
+  check("an agent receives the tools selected for it, which may be more than its plan used", /an agent only receives the ones selected for it/.test(html) && !/the ones its plan asked for/.test(html));
+  check("the connect form names both places a tool is granted", /until you select it while planning, or on an agent&#x27;s\s+Capabilities tab/.test(html) || /until you select it while planning, or on an agent's\s+Capabilities tab/.test(html));
+  seed(useMcpStore, { formOpen: false });
+}
+
 console.log(fail === 0 ? "\nALL CORRECT" : `\n${fail} FAILURES`);
 (globalThis as { process?: { exit(code: number): void } }).process?.exit(fail === 0 ? 0 : 1);

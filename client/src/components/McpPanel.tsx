@@ -643,7 +643,8 @@ export function ConnectForm() {
         )}
         <p className="mt-1.5 text-tiny leading-[1.5] text-faint">
           Jaroku will ask the server what it can do and show you the answer. Nothing is
-          granted to any agent until you select it while planning. Only http(s) endpoints
+          granted to any agent until you select it while planning, or on an agent's
+          Capabilities tab. Only http(s) endpoints
           are supported — stdio would mean running someone else's binary on your machine.
         </p>
       </form>
@@ -697,7 +698,7 @@ export function McpPanel() {
           <p className="text-tiny leading-[1.5] text-muted">
             <span className="text-ink">MCP servers are third-party code Jaroku has not reviewed.</span>{" "}
             What a server says it can do is its own claim. Tools from here are marked
-            everywhere they appear, an agent only receives the ones its plan asked for, and a
+            everywhere they appear, an agent only receives the ones selected for it, and a
             high-impact one stops for your confirmation before it runs.
           </p>
         </div>

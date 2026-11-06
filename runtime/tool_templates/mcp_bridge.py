@@ -866,7 +866,8 @@ def build_tools(manifest: dict[str, Any] | None = None) -> list[StructuredTool]:
                 raise ManifestError(
                     f"mcp_tools.json grants the tool {name!r} from two servers ({prior} and "
                     f"{server_id}). An agent has one tool per name, so this grant is ambiguous "
-                    f"— deselect one of them in the MCP panel and regenerate."
+                    f"— keep only one of them with \"Change what it may call\" on the agent's "
+                    f"Capabilities tab."
                 )
             owners[name] = server_id
             tools.append(_make_tool(server, spec))

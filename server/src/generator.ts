@@ -361,8 +361,8 @@ export class Generator extends EventEmitter<GeneratorEvents> {
           .join(", ");
         throw new Error(
           `two MCP servers advertise the same tool name: ${detail}. An agent has one tool ` +
-            `per name, so only one of each can be granted — deselect the duplicate in the MCP ` +
-            `panel and generate again.`,
+            `per name, so only one of each can be granted — untick one of them in the composer's ` +
+            `MCP tools list and generate again.`,
         );
       }
 
@@ -375,7 +375,7 @@ export class Generator extends EventEmitter<GeneratorEvents> {
         throw new Error(
           `${shadowed.join(", ")} ${shadowed.length > 1 ? "are" : "is"} the name of both a ` +
             `selected connector tool and a selected MCP tool. They cannot both be granted — ` +
-            `drop one of the two in the MCP panel and generate again.`,
+            `untick the MCP tool in the composer's MCP tools list and generate again.`,
         );
       }
 

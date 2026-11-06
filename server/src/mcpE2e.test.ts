@@ -1145,6 +1145,20 @@ console.log("\nallowing a tool for the run answers every ask for it in that run"
   check(/if \(verdict === "run"\) \{\s*for \(const sibling of coveredByRunGrant\(pending, pendingConfirms\.values\(\)\)\) \{\s*if \(pendingConfirms\.has\(confirmKey\(sibling\.runId, sibling\.nonce\)\)\) answerConfirm\(ctx, sibling, "run"\);/.test(answer), "and the answer is given to each of them, once, as allowed for the run");
 }
 
+console.log("\nevery message about changing a grant points at a control that exists");
+{
+  const here = fileURLToPath(new URL(".", import.meta.url));
+  const editor = readFileSync(join(here, "editor.ts"), "utf8");
+  const generator = readFileSync(join(here, "generator.ts"), "utf8");
+  const bridge = readFileSync(join(here, "..", "..", "runtime", "tool_templates", "mcp_bridge.py"), "utf8");
+  for (const [name, text] of [["the editor", editor], ["generation", generator], ["the bridge", bridge]] as const) {
+    check(!/Change the selection in the MCP panel|deselect (the duplicate|one of them) in the MCP|in the MCP panel and (re-?generate|generate)/.test(text), `${name} no longer sends anybody to a selection the MCP panel does not have`);
+  }
+  check(/Change what it may ` \+\s*`call" on the agent's Capabilities tab instead/.test(editor), "an edit that touches the grant file names where grants are changed");
+  check(/untick one of them in the composer's ` \+\s*`MCP tools list and generate again/.test(generator), "a clash at generation names the list the tools were ticked in");
+  check(/keep only one of them with \\"Change what it may call\\" on the agent's "\s*f"Capabilities tab\./.test(bridge), "and so does a clash the bridge finds at run time");
+}
+
 console.log("\nadds that derive one id each keep their own row");
 {
   const A = await workspace("collide");

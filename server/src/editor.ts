@@ -384,8 +384,8 @@ export class Editor extends EventEmitter<EditorEvents> {
             throw new Error(
               isMcp
                 ? `${safe} is host-owned and read-only — it is what scopes this agent's ` +
-                  `access to third-party MCP servers. Change the selection in the MCP panel ` +
-                  `and re-generate to give it different tools.`
+                  `access to third-party MCP servers. Change its tools with "Change what it may ` +
+                  `call" on the agent's Capabilities tab instead.`
                 : isDeploy
                   ? `${safe} is host-owned and read-only — it is deploy tooling Jaroku ` +
                     `regenerates from jaroku.json every time you deploy, so an edit here ` +
