@@ -35,6 +35,15 @@ function scopedTool(frozen: { impact: "high" | "low" }, live: McpToolView | unde
   return { impact: frozen.impact };
 }
 
+export function scopeCredentials(env: Record<string, string> | undefined): Record<string, string | null> {
+  try {
+    const scope = JSON.parse(env?.[SCOPE_ENV] ?? "{}") as Partial<RunScope>;
+    return Object.fromEntries(Object.entries(scope.servers ?? {}).map(([id, server]) => [id, server.auth ?? null]));
+  } catch {
+    return {};
+  }
+}
+
 export function mcpRunCredentials(
   required: readonly string[],
   granted: readonly string[],

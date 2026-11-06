@@ -48,6 +48,7 @@ export interface RequiredSecretsInput {
   requiredEnv: string[];
   /** MCP server ids from the manifest, so their derived token names are included. */
   mcpServers?: string[];
+  mcpCredentials?: Record<string, string | null>;
   /** What the deployed instance will run on. */
   provider: string;
   /**
@@ -99,7 +100,11 @@ export function requiredSecrets(input: RequiredSecretsInput): DeploySecretStatus
     add(name, "declared in this agent's .env.example", true);
   }
 
-  for (const serverId of input.mcpServers ?? []) {
+  for (const [serverId, name] of Object.entries(input.mcpCredentials ?? {})) {
+    if (name) add(name, `the credential stored for the ${serverId} MCP server`, true);
+  }
+
+  for (const serverId of input.mcpCredentials ? [] : (input.mcpServers ?? [])) {
     // Optional: plenty of MCP servers need no credential, and refusing to deploy over a token
     // that was never required locally either would be wrong.
     add(authEnvKeyFor(serverId), `the ${serverId} MCP server, if it needs a token`, false);

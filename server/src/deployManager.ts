@@ -43,6 +43,7 @@ import {
 import { checkRailwayCli, RailwayUpload } from "./railwayCli.ts";
 import { numberFromEnv } from "./env.ts";
 import type { TenantContext } from "./db/tenant.ts";
+import { scopeCredentials } from "./mcpScope.ts";
 
 /** The port serve.py binds, and the port the public domain is pointed at. */
 const SERVE_PORT = 8080;
@@ -215,9 +216,11 @@ export async function planDeploy(
   }
 
   const meta = readAgentMeta(deps.runtimeDir, req.agentId, projectDir);
+  const scope = deps.mcpScope ? await deps.mcpScope(ctx, req.agentId, projectDir) : null;
   const declared = {
     requiredEnv: meta.required_env ?? [],
     mcpServers: meta.mcp_servers ?? [],
+    mcpCredentials: scope ? scopeCredentials(scope) : undefined,
     provider: req.provider,
   };
   // The names first, then which of them this workspace can supply — asked of the same store the

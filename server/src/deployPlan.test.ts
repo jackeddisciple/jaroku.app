@@ -96,6 +96,24 @@ check("an agent with MCP tools is told a Cockpit job asks before a high-impact o
   /ask before they run on a job given from the Cockpit/.test(mcp), mcp);
 check("...and that a direct call to the URL refuses them", /directly at its URL/.test(mcp) && !/set to refuse them/.test(mcp), mcp);
 
+const stored = "JAROKU_MCP_DEEPWIKI_1A2B3C4D_TOKEN";
+held[B.workspaceId]!.add(stored);
+const scoped = {
+  ...deps,
+  mcpScope: async () => ({
+    JAROKU_MCP_SCOPE: JSON.stringify({ servers: { deepwiki: { auth: stored, tools: {} }, docs: { auth: null, tools: {} } } }),
+  }),
+} as unknown as DeployManagerDeps;
+const current = await planDeploy(scoped, {
+  agentId: "bruno", provider: "anthropic", model: "claude-haiku-4-5", envKeys: [],
+}, B);
+const offered = current.secrets.map((s) => s.name);
+check("a deploy carries the credential the MCP server holds now",
+  current.secrets.some((s) => s.name === stored && s.configured && s.required), JSON.stringify(current.secrets));
+check("...not a name worked out from the server id when the agent was generated",
+  !offered.includes("JAROKU_MCP_DEEPWIKI_TOKEN"), offered.join(","));
+check("...and nothing for a server that holds no credential", !offered.some((n) => n.includes("DOCS")), offered.join(","));
+
 rmSync(runtimeDir, { recursive: true, force: true });
 console.log(fail === 0 ? "\nALL CORRECT" : `\n${fail} FAILURES`);
 process.exit(fail === 0 ? 0 : 1);
