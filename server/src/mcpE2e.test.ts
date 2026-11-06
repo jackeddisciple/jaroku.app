@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 
 import { migrate } from "./db/migrate.ts";
 import { SqliteDb } from "./db/sqlite.ts";
+import { withScratchPostgres } from "./db/testDb.ts";
 import { newRequestId, systemContext, systemContextFor, type TenantContext } from "./db/tenant.ts";
 import { IdentityRepository } from "./db/repositories/identity.ts";
 import { SecretRefRepository } from "./db/repositories/secretRefs.ts";
@@ -1045,6 +1046,29 @@ console.log("\nan advertised schema is normalised or refused at the door");
   check(!schema("read_array"), "and so is an array");
   await fixture.close();
 }
+
+console.log("\nparallel adds on Postgres stop at the plan's limit");
+await withScratchPostgres(async (pg) => {
+  const pgStore = new McpStore(pg);
+  const ws = await new IdentityRepository(pg).createWorkspaceUnowned(systemContext(newRequestId()), {
+    name: `e2e limit ${randomUUID().slice(0, 6)}`,
+  });
+  const ctx = systemContextFor(ws.id, newRequestId());
+  for (let round = 1; round <= 3; round++) {
+    const limit = round * 3;
+    const reserved = await Promise.all(
+      Array.from({ length: 10 }, (_, i) =>
+        pgStore.reserveServer(ctx, {
+          id: `limit_${round}_${i}`, label: `Limit ${round} ${i}`, endpoint: `https://example.com/${round}/${i}`, transport: "http",
+          auth_env_key: null, server_name: null, server_version: null, protocol_version: null,
+          status: "connecting", last_error: null, discovered_at: null,
+        }, limit),
+      ),
+    );
+    const rows = (await pgStore.listServers(ctx)).length;
+    check(rows === limit && reserved.filter(Boolean).length === 3, `ten adds at once stop at a limit of ${limit}`, `${rows} rows, ${reserved.filter(Boolean).length} reserved`);
+  }
+});
 
 check(errors.length === 0, "no handler threw", String(errors[0] ?? ""));
 

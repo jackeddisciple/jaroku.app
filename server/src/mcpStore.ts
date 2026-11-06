@@ -311,7 +311,15 @@ export class McpStore {
   }
 
   async reserveServer(ctx: TenantContext, input: Omit<McpServer, "created_at">, maxServers: number | null = null): Promise<boolean> {
-    const res = await this.q(ctx).run(
+    if (maxServers === null || this.db.dialect !== "postgres") return this.insertReserved(ctx, this.q(ctx), input, maxServers);
+    return this.db.scoped(ctx.workspaceId, async (tx) => {
+      await tx.get(`SELECT pg_advisory_xact_lock(hashtext(?))`, [`mcp_servers:${ctx.workspaceId}`]);
+      return this.insertReserved(ctx, tx, input, maxServers);
+    });
+  }
+
+  private async insertReserved(ctx: TenantContext, q: Queryable, input: Omit<McpServer, "created_at">, maxServers: number | null): Promise<boolean> {
+    const res = await q.run(
       `INSERT INTO mcp_servers
          (workspace_id, id, label, endpoint, transport, auth_env_key, server_name,
           server_version, protocol_version, status, last_error, discovered_at, created_at)
