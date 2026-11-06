@@ -203,8 +203,9 @@ export async function validateMcpUrl(
   // variable is set, and never under NODE_ENV=production. A hostname that RESOLVES to loopback
   // does not qualify — that is the rebinding shape, and admitting it would make the seam the
   // vulnerability. See loopbackAllowed.
-  if (isLoopback(url.hostname) && loopbackAllowed(env)) {
-    return { host: url.hostname, port, ips: [url.hostname] };
+  const literal = url.hostname.replace(/^\[(.*)\]$/, "$1");
+  if (isLoopback(literal) && loopbackAllowed(env)) {
+    return { host: url.hostname, port, ips: [literal] };
   }
 
   // Otherwise it delegates to the exact refusal every other egress host goes through: resolved

@@ -170,6 +170,17 @@ console.log("\nloopback: allowed for the mock server, never in production");
     "...and the identical URL is refused in production",
   );
 
+  const six = await validateMcpUrl("http://[::1]:8940/ok", publicAnswer, dev).catch((e: Error) => e);
+  check(!(six instanceof Error), "the IPv6 loopback address takes the same seam in development", String(six));
+  check(!(six instanceof Error) && six.ips.join(",") === "::1", "...pinned to the bare address, not the bracketed host", JSON.stringify(six));
+  check(!(six instanceof Error) && six.port === 8940, "...on the port it named");
+  const longSix = await validateMcpUrl("http://[0:0:0:0:0:0:0:1]:8940/ok", publicAnswer, dev).catch((e: Error) => e);
+  check(!(longSix instanceof Error) && longSix.ips.join(",") === "::1", "...however the address is written");
+  check((await refusedIn("http://[::1]:8940/ok", off)) !== null, "the IPv6 loopback address is refused once the seam is off");
+  check((await refusedIn("http://[::1]:8940/ok", prodAsking)) !== null, "...and in production, whatever is asked");
+  check((await refusedIn("http://[::ffff:127.0.0.1]:8940/ok", dev)) !== null, "an IPv4 mapped loopback address is not the seam");
+  check((await refusedIn("http://[fe80::1]:8940/ok", dev)) !== null, "...and nor is any other IPv6 address in brackets");
+
   // The seam is a LITERAL loopback host, not a name that resolves to one. Admitting the second
   // would make the seam the rebinding hole it exists alongside.
   check(
