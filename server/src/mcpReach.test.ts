@@ -375,6 +375,9 @@ async function main(): Promise<void> {
     owner.c.send({ cmd: "resolveMcpConfirm", runId: ask?.["runId"], nonce: ask?.["nonce"], verdict: "once" });
     await sleep(3000);
     check(fixture.seen.filter((r) => r.rpc === "tools/call").length === 1, "the owner's answer still works");
+    check(owner.c.log.some((m) => m["channel"] === "debug" && m["type"] === "boundary"), "the owner sees the run's steps");
+    const leaked = [...barred.log, ...replayed.log].filter((m) => m["channel"] === "debug");
+    check(leaked.length === 0, "and the barred member sees none of them", JSON.stringify(leaked.slice(0, 2)));
     barred.close();
     replayed.close();
     owner.c.close();

@@ -12392,7 +12392,7 @@ onBothPools("spawnError", ({ runId, error }) => {
   // SAID, not only logged. A run that never started has no row and no trace to carry its reason,
   // and "the desktop app is still setting up Python" is a sentence somebody can act on. Eval runs
   // carry theirs on the job row instead, so they are left to the eval runner.
-  if (!isEvalRun(runId)) relay.broadcastDebug(contextForRun(runId), { type: "error", runId, message: error.message });
+  if (!isEvalRun(runId)) relay.broadcastDebug(contextForRun(runId), { type: "error", runId, message: error.message }, runBarred.get(runId));
   // A run that never started is a run that ended, as far as §3.3 is concerned — its thread stops
   // being `running` and nothing else would say so. See the `run_end` broadcast for the whole
   // argument; this is the case where there is no `run_end` at all.

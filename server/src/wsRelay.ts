@@ -5791,7 +5791,7 @@ export class WsRelay {
   // Broadcast a debug-depth control event (pause/resume/boundary/branched). Separate channel by
   // design — the run's steps still arrive as normal schema-v1 events on "trace".
   broadcastDebug(ctx: TenantContext, event: DebugEvent, barred?: ReadonlySet<string>): void {
-    this.broadcastTo(ctx, { channel: "debug", ...event });
+    this.broadcastTo(ctx, { channel: "debug", ...event }, barred);
   }
 
   // Broadcast an "explain" reply event (unified composer). Separate channel by design — it never
