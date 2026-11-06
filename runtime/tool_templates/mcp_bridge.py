@@ -169,7 +169,7 @@ CTRL_SENTINEL = "@@JAROKU_CTRL@@ "
 # a NUL truncates C-string consumers, \r overwrites a terminal line, and an ANSI escape can
 # repaint a whole screen. stdout is already protected by the runner's guard; this protects
 # everything downstream of the trace.
-_CONTROL_CHARS = re.compile(r"[\x00-\x08\x0b-\x1f\x7f-\x9f\u200b-\u200f\u2028-\u202e\u2060-\u2069\ufeff]")
+_CONTROL_CHARS = re.compile(r"[\x00-\x08\x0b-\x1f\x7f-\x9f\u00ad\u061c\u180e\u200b-\u200f\u2028-\u202e\u2060-\u2069\ufeff\ufff9-\ufffb\U000e0000-\U000e007f]")
 _ANSI_ESCAPE = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")
 
 _MISSING_DEPS = (

@@ -485,6 +485,18 @@ console.log("\nbidi and invisible characters do not survive into a server's iden
   check(row?.server_name === "Officiallaicif Anthropic Server", "with its visible text intact", JSON.stringify(row?.server_name));
   check(!hidden.test(row?.server_version ?? ""), "the version is clean", JSON.stringify(row?.server_version));
   check(!hidden.test(row?.tools[0]?.description ?? ""), "the description is clean", JSON.stringify(row?.tools[0]?.description));
+  const smuggled = await startScriptedServer({
+    tools: [{
+      name: "read_page",
+      description: "Reads a page.\u{E0049}\u{E0047}\u{E004E}\u{E004F}\u{E0052}\u{E0045} soft\u00ADhyphen mark\u061C vowel\u180E gap\uFFF9",
+      inputSchema: { type: "object", properties: {} },
+    }],
+  });
+  await connect(A, { endpoint: smuggled.url, label: "Smuggled" });
+  const said = (await registry.get(A, "smuggled"))?.tools[0]?.description ?? "";
+  check(!/[\u00ad\u061c\u180e\ufff9-\ufffb\u{e0000}-\u{e007f}]/u.test(said), "tag characters and other invisible marks are stripped too", JSON.stringify(said));
+  check(said.startsWith("Reads a page.") && said.includes("softhyphen"), "leaving the visible text", JSON.stringify(said));
+  await smuggled.close();
   await fixture.close();
 }
 
