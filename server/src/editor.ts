@@ -188,6 +188,22 @@ function readManifest(files: Map<string, string>): Manifest | undefined {
   }
 }
 
+const FILE_ERROR_CODES = new Set([
+  "ENOENT", "EACCES", "EPERM", "EISDIR", "ENOTDIR", "EEXIST", "ENOTEMPTY", "ENOSPC", "EBUSY",
+  "EMFILE", "ENFILE", "EROFS", "ELOOP", "ENAMETOOLONG", "EXDEV",
+]);
+
+export function publicEditError(err: unknown): string {
+  const code = (err as { code?: unknown } | null)?.code;
+  if (typeof code === "string" && FILE_ERROR_CODES.has(code)) {
+    return `the agent's files could not be read or written (${code})`;
+  }
+  const message = err instanceof Error ? err.message : String(err);
+  return message
+    .replace(/(?<![A-Za-z0-9])[A-Za-z]:[\\/][^\s'"`]*/g, "<path>")
+    .replace(/(^|[\s'"`(=])\/(?:[^\s'"`/]+\/)+[^\s'"`]*/g, "$1<path>");
+}
+
 export class Editor extends EventEmitter<EditorEvents> {
   private pending = new Map<string, PendingProposal>();
   /**
@@ -524,7 +540,8 @@ export class Editor extends EventEmitter<EditorEvents> {
       this.emit("proposal", { workspaceId, proposalId, agentId, instruction, summary, files, usage });
     } catch (err) {
       if (agentUuid) await this.opts.projects.discardStaging(ctx, agentUuid, stagingId).catch(() => {});
-      this.fail(ctx.workspaceId, { message: (err as Error).message, agentId });
+      console.error(`[edit] ${agentId} could not be proposed:`, err);
+      this.fail(ctx.workspaceId, { message: publicEditError(err), agentId });
     } finally {
       rmSync(scratch, { recursive: true, force: true });
       // THE SLOT AND THE AGENT IT NAMES GO TOGETHER — one map entry — so an agent cannot outlive its
@@ -618,7 +635,8 @@ export class Editor extends EventEmitter<EditorEvents> {
       // version that already exists. Restoring would offer an Apply button that could publish it a
       // second time, which is the bug this claim was added to close. The user asks for the edit
       // again, which is what the staleness guard would tell them anyway.
-      this.fail(ctx.workspaceId, { message: `apply failed: ${(err as Error).message}`, proposalId, agentId: rec.agentId });
+      console.error(`[edit] ${rec.agentId} could not be applied:`, err);
+      this.fail(ctx.workspaceId, { message: `apply failed: ${publicEditError(err)}`, proposalId, agentId: rec.agentId });
     }
   }
 
@@ -654,7 +672,8 @@ export class Editor extends EventEmitter<EditorEvents> {
     try {
       await this.materialise(ctx, agent.id, moved.to, agentId);
     } catch (err) {
-      this.fail(ctx.workspaceId, { message: `undo failed: ${(err as Error).message}`, agentId });
+      console.error(`[edit] ${agentId} could not be undone:`, err);
+      this.fail(ctx.workspaceId, { message: `undo failed: ${publicEditError(err)}`, agentId });
       return;
     }
     this.emit("undone", {

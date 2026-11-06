@@ -25,6 +25,7 @@ import { discover } from "./mcpClient.ts";
 import { coveredByRunGrant, isConfirmNonce, mcpRunCredentials, runScope } from "./mcpScope.ts";
 import { parseControlLine } from "./processManager.ts";
 import { echoedRef } from "./wsRelay.ts";
+import { publicEditError } from "./editor.ts";
 import { PeerConfirms } from "./mcpConfirmPeers.ts";
 import { isSecretName, secretNameRefusal } from "./secrets/secretStore.ts";
 import { isHostOwnedPath, readOnlyPaths } from "./projectFs.ts";
@@ -1157,6 +1158,23 @@ console.log("\nevery message about changing a grant points at a control that exi
   check(/Change what it may ` \+\s*`call" on the agent's Capabilities tab instead/.test(editor), "an edit that touches the grant file names where grants are changed");
   check(/untick one of them in the composer's ` \+\s*`MCP tools list and generate again/.test(generator), "a clash at generation names the list the tools were ticked in");
   check(/keep only one of them with \\"Change what it may call\\" on the agent's "\s*f"Capabilities tab\./.test(bridge), "and so does a clash the bridge finds at run time");
+}
+
+console.log("\nan edit that fails does not show where the server keeps its files");
+{
+  const windows = Object.assign(new Error("ENOENT: no such file or directory, open 'C:\\Users\\dev\\app\\runtime\\.objects\\ws\\abc\\agents\\x\\v2\\mcp_tools.json'"), { code: "ENOENT" });
+  check(publicEditError(windows) === "the agent's files could not be read or written (ENOENT)", "a file system error says what kind it was and nothing about where", publicEditError(windows));
+  const posix = Object.assign(new Error("EACCES: permission denied, open '/srv/jaroku/runtime/.objects/ws/abc/agent.py'"), { code: "EACCES" });
+  check(!publicEditError(posix).includes("/srv"), "...on any platform", publicEditError(posix));
+  const loose = new Error("could not read C:\\Users\\dev\\secret\\file and /home/dev/.objects/ws/x from the store");
+  const scrubbed = publicEditError(loose);
+  check(!/Users|home\/dev/.test(scrubbed) && scrubbed.includes("could not read") && scrubbed.includes("from the store"), "a path inside any other message is taken out, the sentence kept", scrubbed);
+  const ours = new Error("refusing unsafe path: mcp_tools.json::$DATA");
+  check(publicEditError(ours) === "refusing unsafe path: mcp_tools.json::$DATA", "a message that names only the agent's own relative file is left alone");
+  const network = Object.assign(new Error("connect ECONNREFUSED 127.0.0.1:443 while asking https://api.anthropic.com/v1/messages"), { code: "ECONNREFUSED" });
+  check(publicEditError(network) === network.message, "a network failure is not mistaken for a file one, and its URL survives", publicEditError(network));
+  const editor = readFileSync(join(fileURLToPath(new URL(".", import.meta.url)), "editor.ts"), "utf8");
+  check((editor.match(/publicEditError\(err\)/g) ?? []).length === 3 && !/\(err as Error\)\.message/.test(editor), "every edit failure goes out through it");
 }
 
 console.log("\nadds that derive one id each keep their own row");
