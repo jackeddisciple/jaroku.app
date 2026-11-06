@@ -555,6 +555,24 @@ export class McpRegistry {
     return true;
   }
 
+  async unshareCredentials(contexts: readonly TenantContext[]): Promise<string[]> {
+    if (this.secrets?.kind !== "dotenv") return [];
+    const holders = new Map<string, { ctx: TenantContext; id: string }[]>();
+    for (const ctx of contexts) {
+      for (const server of await this.store.listServers(ctx)) {
+        if (server.auth_env_key) holders.set(server.auth_env_key, [...(holders.get(server.auth_env_key) ?? []), { ctx, id: server.id }]);
+      }
+    }
+    const shared = [...holders].filter(([, rows]) => new Set(rows.map((row) => row.ctx.workspaceId)).size > 1);
+    for (const [key, rows] of shared) {
+      for (const { ctx, id } of rows) {
+        await this.store.setServerAuthEnvKey(ctx, id, null);
+        await this.release(ctx, key);
+      }
+    }
+    return shared.map(([key]) => key);
+  }
+
   /** Record (or clear) a user's impact override. Stamped against the current schema. */
   async setToolImpact(
     ctx: TenantContext,

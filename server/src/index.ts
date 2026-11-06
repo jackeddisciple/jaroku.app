@@ -1317,6 +1317,10 @@ async function spendCapBreach(ctx: TenantContext): Promise<CapBreach | null> {
 }
 const workspaceIds = await bootIdentity.listWorkspaceIds(systemContext(newRequestId()));
 const workspaceContexts = workspaceIds.map((id) => systemContextFor(id, newRequestId()));
+const unsharedMcpCredentials = await mcpRegistry.unshareCredentials(workspaceContexts);
+if (unsharedMcpCredentials.length) {
+  console.log(`[mcp] ${unsharedMcpCredentials.join(", ")} held one token for several workspaces on this machine, so it was removed; add each server's credential again in the MCP panel`);
+}
 
 // The interrupted EVALS are settled once the runner exists — see `evalRunner.reconcile` below — and
 // only the ones no other machine is still running.

@@ -901,6 +901,44 @@ console.log("\non the local store two workspaces on one server name keep their o
   await fixture.close();
 }
 
+console.log("\non the local store a name two workspaces already share is taken apart");
+{
+  const envPath = join(dir, "shared.env");
+  const dotenv = new DotEnvSecretStore({ envPath, writer: fileCredentialWriter(envPath), refs });
+  const local = new McpRegistry(store, dotenv, undefined, refs);
+  const A = await workspace("shared-a");
+  const B = await workspace("shared-b");
+  const C = await workspace("shared-c");
+  const fixture = await startScriptedServer();
+  for (const ctx of [A, B]) await local.addServer(ctx, { endpoint: fixture.url, label: "Tracker" });
+  await local.addServer(C, { endpoint: fixture.url, label: "Solo" });
+  const shared = authEnvKeyFor("tracker");
+  await dotenv.set(A, shared, "TOKEN-OF-WORKSPACE-A");
+  await dotenv.set(B, shared, "TOKEN-OF-WORKSPACE-B");
+  for (const ctx of [A, B]) await store.setServerAuthEnvKey(ctx, "tracker", shared);
+  const solo = authEnvKeyFor("solo");
+  await dotenv.set(C, solo, "TOKEN-OF-WORKSPACE-C");
+  await store.setServerAuthEnvKey(C, "solo", solo);
+  const unshared = await local.unshareCredentials([A, B, C]);
+  check(JSON.stringify(unshared) === JSON.stringify([shared]), "the shared name is found, and only that one", JSON.stringify(unshared));
+  for (const [label, ctx] of [["A", A], ["B", B]] as const) {
+    const row = await local.get(ctx, "tracker");
+    check(row?.auth_env_key === null && row?.configured === false, `${label} no longer points at the shared name`, JSON.stringify({ key: row?.auth_env_key, configured: row?.configured }));
+    check((await refs.get(ctx, shared)) === undefined, `and ${label}'s Secrets list no longer shows it`);
+  }
+  check(!(shared in (await dotenv.getForPlatformCall(A, [shared]))), "the value nobody can tell the owner of is gone");
+  fixture.seen.length = 0;
+  await local.rediscover(A, "tracker");
+  check(fixture.seen.length > 0 && fixture.seen.every((r) => !r.auth), "so A presents nobody's token", JSON.stringify(fixture.seen.map((r) => r.auth)));
+  fixture.seen.length = 0;
+  await local.rediscover(C, "solo");
+  check(fixture.seen.length > 0 && fixture.seen.every((r) => r.auth === "Bearer TOKEN-OF-WORKSPACE-C"), "a name only one workspace holds keeps working", JSON.stringify(fixture.seen.map((r) => r.auth)));
+  check((await local.unshareCredentials([A, B, C])).length === 0, "and a second pass finds nothing to do");
+  for (const ctx of [A, B]) await local.removeServer(ctx, "tracker");
+  await local.removeServer(C, "solo");
+  await fixture.close();
+}
+
 console.log("\na grant is refused on a project that could never call it");
 {
   const bridge = { path: "tools/mcp_bridge.py", content: "MCP_TOOLS = []\n" };
