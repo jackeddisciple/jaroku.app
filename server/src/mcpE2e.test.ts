@@ -46,14 +46,15 @@ const db = new SqliteDb(join(dir, "mcp.db"));
 await migrate(db.migrationTarget(), join(MIGRATIONS, "sqlite"), () => {});
 
 const identity = new IdentityRepository(db);
+const refs = new SecretRefRepository(db);
 const secrets = new KmsSecretStore({
   db,
   master: new LocalMasterKeyProvider("a-master-key-with-enough-entropy-behind-it-0123456789"),
-  refs: new SecretRefRepository(db),
+  refs,
   runWorkspace: async () => null,
 });
 const store = new McpStore(db);
-const registry = new McpRegistry(store, secrets);
+const registry = new McpRegistry(store, secrets, undefined, refs);
 const dispatcher = new Dispatcher(new InMemoryQueueBackend());
 const results: { payload: McpDiscoveryPayload; result: RegistrationResult }[] = [];
 const errors: unknown[] = [];
@@ -305,9 +306,18 @@ console.log("\ndisconnecting removes the credential with the server");
   await connect(A, { endpoint: fixture.url, label: "Holder", token: "goes-with-the-server" });
   const key = authEnvKeyFor("holder");
   check(key in (await secrets.getForPlatformCall(A, [key])), "the credential is stored while it is connected");
+  check((await refs.get(A, key))?.configured === true, "and the Secrets list shows it");
   await registry.removeServer(A, "holder");
   check(!(key in (await secrets.getForPlatformCall(A, [key]))), "disconnect removes it from the store");
+  check((await refs.get(A, key)) === undefined, "and takes its name off the Secrets list", JSON.stringify(await refs.get(A, key)));
   check((await registry.get(A, "holder")) === null, "and the row is gone");
+  await connect(A, { endpoint: fixture.url, label: "Unset", token: "goes-with-the-server" });
+  await registry.setCredential(A, "unset", null);
+  check((await refs.get(A, authEnvKeyFor("unset"))) === undefined, "removing a server's credential takes its name off as well", JSON.stringify(await refs.get(A, authEnvKeyFor("unset"))));
+  await registry.removeServer(A, "unset");
+  await secrets.set(A, "PLAIN_SERVICE_KEY", "kept-name");
+  await secrets.delete(A, "PLAIN_SERVICE_KEY");
+  check((await refs.get(A, "PLAIN_SERVICE_KEY"))?.configured === false, "while a credential no server owns keeps its name, marked not set");
   await fixture.close();
 }
 

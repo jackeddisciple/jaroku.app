@@ -1012,7 +1012,7 @@ console.log(`[server] secret store: ${secrets.kind}${secrets.kind === "dotenv" ?
 // value PER WORKSPACE. Two workspaces connecting the same service derive the same env key —
 // a server id is a slug — and before this the second to save a token silently replaced the
 // first's, so both then authenticated as whoever wrote last.
-const mcpRegistry = new McpRegistry(mcpStore, secrets);
+const mcpRegistry = new McpRegistry(mcpStore, secrets, undefined, secretRefs);
 
 // AND DISCOVERY MOVES OFF THE REQUEST PATH.
 //

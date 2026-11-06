@@ -25,6 +25,7 @@ import { discover, type DiscoveryResult } from "./mcpClient.ts";
 import type { AddressPin } from "./mcpFetch.ts";
 import { authEnvKeyFor } from "./envWriter.ts";
 import type { SecretStore } from "./secrets/secretStore.ts";
+import type { SecretRefRepository } from "./db/repositories/secretRefs.ts";
 import { ENDPOINT_CREDENTIAL_REFUSAL, McpUrlError, endpointCarriesCredential, validateMcpUrl } from "./mcpUrl.ts";
 import { EgressPolicyError, realResolver, type Resolver } from "./sandbox/egressPolicy.ts";
 import type { TenantContext } from "./db/tenant.ts";
@@ -165,7 +166,13 @@ export class McpRegistry {
      * the same reasoning `egressPolicy` and `databaseUrl` already document for theirs.
      */
     private resolver: Resolver = realResolver,
+    private names?: Pick<SecretRefRepository, "forget">,
   ) {}
+
+  private async release(ctx: TenantContext, key: string): Promise<void> {
+    await this.secrets?.delete(ctx, key);
+    await this.names?.forget(ctx, key);
+  }
 
   private credentialKey(ctx: TenantContext, id: string): string {
     if (this.secrets?.kind !== "dotenv") return authEnvKeyFor(id);
@@ -544,7 +551,7 @@ export class McpRegistry {
     const server = await this.store.getServer(ctx, id);
     if (!server) return false;
     await this.store.deleteServer(ctx, id);
-    if (server.auth_env_key) await this.secrets?.delete(ctx, server.auth_env_key);
+    if (server.auth_env_key) await this.release(ctx, server.auth_env_key);
     return true;
   }
 
@@ -579,7 +586,7 @@ export class McpRegistry {
     const key = server.auth_env_key ?? this.credentialKey(ctx, id);
 
     if (token === null) {
-      await this.secrets?.delete(ctx, key);
+      await this.release(ctx, key);
       await this.store.setServerAuthEnvKey(ctx, id, null);
       return { result: { ok: true, server: await this.get(ctx, id), message: null }, warning: null };
     }
