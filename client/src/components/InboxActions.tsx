@@ -122,6 +122,8 @@ export const INLINE_ACTIONS = new Set<InboxActionName>([
  */
 export const UNIMPLEMENTED_ACTIONS = new Set<InboxActionName>([]);
 
+export const CONFIRM_ACTIONS = new Set<InboxActionName>(["remove_server"]);
+
 /** Actions that need somewhere to type before they can run. §4.5's "the form itself". */
 export const FORM_ACTIONS = new Set<InboxActionName>(["set_secret", "set_mcp_credential", "raise_ceiling"]);
 

@@ -1,15 +1,16 @@
 import React from "react";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { ConnectForm, McpPanel, TOKEN_DROPPED, startAdd } from "./McpPanel.tsx";
-import { ADD_INTERRUPTED, DISCOVERY_STALE_MS, isDiscovering, useMcpStore } from "../store/mcpStore.ts";
+import { ConnectForm, CredentialRemovalConfirm, McpPanel, RemovalConfirm, TOKEN_DROPPED, startAdd } from "./McpPanel.tsx";
+import { useBuildStore } from "../store/buildStore.ts";
+import { ADD_INTERRUPTED, DISCOVERY_STALE_MS, agentsUsing, isDiscovering, removalConsequences, useMcpStore } from "../store/mcpStore.ts";
 import { useSessionStore } from "../store/sessionStore.ts";
 import { markup, seed, sessionAs } from "../lib/testRender.ts";
 import { resetWorkspaceStores } from "../store/reset.ts";
 import { useEntitlementStore } from "../store/entitlementStore.ts";
 import { announceAsks } from "./McpConfirmModal.tsx";
 import { TOAST_MAX_MS, TOAST_MS, toastDuration, useUiStore } from "../store/uiStore.ts";
-import type { McpServer, McpTool } from "../types.ts";
+import type { AgentSummary, McpServer, McpTool } from "../types.ts";
 
 let fail = 0;
 const check = (name: string, ok: boolean, detail = ""): void => {
@@ -378,6 +379,35 @@ console.log("\nthe plan's server limit is explained where it was hit, with the w
 
   const socket = readFileSync(fileURLToPath(new URL("../lib/socket.ts", import.meta.url)), "utf8");
   check("an accepted add puts the card away", /settleAdd\(msg\.clientRef, \{ serverId: msg\.serverId \}\);\s*if \(msg\.clientRef && useEntitlementStore\.getState\(\)\.channel === "mcp"\) useEntitlementStore\.getState\(\)\.clear\(\);/.test(socket));
+}
+
+console.log("\ndisconnecting and removing a credential ask first, and say what is lost");
+{
+  const agent = (name: string, refs: string[]): AgentSummary => ({ agent_id: name, name, description: "", connectors: [], mcp_tools: refs, required_env: [], default_provider: "anthropic", created_at: "2026-11-07T00:00:00.000Z", hand_written: false, runnable: true } as AgentSummary);
+  const rich = server({
+    configured: true,
+    tools: [tool("read_page"), tool("send_message", { overridden: true, impact: "low", computed_impact: "high" }), tool("search")],
+  });
+  const agents = [agent("mailer", ["alpha/send_message"]), agent("reader", ["alpha/read_page", "beta/x"]), agent("other", ["alphabet/read_page"])];
+  check("an agent counts as using a server only by that server's own refs", agentsUsing("alpha", agents).map((a) => a.name).join() === "mailer,reader");
+  const said = removalConsequences(rich, agents);
+  check("it names what is removed", /removes 3 discovered tools, the impact you set on 1 of them and its stored credential\./.test(said), said);
+  check("...that nothing undoes it", /Nothing brings them back except connecting it again\./.test(said));
+  check("...and the agents that lose its tools", /2 agents granted its tools \(mailer, reader\) will no longer be able to call them\./.test(said), said);
+  const bare = removalConsequences(server({ tools: [tool("read_page")] }), []);
+  check("a plain server says only what it has", /removes 1 discovered tool\. Nothing brings them back/.test(bare) && /No agent is granted its tools\./.test(bare), bare);
+
+  seed(useBuildStore, { agents });
+  const ask = markup(React.createElement(RemovalConfirm, { server: rich, onKeep: () => {} }));
+  check("the disconnect question is the consequences, then the choice", ask.includes("2 agents granted its tools (mailer, reader)") && /Disconnect Alpha/.test(ask) && /Keep it/.test(ask));
+  seed(useBuildStore, { agents: [] });
+  const credential = markup(React.createElement(CredentialRemovalConfirm, { server: rich, onKeep: () => {}, onRemoved: () => {} }));
+  check("removing a credential asks too", /Removing the credential stored for Alpha deletes it/.test(credential) && /Remove the credential/.test(credential) && /Keep it/.test(credential));
+
+  const source = readFileSync(fileURLToPath(new URL("./McpPanel.tsx", import.meta.url)), "utf8");
+  const detail = /function ServerDetail\([\s\S]*?\n\}\n/.exec(source)?.[0] ?? "";
+  check("disconnect opens the question rather than disconnecting", /onClick=\{\(\) => setConfirming\(\(v\) => \(v === "disconnect" \? null : "disconnect"\)\)\}/.test(detail) && !/sendRemoveMcpServer/.test(detail));
+  check("...and Remove does the same for the credential", /onClick=\{\(\) => setConfirming\("credential"\)\}/.test(detail) && !/sendSetMcpServerAuth\(server\.id, null\)/.test(detail));
 }
 
 console.log(fail === 0 ? "\nALL CORRECT" : `\n${fail} FAILURES`);

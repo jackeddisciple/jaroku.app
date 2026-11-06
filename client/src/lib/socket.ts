@@ -1849,8 +1849,8 @@ export function sendListMcpServers(): void {
 export function sendAddMcpServer(endpoint: string, label?: string, token?: string, clientRef?: string): boolean {
   return send({ cmd: "addMcpServer", endpoint, label, token, clientRef, origin: EVAL_ORIGIN });
 }
-export function sendRemoveMcpServer(serverId: string): void {
-  send({ cmd: "removeMcpServer", serverId });
+export function sendRemoveMcpServer(serverId: string): boolean {
+  return send({ cmd: "removeMcpServer", serverId });
 }
 /** Re-run the handshake. On failure the previously discovered tools are kept. */
 export function sendRediscoverMcpServer(serverId: string): void {

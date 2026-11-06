@@ -12,7 +12,7 @@
 // is exactly the state a confirmation prompt must never be rendered from.
 
 import { create } from "zustand";
-import type { McpConfirmRequest, McpImpact, McpServer, McpTool } from "../types.ts";
+import type { AgentSummary, McpConfirmRequest, McpImpact, McpServer, McpTool } from "../types.ts";
 
 /** A tool plus the server it came from, for the flat lists the selection UI needs. */
 export interface McpToolRef extends McpTool {
@@ -194,6 +194,32 @@ export const useMcpStore = create<McpState>((set, get) => ({
 
 // --- selectors ---------------------------------------------------------------
 // Exported as pure functions so no component re-derives them differently.
+
+function plural(n: number, one: string, many = `${one}s`): string {
+  return `${n} ${n === 1 ? one : many}`;
+}
+
+export function agentsUsing(serverId: string, agents: readonly AgentSummary[]): AgentSummary[] {
+  return agents.filter((agent) => (agent.mcp_tools ?? []).some((ref) => ref.startsWith(`${serverId}/`)));
+}
+
+export function removalConsequences(server: McpServer, agents: readonly AgentSummary[]): string {
+  const overridden = server.tools.filter((tool) => tool.overridden || tool.override_voided).length;
+  const losing = [
+    plural(server.tools.length, "discovered tool"),
+    ...(overridden > 0 ? [`the impact you set on ${plural(overridden, "of them", "of them")}`] : []),
+    ...(server.configured ? ["its stored credential"] : []),
+  ];
+  const lost = losing.length === 1 ? losing[0] : `${losing.slice(0, -1).join(", ")} and ${losing[losing.length - 1]}`;
+  const using = agentsUsing(server.id, agents);
+  const named = using.slice(0, 3).map((agent) => agent.name).join(", ") + (using.length > 3 ? ` and ${using.length - 3} more` : "");
+  return (
+    `Disconnecting ${server.label} removes ${lost}. Nothing brings them back except connecting it again.` +
+    (using.length > 0
+      ? ` ${plural(using.length, "agent")} granted its tools (${named}) will no longer be able to call them.`
+      : " No agent is granted its tools.")
+  );
+}
 
 export function isDiscovering(discovering: Record<string, number>, serverId: string): boolean {
   return Object.prototype.hasOwnProperty.call(discovering, serverId);

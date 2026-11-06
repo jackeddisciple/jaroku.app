@@ -21,6 +21,7 @@ import { sendSetMcpServerAuth } from "../lib/socket.ts";
 import {
   ACTION_LABEL,
   FORM_ACTIONS,
+  CONFIRM_ACTIONS,
   useAllowedActions,
   runAction,
   submitCeiling,
@@ -29,6 +30,9 @@ import {
 import { actionIconFor } from "./inboxActionIcons.tsx";
 import { sendDismissInboxItem, sendResolveInboxItem, sendSnoozeInboxItem } from "../lib/socket.ts";
 import { useInboxStore } from "../store/inboxStore.ts";
+import { removalConsequences, useMcpStore } from "../store/mcpStore.ts";
+import { useBuildStore } from "../store/buildStore.ts";
+import { primaryBtn, quietBtn } from "./buttons.ts";
 import { useSecretsStore } from "../store/secretsStore.ts";
 import { fetchElevation } from "../lib/secrets.ts";
 import { useUiStore } from "../store/uiStore.ts";
@@ -267,7 +271,32 @@ function SnoozeMenu({ item, onClose }: { item: InboxItemView; onClose: () => voi
 }
 
 /** The overflow (§4.4): every action that is not the primary one. */
-function Overflow({ item, onClose }: { item: InboxItemView; onClose: () => void }) {
+export function ConfirmRemoveServer({ item, onKeep }: { item: InboxItemView; onKeep: () => void }) {
+  const server = useMcpStore((s) => s.servers.find((candidate) => candidate.id === item.subject_id) ?? null);
+  const agents = useBuildStore((s) => s.agents);
+  const name = server?.label ?? (typeof item.payload["server_name"] === "string" ? item.payload["server_name"] : item.subject_id ?? "this server");
+  return (
+    <div role="group" aria-label={`Remove ${name}?`} onClick={(e) => e.stopPropagation()} className="mt-1.5 rounded-card border border-err/40 bg-panel p-2">
+      <p className="text-tiny leading-[1.5] text-ink">
+        {server ? removalConsequences(server, agents) : `Disconnecting ${name} removes its tools and anything stored for it.`}
+      </p>
+      <div className="mt-2 flex items-center justify-end gap-2">
+        <button type="button" className={quietBtn} autoFocus onClick={onKeep}>
+          Keep it
+        </button>
+        <button type="button" className={primaryBtn}
+          onClick={() => {
+            if (runAction("remove_server", item)) onKeep();
+            else useInboxStore.getState().setError(`${ACTION_LABEL.remove_server} — this card is missing what that needs`);
+          }}>
+          Remove {name}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function Overflow({ item, onClose, onConfirm }: { item: InboxItemView; onClose: () => void; onConfirm: (action: InboxActionName) => void }) {
   // The same filter the row above applies, for the same reason: an overflow offering a fix that
   // 403s is worse than one that is a line shorter.
   const secondary = useAllowedActions(item.actions).slice(1).filter((a) => a !== "dismiss");
@@ -287,6 +316,11 @@ function Overflow({ item, onClose }: { item: InboxItemView; onClose: () => void 
             <button
               key={action}
               onClick={() => {
+                if (CONFIRM_ACTIONS.has(action)) {
+                  onConfirm(action);
+                  onClose();
+                  return;
+                }
                 // THE ANSWER IS READ NOW. It used to be discarded, so a menu that closed was the
                 // only feedback either way — and on a board whose sweep resolves cards on its own
                 // schedule, "nothing visible happened" is indistinguishable from "it worked and the
@@ -311,6 +345,7 @@ function Overflow({ item, onClose }: { item: InboxItemView; onClose: () => void 
 export function InboxCardActions({ item, expanded }: { item: InboxItemView; expanded: boolean }) {
   const [menu, setMenu] = useState(false);
   const [snoozing, setSnoozing] = useState(false);
+  const [confirming, setConfirming] = useState<InboxActionName | null>(null);
   /**
    * §8 ON THE INBOX. Every card offers a fix and the fixes come from five subsystems, so an
    * action's capability is a property of the action rather than of the card — see `ACTION_COMMAND`.
@@ -342,6 +377,10 @@ export function InboxCardActions({ item, expanded }: { item: InboxItemView; expa
             size={ICON.xs}
             stopPropagation
             onClick={() => {
+              if (CONFIRM_ACTIONS.has(primary)) {
+                setConfirming(primary);
+                return;
+              }
               // Same rule as the overflow's: a card's most prominent control saying nothing is the
               // failure this whole pass is about, and a refusal here means the payload lacked what
               // the command needed rather than that the command failed.
@@ -393,8 +432,9 @@ export function InboxCardActions({ item, expanded }: { item: InboxItemView; expa
           />
         )}
         {snoozing && <SnoozeMenu item={item} onClose={() => setSnoozing(false)} />}
-        {menu && <Overflow item={item} onClose={() => setMenu(false)} />}
+        {menu && <Overflow item={item} onClose={() => setMenu(false)} onConfirm={setConfirming} />}
       </div>
+      {confirming === "remove_server" && <ConfirmRemoveServer item={item} onKeep={() => setConfirming(null)} />}
     </>
   );
 }

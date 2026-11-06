@@ -13,7 +13,8 @@
 // optimistic local state here — the only local state is the add form and which row is open.
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { isDiscovering, useMcpStore } from "../store/mcpStore.ts";
+import { isDiscovering, removalConsequences, useMcpStore } from "../store/mcpStore.ts";
+import { useBuildStore } from "../store/buildStore.ts";
 import { useSessionStore } from "../store/sessionStore.ts";
 import { useEntitlementStore } from "../store/entitlementStore.ts";
 import { useUiStore } from "../store/uiStore.ts";
@@ -175,6 +176,49 @@ function ToolRow({ tool, serverId }: { tool: McpTool; serverId: string }) {
 
 // --- one server --------------------------------------------------------------
 
+export function RemovalConfirm({ server, onKeep }: { server: McpServer; onKeep: () => void }) {
+  const agents = useBuildStore((s) => s.agents);
+  const [failed, setFailed] = useState(false);
+  return (
+    <div role="group" aria-label={`Disconnect ${server.label}?`} className="mt-2 rounded-card border border-err/40 bg-panel p-2">
+      <p className="text-tiny leading-[1.5] text-ink">{removalConsequences(server, agents)}</p>
+      {failed && <p role="alert" className="mt-1 text-tiny leading-[1.5] text-err">{NOT_SENT}</p>}
+      <div className="mt-2 flex items-center gap-2">
+        <button type="button" className={secondaryBtn + " hover:!text-err"}
+          onClick={() => (sendRemoveMcpServer(server.id) ? onKeep() : setFailed(true))}>
+          <XIcon size={ICON.xs} />
+          Disconnect {server.label}
+        </button>
+        <button type="button" className={quietBtn} autoFocus onClick={onKeep}>
+          Keep it
+        </button>
+      </div>
+    </div>
+  );
+}
+
+export function CredentialRemovalConfirm({ server, onKeep, onRemoved }: { server: McpServer; onKeep: () => void; onRemoved: () => void }) {
+  const [failed, setFailed] = useState(false);
+  return (
+    <div role="group" aria-label="Remove the stored credential?" className="mt-2 rounded-card border border-err/40 bg-panel p-2">
+      <p className="text-tiny leading-[1.5] text-ink">
+        Removing the credential stored for {server.label} deletes it. Jaroku checks the server again without it, and an agent
+        calling it will be refused if the server needs one.
+      </p>
+      {failed && <p role="alert" className="mt-1 text-tiny leading-[1.5] text-err">{NOT_SENT}</p>}
+      <div className="mt-2 flex items-center gap-2">
+        <button type="button" className={secondaryBtn + " hover:!text-err"}
+          onClick={() => (sendSetMcpServerAuth(server.id, null) ? onRemoved() : setFailed(true))}>
+          Remove the credential
+        </button>
+        <button type="button" className={quietBtn} autoFocus onClick={onKeep}>
+          Keep it
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function ServerDetail({ server }: { server: McpServer }) {
   // The whole control row below is `mcp:manage`. See the row itself for why it is guarded as a
   // group rather than one button at a time.
@@ -183,6 +227,7 @@ function ServerDetail({ server }: { server: McpServer }) {
   const [token, setToken] = useState("");
   const [showToken, setShowToken] = useState(false);
   const [credentialError, setCredentialError] = useState<string | null>(null);
+  const [confirming, setConfirming] = useState<null | "disconnect" | "credential">(null);
   const saveCredential = () => {
     const value = token.trim();
     if (!value) return;
@@ -259,11 +304,24 @@ function ServerDetail({ server }: { server: McpServer }) {
               {server.configured ? "replace credential" : "add a credential"}
             </button>
             <button className={secondaryBtn + " ml-auto hover:!text-err"}
-              onClick={() => sendRemoveMcpServer(server.id)}>
+              aria-expanded={confirming === "disconnect"}
+              onClick={() => setConfirming((v) => (v === "disconnect" ? null : "disconnect"))}>
               <XIcon size={ICON.xs} />
               disconnect
             </button>
           </div>
+        )}
+
+        {confirming === "disconnect" && <RemovalConfirm server={server} onKeep={() => setConfirming(null)} />}
+        {confirming === "credential" && (
+          <CredentialRemovalConfirm
+            server={server}
+            onKeep={() => setConfirming(null)}
+            onRemoved={() => {
+              setConfirming(null);
+              setShowToken(false);
+            }}
+          />
         )}
 
         {showToken && (
@@ -295,7 +353,7 @@ function ServerDetail({ server }: { server: McpServer }) {
               </button>
               {server.configured && (
                 <button type="button" className={quietBtn}
-                  onClick={() => { sendSetMcpServerAuth(server.id, null); setShowToken(false); }}>
+                  onClick={() => setConfirming("credential")}>
                   Remove
                 </button>
               )}
