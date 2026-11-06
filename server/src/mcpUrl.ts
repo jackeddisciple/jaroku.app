@@ -28,8 +28,19 @@ import { EgressPolicyError, isDeniedAddress, resolveAndPin, type EgressRule, typ
 
 export class McpUrlError extends Error {}
 
-const CREDENTIAL_PARAM =
-  /^(x[-_]?)?(api[-_]?key|apikey|key|token|access[-_]?token|auth[-_]?token|id[-_]?token|refresh[-_]?token|bearer|auth|authorization|secret|client[-_]?secret|password|passwd|pwd|sig|signature|jwt|credentials?)$/i;
+const CREDENTIAL_WORDS = new Set([
+  "key", "apikey", "token", "secret", "password", "passwd", "pwd", "sig", "signature",
+  "auth", "authorization", "bearer", "jwt", "credential", "credentials",
+]);
+
+function namesCredential(name: string): boolean {
+  return name
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2")
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .some((word) => CREDENTIAL_WORDS.has(word));
+}
 const USERINFO = /^([a-z][a-z0-9+.-]*:\/\/)[^/?#]*@/i;
 
 export const ENDPOINT_CREDENTIAL_REFUSAL =
@@ -37,7 +48,7 @@ export const ENDPOINT_CREDENTIAL_REFUSAL =
   "add the token separately: it is kept as a secret and sent as a bearer token.";
 
 function credentialParams(params: URLSearchParams): string[] {
-  return [...new Set(params.keys())].filter((name) => CREDENTIAL_PARAM.test(name));
+  return [...new Set(params.keys())].filter(namesCredential);
 }
 
 export function endpointCarriesCredential(raw: string): boolean {

@@ -142,6 +142,9 @@ console.log("\na credential in a URL goes nowhere");
     `${fixture.url}?api_key=SUPERSECRET123`,
     `${fixture.url}?workspace=w1&token=SUPERSECRET123`,
     `${fixture.url}#access_token=SUPERSECRET123`,
+    `${fixture.url}?private_token=SUPERSECRET123`,
+    `${fixture.url}?apiToken=SUPERSECRET123`,
+    `${fixture.url}?AWSAccessKeyId=AKIA&X-Amz-Signature=SUPERSECRET123`,
     "https://user:hunter2@exa mple.com/mcp",
   ];
   for (const endpoint of dirty) {
@@ -156,6 +159,10 @@ console.log("\na credential in a URL goes nowhere");
 
   const plain = await registry.prepare(A, { endpoint: `${fixture.url}?workspace=w1`, label: "Plain" });
   check(plain.ok, "an ordinary query string is not a credential");
+  for (const query of ["keyword=mcp", "author=me", "monkey=1", "tokenizer=bpe"]) {
+    const ordinary = await registry.prepare(A, { endpoint: `${fixture.url}?${query}`, label: `Plain ${query.slice(0, 4)}` });
+    check(ordinary.ok, `?${query} is not one either`, ordinary.message ?? "");
+  }
 
   await store.upsertServer(A, {
     id: "written", label: "Written", endpoint: `${fixture.url}?api_key=SUPERSECRET123`, transport: "http",
