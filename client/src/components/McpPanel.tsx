@@ -640,6 +640,11 @@ export function ConnectForm() {
 
 // --- the panel ---------------------------------------------------------------
 
+export const MCP_EMPTY_ADMIN =
+  "Connecting one discovers the tools it offers, so you can give an agent the specific ones it needs — and nothing else.";
+export const MCP_EMPTY_MEMBER =
+  "Connecting a server is up to an admin of this workspace, so ask one to connect the server you need. Its tools then appear here, and can be given to an agent while planning.";
+
 export function McpPanel() {
   const canManage = useCanRun("addMcpServer");
   const servers = useMcpStore((s) => s.servers);
@@ -737,7 +742,7 @@ export function McpPanel() {
         <EmptyState
           icon={PlugIcon}
           title="No MCP servers connected"
-          hint="Connecting one discovers the tools it offers, so you can give an agent the specific ones it needs — and nothing else."
+          hint={canManage ? MCP_EMPTY_ADMIN : MCP_EMPTY_MEMBER}
         />
       ) : selected ? (
         <ServerDetail key={`${workspaceId}:${selected.id}`} server={selected} />

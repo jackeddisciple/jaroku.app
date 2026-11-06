@@ -1,7 +1,7 @@
 import React from "react";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { ConnectForm, CredentialRemovalConfirm, ENDPOINT_SETTLED, EditServerForm, McpPanel, RemovalConfirm, TOKEN_DROPPED, startAdd } from "./McpPanel.tsx";
+import { ConnectForm, CredentialRemovalConfirm, ENDPOINT_SETTLED, EditServerForm, MCP_EMPTY_ADMIN, MCP_EMPTY_MEMBER, McpPanel, RemovalConfirm, TOKEN_DROPPED, startAdd } from "./McpPanel.tsx";
 import { useBuildStore } from "../store/buildStore.ts";
 import { ADD_INTERRUPTED, DISCOVERY_STALE_MS, agentsUsing, isDiscovering, removalConsequences, useMcpStore } from "../store/mcpStore.ts";
 import { useSessionStore } from "../store/sessionStore.ts";
@@ -451,6 +451,19 @@ console.log("\na setting voided by a schema change can be cleared directly");
   const current = markup(React.createElement(McpPanel));
   check("a setting still in force keeps its own wording", />use Jaroku&#x27;s classification<\/button>/.test(current) && !/clear my old setting/.test(current));
   seed(useMcpStore, { servers: [] });
+}
+
+console.log("\nan empty panel tells each role what it can do next");
+{
+  seed(useMcpStore, { servers: [], selectedId: null, formOpen: false });
+  seed(useSessionStore, sessionAs("member"));
+  const member = markup(React.createElement(McpPanel));
+  check("a member is told who can connect a server", member.includes(MCP_EMPTY_MEMBER) && /ask one/.test(MCP_EMPTY_MEMBER));
+  check("...and is not told to connect one themselves", !member.includes(MCP_EMPTY_ADMIN));
+  seed(useSessionStore, sessionAs("admin"));
+  const admin = markup(React.createElement(McpPanel));
+  check("an admin is told what connecting one does", admin.includes(MCP_EMPTY_ADMIN.replace("—", "&#8212;")) || admin.includes(MCP_EMPTY_ADMIN));
+  check("...and not to ask somebody else", !admin.includes(MCP_EMPTY_MEMBER));
 }
 
 console.log(fail === 0 ? "\nALL CORRECT" : `\n${fail} FAILURES`);
