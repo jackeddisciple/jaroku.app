@@ -61,6 +61,7 @@ export interface JobClassConfig {
   /** See the file header. Only these three are routed through queue/dispatcher.ts this
    *  session; the rest are registered for their numbers and stay synchronous. */
   queued: boolean;
+  admitPerWorkspace: boolean;
 }
 
 /** `JAROKU_JOB_TIMEOUT_MS_<CLASS>` overrides a class's default, e.g.
@@ -98,29 +99,32 @@ const DEFAULTS: Record<JobClass, Omit<JobClassConfig, "perWorkspaceConcurrency" 
     globalConcurrency: null,
     retryable: false,
     queued: true,
+    admitPerWorkspace: false,
   },
   "run.eval": {
     label: "an eval fan-out job",
     globalConcurrency: null,
     retryable: true,
     queued: true,
+    admitPerWorkspace: false,
   },
   judge: {
     label: "a judge scoring call",
     globalConcurrency: null,
     retryable: true,
     queued: true,
+    admitPerWorkspace: false,
   },
-  generate: { label: "agent generation", globalConcurrency: null, retryable: false, queued: false },
-  plan: { label: "the plan gate", globalConcurrency: null, retryable: false, queued: false },
-  edit: { label: "the fix loop", globalConcurrency: null, retryable: false, queued: false },
-  explain: { label: "an explain answer", globalConcurrency: null, retryable: false, queued: false },
+  generate: { label: "agent generation", globalConcurrency: null, retryable: false, queued: false, admitPerWorkspace: false },
+  plan: { label: "the plan gate", globalConcurrency: null, retryable: false, queued: false, admitPerWorkspace: false },
+  edit: { label: "the fix loop", globalConcurrency: null, retryable: false, queued: false, admitPerWorkspace: false },
+  explain: { label: "an explain answer", globalConcurrency: null, retryable: false, queued: false, admitPerWorkspace: false },
   // NOT RETRYABLE, and that is not an oversight about a network call. `mcpClient.discover`
   // classifies every failure and RETURNS rather than throwing — an unreachable server is a
   // recorded status, not an exception — so there is nothing here for a queue-level retry to
   // improve. A user pressing Re-discover is the retry, and it is the one that knows whether the
   // server has been fixed.
-  "mcp.discover": { label: "MCP tool discovery", globalConcurrency: null, retryable: false, queued: true },
+  "mcp.discover": { label: "MCP tool discovery", globalConcurrency: null, retryable: false, queued: true, admitPerWorkspace: true },
   // NOT RETRYABLE, for a different reason from mcp.discover's: an export reads a workspace's
   // whole history and writes one object, so a retry is not a cheap second attempt — it is the
   // same expensive read again, and the failure that killed the first is almost always the
@@ -128,7 +132,7 @@ const DEFAULTS: Record<JobClass, Omit<JobClassConfig, "perWorkspaceConcurrency" 
   // can ask again. GLOBALLY CAPPED at four, because this is the only class that can read
   // millions of rows on one connection, and a platform where every workspace exports at once is
   // a platform where nothing else gets a connection.
-  "workspace.export": { label: "a workspace export", globalConcurrency: 4, retryable: false, queued: true },
+  "workspace.export": { label: "a workspace export", globalConcurrency: 4, retryable: false, queued: true, admitPerWorkspace: false },
 };
 
 const PER_WORKSPACE_DEFAULT: Record<JobClass, () => number> = {

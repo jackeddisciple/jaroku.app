@@ -15,6 +15,7 @@ import type { QueueBackend } from "./backend.ts";
 import { InMemoryQueueBackend } from "./inMemoryBackend.ts";
 import { RedisQueueBackend } from "./redisBackend.ts";
 import { openRedis, redisUrlFromEnv } from "./redis.ts";
+import { semaphoreKey } from "./semaphores.ts";
 
 export interface Admission<T> {
   job: QueueJob<T>;
@@ -25,9 +26,12 @@ export interface AdmitOverrides {
   leaseId?: string;
   leaseTtlMs?: number;
   maxGlobalInFlight?: number | null;
+  maxWorkspaceInFlight?: number | null;
 }
 
 export class Dispatcher {
+  private workspaceSlots = new Map<string, string>();
+
   /**
    * @param traceparent Where a job's `traceparent` comes from when the caller does not pass one.
    *
@@ -97,13 +101,38 @@ export class Dispatcher {
     const leaseTtlMs = overrides.leaseTtlMs ?? (cfg.timeoutMs !== null ? cfg.timeoutMs + 30_000 : 5 * 60_000);
     const maxGlobalInFlight =
       overrides.maxGlobalInFlight !== undefined ? overrides.maxGlobalInFlight : cfg.globalConcurrency;
-    const job = await this.backend.tryAdmit(jobClass, { leaseId, leaseTtlMs, maxGlobalInFlight });
-    if (!job) return null;
-    return { job: job as QueueJob<T>, leaseId };
+    const perWorkspace =
+      overrides.maxWorkspaceInFlight !== undefined
+        ? overrides.maxWorkspaceInFlight
+        : cfg.admitPerWorkspace
+          ? cfg.perWorkspaceConcurrency
+          : null;
+    if (perWorkspace === null) {
+      const job = await this.backend.tryAdmit(jobClass, { leaseId, leaseTtlMs, maxGlobalInFlight });
+      if (!job) return null;
+      return { job: job as QueueJob<T>, leaseId };
+    }
+    const attempts = Math.max(1, (await this.backend.ringOrder(jobClass)).length);
+    for (let attempt = 0; attempt < attempts; attempt++) {
+      const job = await this.backend.tryAdmit(jobClass, { leaseId, leaseTtlMs, maxGlobalInFlight });
+      if (!job) return null;
+      const slot = semaphoreKey(jobClass, { kind: "workspace", workspaceId: job.workspaceId });
+      if (await this.backend.acquireSemaphore(slot, perWorkspace, leaseId, leaseTtlMs)) {
+        this.workspaceSlots.set(leaseId, slot);
+        return { job: job as QueueJob<T>, leaseId };
+      }
+      await this.backend.ack(jobClass, leaseId);
+      await this.backend.enqueue(job);
+    }
+    return null;
   }
 
-  ack(jobClass: JobClass, leaseId: string): Promise<void> {
-    return this.backend.ack(jobClass, leaseId);
+  async ack(jobClass: JobClass, leaseId: string): Promise<void> {
+    await this.backend.ack(jobClass, leaseId);
+    const slot = this.workspaceSlots.get(leaseId);
+    if (slot === undefined) return;
+    this.workspaceSlots.delete(leaseId);
+    await this.backend.releaseSemaphore(slot, leaseId);
   }
 
   reapExpired(jobClass: JobClass): Promise<QueueJob[]> {

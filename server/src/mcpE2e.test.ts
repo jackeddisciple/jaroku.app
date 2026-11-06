@@ -16,6 +16,7 @@ import { DotEnvSecretStore } from "./secrets/dotEnvSecretStore.ts";
 import { fileCredentialWriter } from "./envWriter.ts";
 import { Dispatcher } from "./queue/dispatcher.ts";
 import { InMemoryQueueBackend } from "./queue/inMemoryBackend.ts";
+import { WorkerLoop } from "./queue/workerLoop.ts";
 import { McpStore } from "./mcpStore.ts";
 import { McpRegistry, type RegistrationResult } from "./mcpRegistry.ts";
 import { MCP_DISCOVER_CLASS, McpDiscoveryQueue, type McpDiscoveryPayload } from "./mcpDiscovery.ts";
@@ -924,6 +925,49 @@ console.log("\na failed check still moves when the server was last checked");
   check(back?.status === "connected" && (back.checked_at ?? "") > (failed?.checked_at ?? ""), "a good re-check moves it again", `${back?.status} ${back?.checked_at}`);
   check((back?.discovered_at ?? "") > (first?.discovered_at ?? ""), "...and the tools are new", String(back?.discovered_at));
   await fixture.close();
+}
+
+console.log("\na workspace has at most its limit of discoveries running at once");
+{
+  const A = await workspace("limit");
+  let running = 0;
+  let peak = 0;
+  const slow = await startScriptedServer({
+    hook: async ({ rpc }) => {
+      if (rpc !== "initialize") return false;
+      running++;
+      peak = Math.max(peak, running);
+      await new Promise((r) => setTimeout(r, 300));
+      running--;
+      return false;
+    },
+  });
+  const loopDispatcher = new Dispatcher(new InMemoryQueueBackend());
+  const loopQueue = new McpDiscoveryQueue({
+    dispatcher: loopDispatcher,
+    registry,
+    onError: (_ctx, _payload, err) => errors.push(err),
+  });
+  const loop = new WorkerLoop({
+    dispatcher: loopDispatcher,
+    classes: [MCP_DISCOVER_CLASS],
+    handlers: { [MCP_DISCOVER_CLASS]: loopQueue.handler() as never },
+    idlePollMs: 20,
+  });
+  void loop.run();
+  const labels = ["Slow1", "Slow2", "Slow3"];
+  for (const label of labels) {
+    const prepared = await registry.prepare(A, { endpoint: slow.url, label });
+    await loopQueue.enqueue(A, { kind: "add", serverId: prepared.id, endpoint: slow.url, label, authEnvKey: prepared.authEnvKey });
+  }
+  const until = Date.now() + 15_000;
+  const connected = async () => (await store.listServers(A)).filter((s) => s.status === "connected").length;
+  while ((await connected()) < labels.length && Date.now() < until) await new Promise((r) => setTimeout(r, 50));
+  await loop.shutdown(2000);
+  check((await connected()) === labels.length, "every discovery still completes", String(await connected()));
+  check(peak === 2, "but no more than two handshakes ran at once", String(peak));
+  check(slow.seen.filter((r) => r.rpc === "initialize").length === labels.length, "and each server was asked once", String(slow.seen.filter((r) => r.rpc === "initialize").length));
+  await slow.close();
 }
 
 console.log("\nadds that derive one id each keep their own row");
