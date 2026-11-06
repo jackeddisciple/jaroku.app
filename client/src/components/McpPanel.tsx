@@ -192,6 +192,11 @@ function ServerDetail({ server }: { server: McpServer }) {
     setCredentialError(null);
     setShowToken(false);
   };
+  const cancelCredential = () => {
+    setToken("");
+    setCredentialError(null);
+    setShowToken(false);
+  };
   const highCount = server.tools.filter((t) => t.impact === "high").length;
   const lastChecked = server.checked_at ?? server.discovered_at;
 
@@ -247,7 +252,7 @@ function ServerDetail({ server }: { server: McpServer }) {
               <RefreshIcon size={ICON.xs} />
               {discovering ? "checking…" : "re-check"}
             </button>
-            <button className={secondaryBtn} onClick={() => setShowToken((v) => !v)}>
+            <button className={secondaryBtn} aria-expanded={showToken} onClick={() => setShowToken((v) => !v)}>
               <KeyIcon size={ICON.xs} />
               {server.configured ? "replace credential" : "add a credential"}
             </button>
@@ -266,11 +271,18 @@ function ServerDetail({ server }: { server: McpServer }) {
               e.preventDefault();
               saveCredential();
             }}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") {
+                e.preventDefault();
+                cancelCredential();
+              }
+            }}
             className="mt-2 rounded-card border border-edge bg-panel p-2"
           >
             <div className="flex items-center gap-2">
               <SecretField
                 name="mcp-server-credential"
+                aria-label={`Credential for ${server.label}`}
                 className="min-w-0 flex-1 rounded-input border border-edge bg-elevated px-2 py-1 text-tiny text-ink outline-none focus-visible:shadow-focusring placeholder:text-faint"
                 placeholder="bearer token or API key"
                 value={token}
@@ -285,6 +297,9 @@ function ServerDetail({ server }: { server: McpServer }) {
                   Remove
                 </button>
               )}
+              <button type="button" className={quietBtn} onClick={cancelCredential}>
+                Cancel
+              </button>
             </div>
             {credentialError && (
               <p role="alert" className="mt-1.5 break-words text-tiny leading-[1.5] text-err">{credentialError}</p>
@@ -395,6 +410,14 @@ export function ConnectForm() {
 
   const setEndpoint = (value: string) => setDraft({ endpoint: value });
   const setLabel = (value: string) => setDraft({ label: value });
+  const cancel = () => {
+    if (sending) return;
+    setToken("");
+    setFormError(null);
+    useMcpStore.getState().setDraft({ endpoint: "", label: "" });
+    useMcpStore.getState().setTokenDropped(false);
+    useMcpStore.getState().setFormOpen(false);
+  };
 
   const submit = () => {
     const started = startAdd({ endpoint, label, token });
@@ -407,15 +430,23 @@ export function ConnectForm() {
     <div className="shrink-0 px-4 pb-2">
       <form
         autoComplete="off"
+        aria-label="Connect an MCP server"
         onSubmit={(e) => {
           e.preventDefault();
           submit();
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") {
+            e.preventDefault();
+            cancel();
+          }
         }}
         className="rounded-card border border-edge bg-panel p-2"
       >
         <input
           autoFocus
           name="mcp-server-endpoint"
+          aria-label="Server URL"
           autoComplete="off"
           className="w-full rounded-input border border-edge bg-elevated px-2 py-1 text-tiny text-ink outline-none focus-visible:shadow-focusring placeholder:text-faint"
           placeholder="https://example.com/mcp"
@@ -426,6 +457,7 @@ export function ConnectForm() {
         <div className="mt-1.5 flex items-center gap-2">
           <input
             name="mcp-server-label"
+            aria-label="Name (optional)"
             autoComplete="off"
             className="min-w-0 flex-1 rounded-input border border-edge bg-elevated px-2 py-1 text-tiny text-ink outline-none focus-visible:shadow-focusring placeholder:text-faint"
             placeholder="name (optional)"
@@ -435,6 +467,7 @@ export function ConnectForm() {
           />
           <SecretField
             name="mcp-server-token"
+            aria-label="Token (if the server needs one)"
             className="min-w-0 flex-1 rounded-input border border-edge bg-elevated px-2 py-1 text-tiny text-ink outline-none focus-visible:shadow-focusring placeholder:text-faint"
             placeholder="token (if it needs one)"
             value={token}
@@ -446,6 +479,9 @@ export function ConnectForm() {
           />
           <button type="submit" className={primaryBtn} disabled={!endpoint.trim() || sending}>
             {sending ? "connecting…" : "Connect"}
+          </button>
+          <button type="button" className={quietBtn} disabled={sending} onClick={cancel}>
+            Cancel
           </button>
         </div>
         {tokenDropped && (
@@ -528,6 +564,7 @@ export function McpPanel() {
                 size="lg"
                 onClick={() => setSelectedId(s.id)}
                 selected={selected?.id === s.id}
+                current={selected?.id === s.id}
                 className="max-w-[220px] shrink-0"
                 figure={s.tools.length}
                 icon={
@@ -545,6 +582,7 @@ export function McpPanel() {
             committing the workspace to something outside itself. */}
         {canManage && (
           <button className={quietBtn + " shrink-0 inline-flex items-center gap-1"}
+            aria-expanded={adding}
             onClick={toggleForm}>
             <Icon.mcp.connectServer size={ICON.xs} />
             Connect a server

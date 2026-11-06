@@ -110,6 +110,7 @@ export type ChipProps = {
   inline?: boolean;
   /** Selected, for a chip in a strip. Promotes a bare chip to a filled, ink one. */
   selected?: boolean;
+  current?: boolean;
   onClick?: () => void;
   disabled?: boolean;
   title?: string;
@@ -179,6 +180,7 @@ export function Chip({
   pill = false,
   inline = false,
   selected,
+  current,
   onClick,
   disabled,
   title,
@@ -235,7 +237,7 @@ export function Chip({
 
   if (interactive) {
     return (
-      <button type="button" onClick={onClick} disabled={disabled} aria-disabled={disabled} title={title} className={cls} style={surface}>
+      <button type="button" onClick={onClick} disabled={disabled} aria-disabled={disabled} aria-current={current ? "true" : undefined} title={title} className={cls} style={surface}>
         {body}
       </button>
     );

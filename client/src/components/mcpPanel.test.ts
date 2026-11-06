@@ -6,6 +6,7 @@ import { ADD_INTERRUPTED, DISCOVERY_STALE_MS, isDiscovering, useMcpStore } from 
 import { useSessionStore } from "../store/sessionStore.ts";
 import { markup, seed, sessionAs } from "../lib/testRender.ts";
 import { resetWorkspaceStores } from "../store/reset.ts";
+import { announceAsks } from "./McpConfirmModal.tsx";
 import type { McpServer, McpTool } from "../types.ts";
 
 let fail = 0;
@@ -209,7 +210,7 @@ console.log("\nconnecting keeps what was typed until the server answers");
 console.log("\nEnter submits a form only as its button would");
 {
   const source = readFileSync(fileURLToPath(new URL("./McpPanel.tsx", import.meta.url)), "utf8");
-  check("no field in the panel handles Enter by itself", !/onKeyDown/.test(source));
+  check("no field in the panel handles Enter by itself", !/key === "Enter"/.test(source));
   const form = markup(React.createElement(ConnectForm));
   check("the connect form is a form", /^<div[^>]*><form/.test(form));
   check("...whose Connect is its submit button", /<button type="submit"[^>]*disabled=""[^>]*>Connect<\/button>/.test(form), form.slice(0, 400));
@@ -283,6 +284,46 @@ console.log("\nwhat is selected and what was typed survive leaving the panel");
   check("so Connect a server is never scrolled out of sight", row.includes("Connect a server") && !scroller.includes("Connect a server"));
   check("a token typed and then left behind is noted, never kept", /if \(typed\.current && useMcpStore\.getState\(\)\.formOpen\) useMcpStore\.getState\(\)\.setTokenDropped\(true\)/.test(source));
   seed(useMcpStore, { servers: [], selectedId: null, formOpen: false });
+}
+
+console.log("\nthe panel can be used without a mouse or a screen");
+{
+  const alpha = server();
+  const beta = server({ id: "beta", label: "Beta" });
+  seed(useSessionStore, sessionAs("admin"));
+  seed(useMcpStore, { servers: [alpha, beta], selectedId: "beta", formOpen: false, draft: { endpoint: "", label: "" }, pendingAdd: null, tokenDropped: false });
+  const closed = markup(React.createElement(McpPanel));
+  const chips = [...closed.matchAll(/<span data-mcp-server="([a-z_]+)"[^>]*><button([^>]*)>/g)].map((m) => [m[1], m[2] ?? ""] as const);
+  check("the selected server's chip is marked current", chips.some(([id, attrs]) => id === "beta" && /aria-current="true"/.test(attrs)), JSON.stringify(chips));
+  check("...and no other chip is", chips.filter(([, attrs]) => /aria-current/.test(attrs)).length === 1);
+  check("Connect a server says the form is closed", /<button[^>]*aria-expanded="false"[^>]*>(?:(?!<\/button>).)*Connect a server/s.test(closed));
+  seed(useMcpStore, { formOpen: true });
+  const open = markup(React.createElement(McpPanel));
+  check("...and open once it is", /<button[^>]*aria-expanded="true"[^>]*>(?:(?!<\/button>).)*Connect a server/s.test(open));
+  seed(useMcpStore, { formOpen: false, selectedId: null });
+
+  const form = markup(React.createElement(ConnectForm));
+  check("the connect form is named", /<form[^>]*aria-label="Connect an MCP server"/.test(form));
+  for (const [field, label] of [["mcp-server-endpoint", "Server URL"], ["mcp-server-label", "Name (optional)"], ["mcp-server-token", "Token (if the server needs one)"]] as const) {
+    check(`its ${field.replace("mcp-server-", "")} field has a label, not only a placeholder`, new RegExp(`aria-label="${label.replace(/[()]/g, "\\$&")}"[^>]*name="${field}"|name="${field}"[^>]*aria-label="${label.replace(/[()]/g, "\\$&")}"`).test(form));
+  }
+  check("it has a Cancel that does not submit", /<button type="button"[^>]*>Cancel<\/button>/.test(form));
+
+  const source = readFileSync(fileURLToPath(new URL("./McpPanel.tsx", import.meta.url)), "utf8");
+  check("Escape cancels the connect form", /if \(e\.key === "Escape"\) \{\s*e\.preventDefault\(\);\s*cancel\(\);/.test(source));
+  check("...which closes it and forgets the draft, unless an add is on its way", /const cancel = \(\) => \{\s*if \(sending\) return;[\s\S]{0,260}setDraft\(\{ endpoint: "", label: "" \}\)[\s\S]{0,160}setFormOpen\(false\)/.test(source));
+  check("Escape cancels the credential form too", /if \(e\.key === "Escape"\) \{\s*e\.preventDefault\(\);\s*cancelCredential\(\);/.test(source));
+  check("...which has a Cancel of its own", /<button type="button" className=\{quietBtn\} onClick=\{cancelCredential\}>\s*Cancel/.test(source));
+  check("the credential field is labelled with its server", /name="mcp-server-credential"\s*aria-label=\{`Credential for \$\{server\.label\}`\}/.test(source));
+  check("and the button that shows it says whether it is shown", /aria-expanded=\{showToken\}/.test(source));
+
+  const ask = (nonce: string, tool: string, agentName: string | null) => ({
+    runId: `run-${nonce}`, nonce, server: "alpha", tool, impactReason: null, args: "{}", timeoutS: 60,
+    requestedAt: new Date().toISOString(), agentName,
+  });
+  check("one new ask is said on its own", announceAsks([ask("a", "send_message", "Mailer")]) === "Mailer is waiting on you to allow send_message on alpha.");
+  const both = announceAsks([ask("a", "send_message", "Mailer"), ask("b", "delete_row", null)]);
+  check("two that arrive together are both said, rather than one replacing the other", /^2 tools are waiting on you: Mailer wants send_message on alpha; run run-b wants delete_row on alpha\.$/.test(both), both);
 }
 
 console.log(fail === 0 ? "\nALL CORRECT" : `\n${fail} FAILURES`);

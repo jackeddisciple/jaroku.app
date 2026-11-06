@@ -75,6 +75,11 @@ function whose(request: McpConfirmRequest): string {
   return request.agentName ?? `run ${request.runId.slice(0, 8)}`;
 }
 
+export function announceAsks(fresh: readonly McpConfirmRequest[]): string {
+  if (fresh.length === 1) return `${whose(fresh[0]!)} is waiting on you to allow ${fresh[0]!.tool} on ${fresh[0]!.server}.`;
+  return `${fresh.length} tools are waiting on you: ${fresh.map((c) => `${whose(c)} wants ${c.tool} on ${c.server}`).join("; ")}.`;
+}
+
 export function McpConfirmModal() {
   const confirms = useMcpStore((s) => s.confirms);
   const revealNonce = useMcpStore((s) => s.revealNonce);
@@ -126,8 +131,7 @@ export function McpConfirmModal() {
     if (fresh.length === 0) return;
     for (const c of fresh) if (!shownAt.current.has(c.nonce)) shownAt.current.set(c.nonce, Date.now());
     setFolded(false);
-    const first = fresh[0]!;
-    setAnnouncement(`${whose(first)} is waiting on you to allow ${first.tool} on ${first.server}.`);
+    setAnnouncement(announceAsks(fresh));
   }, [ordered]);
 
   // THE ONE WAY FOCUS MOVES IN: somebody asked to see this ask — the waiting row's control.
