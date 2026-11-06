@@ -2199,6 +2199,10 @@ export function BuildPane({
       return kept.length === current.length ? current : kept;
     });
   }, [mcpServers]);
+  useEffect(() => {
+    setSelectedMcp([]);
+    setMcpOpen(false);
+  }, [activeAgentId]);
   const toggleMcp = (ref: string) =>
     setSelectedMcp((s) => (s.includes(ref) ? s.filter((x) => x !== ref) : [...s, ref]));
 

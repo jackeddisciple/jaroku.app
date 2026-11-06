@@ -536,5 +536,15 @@ console.log("\nthe composer's tool picker holds only tools that exist, and says 
   check("a tool from a server that is not connected says so in its row", /\{t\.serverStatus !== "connected" && \([\s\S]{0,260}MCP_STATUS_LABEL\[t\.serverStatus\]/.test(build));
 }
 
+console.log("\ntools ticked for one agent are not carried into the next");
+{
+  const build = readFileSync(fileURLToPath(new URL("./BuildPane.tsx", import.meta.url)), "utf8");
+  check("moving to another agent clears the MCP ticks and closes the list", /useEffect\(\(\) => \{\s*setSelectedMcp\(\[\]\);\s*setMcpOpen\(false\);\s*\}, \[activeAgentId\]\);/.test(build));
+  const declared = build.indexOf("const activeAgentId = useBuildStore(");
+  const cleared = build.indexOf("setSelectedMcp([]);");
+  check("...keyed on the agent the composer is building, which is set before the effect reads it", declared > 0 && cleared > declared);
+  check("the ticks are sent as they stand when a plan or a build goes out", (build.match(/selectedMcp, attachRefs/g) ?? []).length >= 2);
+}
+
 console.log(fail === 0 ? "\nALL CORRECT" : `\n${fail} FAILURES`);
 (globalThis as { process?: { exit(code: number): void } }).process?.exit(fail === 0 ? 0 : 1);
