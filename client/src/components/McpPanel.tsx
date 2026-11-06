@@ -151,14 +151,14 @@ function ToolRow({ tool, serverId }: { tool: McpTool; serverId: string }) {
                 </button>
               </>
             )}
-            {canManage && tool.overridden && (
+            {canManage && (tool.overridden || tool.override_voided) && (
               <>
                 <span className="text-faint">·</span>
                 <button
                   className={quietBtn + " !px-0 !text-tiny"}
                   onClick={() => sendSetMcpToolImpact(serverId, tool.name, null)}
                 >
-                  use Jaroku's classification
+                  {tool.override_voided ? "clear my old setting" : "use Jaroku's classification"}
                 </button>
               </>
             )}

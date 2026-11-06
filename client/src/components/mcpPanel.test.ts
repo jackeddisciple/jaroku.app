@@ -435,5 +435,23 @@ console.log("\na server can be renamed, and a mistyped endpoint fixed before it 
   check("the edit says whether it left the tab, and which tab sent it", /export function sendUpdateMcpServer\([^)]*\): boolean \{\s*return send\(\{ cmd: "updateMcpServer", serverId, \.\.\.patch, origin: EVAL_ORIGIN \}\);/.test(socket));
 }
 
+console.log("\na setting voided by a schema change can be cleared directly");
+{
+  const voided = server({ tools: [tool("search_docs", { override_voided: true, overridden: false, impact: "high", computed_impact: "high" })] });
+  seed(useSessionStore, sessionAs("admin"));
+  seed(useMcpStore, { servers: [voided], selectedId: null });
+  const admin = markup(React.createElement(McpPanel));
+  check("the voided setting is still flagged", /your override no longer applies/.test(admin));
+  check("...and an admin can clear it in one step", />clear my old setting<\/button>/.test(admin));
+  seed(useSessionStore, sessionAs("member"));
+  check("a member is not offered that", !/clear my old setting/.test(markup(React.createElement(McpPanel))));
+  seed(useSessionStore, sessionAs("admin"));
+  const live = server({ tools: [tool("send_message", { overridden: true, impact: "low", computed_impact: "high" })] });
+  seed(useMcpStore, { servers: [live] });
+  const current = markup(React.createElement(McpPanel));
+  check("a setting still in force keeps its own wording", />use Jaroku&#x27;s classification<\/button>/.test(current) && !/clear my old setting/.test(current));
+  seed(useMcpStore, { servers: [] });
+}
+
 console.log(fail === 0 ? "\nALL CORRECT" : `\n${fail} FAILURES`);
 (globalThis as { process?: { exit(code: number): void } }).process?.exit(fail === 0 ? 0 : 1);
