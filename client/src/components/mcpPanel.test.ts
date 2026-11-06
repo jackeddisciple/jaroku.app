@@ -1,6 +1,6 @@
 import React from "react";
 import { McpPanel } from "./McpPanel.tsx";
-import { useMcpStore } from "../store/mcpStore.ts";
+import { isDiscovering, useMcpStore } from "../store/mcpStore.ts";
 import { useSessionStore } from "../store/sessionStore.ts";
 import { markup, seed, sessionAs } from "../lib/testRender.ts";
 import type { McpServer, McpTool } from "../types.ts";
@@ -82,6 +82,20 @@ console.log("\nlast checked moves with every check, not only a successful one");
   check("a healthy server shows only when it was checked", healthy.includes(`last checked ${new Date(checked).toLocaleString()}`) && !healthy.includes("tools from"));
   const older = render([server({ discovered_at: found, tools: [tool("read_page")] })]);
   check("a row from before checks were stamped still reads its discovery time", older.includes(`last checked ${new Date(found).toLocaleString()}`));
+}
+
+console.log("\na server named after an object's own property is not stuck checking");
+{
+  for (const id of ["constructor", "tostring", "hasownproperty", "valueof", "isprototypeof"]) {
+    check(`${id} is not being checked when nothing is`, !isDiscovering({}, id));
+  }
+  const held: Record<string, true> = {};
+  held["constructor"] = true;
+  check("a server that is being checked still says so", isDiscovering(held, "constructor"));
+  const row = render([server({ id: "constructor", label: "constructor" })]);
+  const recheck = /<button[^>]*>(?:(?!<\/button>).)*re-check<\/button>/s.exec(row)?.[0] ?? "";
+  check("its re-check button reads re-check", recheck.length > 0, row.slice(0, 200));
+  check("...and can be pressed", !/disabled=""/.test(recheck), recheck);
 }
 
 console.log(fail === 0 ? "\nALL CORRECT" : `\n${fail} FAILURES`);

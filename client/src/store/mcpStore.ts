@@ -123,6 +123,10 @@ export const useMcpStore = create<McpState>((set) => ({
 // --- selectors ---------------------------------------------------------------
 // Exported as pure functions so no component re-derives them differently.
 
+export function isDiscovering(discovering: Record<string, true>, serverId: string): boolean {
+  return Object.prototype.hasOwnProperty.call(discovering, serverId);
+}
+
 /** Every discovered tool across every connected server, flattened for selection. */
 export function allMcpTools(servers: McpServer[]): McpToolRef[] {
   return servers.flatMap((s) =>

@@ -13,7 +13,7 @@
 // optimistic local state here — the only local state is the add form and which row is open.
 
 import { useEffect, useState } from "react";
-import { useMcpStore } from "../store/mcpStore.ts";
+import { isDiscovering, useMcpStore } from "../store/mcpStore.ts";
 import {
   sendAddMcpServer,
   sendListMcpServers,
@@ -176,7 +176,7 @@ function ServerDetail({ server }: { server: McpServer }) {
   // The whole control row below is `mcp:manage`. See the row itself for why it is guarded as a
   // group rather than one button at a time.
   const canManage = useCanRun("addMcpServer");
-  const discovering = useMcpStore((s) => Boolean(s.discovering[server.id]));
+  const discovering = useMcpStore((s) => isDiscovering(s.discovering, server.id));
   const [token, setToken] = useState("");
   const [showToken, setShowToken] = useState(false);
   const highCount = server.tools.filter((t) => t.impact === "high").length;
