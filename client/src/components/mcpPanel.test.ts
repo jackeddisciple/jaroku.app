@@ -5,6 +5,7 @@ import { ConnectForm, McpPanel, startAdd } from "./McpPanel.tsx";
 import { ADD_INTERRUPTED, DISCOVERY_STALE_MS, isDiscovering, useMcpStore } from "../store/mcpStore.ts";
 import { useSessionStore } from "../store/sessionStore.ts";
 import { markup, seed, sessionAs } from "../lib/testRender.ts";
+import { resetWorkspaceStores } from "../store/reset.ts";
 import type { McpServer, McpTool } from "../types.ts";
 
 let fail = 0;
@@ -215,6 +216,17 @@ console.log("\nEnter submits a form only as its button would");
   check("the credential form is a form too", /onSubmit=\{\(e\) => \{\s*e\.preventDefault\(\);\s*saveCredential\(\);/.test(source));
   check("...whose Save submits and whose Remove does not", /<button type="submit" className=\{primaryBtn\} disabled=\{!token\.trim\(\)\}>\s*Save/.test(source) && /<button type="button" className=\{quietBtn\}[\s\S]{0,120}Remove/.test(source));
   check("...and a credential the socket did not send is kept, with the reason", /if \(!sendSetMcpServerAuth\(server\.id, value\)\) \{\s*setCredentialError\(NOT_SENT\);\s*return;/.test(source));
+}
+
+console.log("\nswitching workspace drops whatever was typed for the old one");
+{
+  const source = readFileSync(fileURLToPath(new URL("./McpPanel.tsx", import.meta.url)), "utf8");
+  check("the connect form is rebuilt for each workspace, so a typed credential does not follow", /<ConnectForm key=\{workspaceId\} /.test(source));
+  check("...and closes when the workspace changes", /useEffect\(\(\) => \{\s*setAdding\(false\);\s*setSelectedId\(null\);\s*\}, \[workspaceId\]\);/.test(source));
+  check("a server's credential field is rebuilt too, even where both workspaces have a server of that name", source.includes("<ServerDetail key={`${workspaceId}:${selected.id}`}"));
+  useMcpStore.getState().beginAdd("ref-old", "https://old.example/mcp");
+  resetWorkspaceStores();
+  check("an add the old workspace was waiting on is forgotten", useMcpStore.getState().pendingAdd === null);
 }
 
 console.log(fail === 0 ? "\nALL CORRECT" : `\n${fail} FAILURES`);

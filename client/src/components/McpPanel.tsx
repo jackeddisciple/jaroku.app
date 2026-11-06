@@ -14,6 +14,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { isDiscovering, useMcpStore } from "../store/mcpStore.ts";
+import { useSessionStore } from "../store/sessionStore.ts";
 import {
   sendAddMcpServer,
   sendListMcpServers,
@@ -462,8 +463,13 @@ export function McpPanel() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const closeForm = useCallback(() => setAdding(false), []);
+  const workspaceId = useSessionStore((s) => s.workspaceId) ?? "";
 
   useEffect(() => sendListMcpServers(), []);
+  useEffect(() => {
+    setAdding(false);
+    setSelectedId(null);
+  }, [workspaceId]);
 
   // Keep the selection if it still exists, else fall back to the first — the same idiom as
   // evalStore's dataset selection and buildStore's agent selection.
@@ -526,7 +532,7 @@ export function McpPanel() {
         )}
       </div>
 
-      {canManage && adding && <ConnectForm onDone={closeForm} />}
+      {canManage && adding && <ConnectForm key={workspaceId} onDone={closeForm} />}
 
       {servers.length === 0 ? (
         <EmptyState
@@ -535,7 +541,7 @@ export function McpPanel() {
           hint="Connecting one discovers the tools it offers, so you can give an agent the specific ones it needs — and nothing else."
         />
       ) : selected ? (
-        <ServerDetail key={selected.id} server={selected} />
+        <ServerDetail key={`${workspaceId}:${selected.id}`} server={selected} />
       ) : null}
     </div>
   );
