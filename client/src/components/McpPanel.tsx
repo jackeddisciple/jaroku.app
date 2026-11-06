@@ -66,7 +66,7 @@ export function schemaText(schema: unknown): string {
   return `${compact.slice(0, SCHEMA_DISPLAY_CHARS)}\n${SCHEMA_SHORTENED}`;
 }
 
-const STATUS_LABEL: Record<McpServer["status"], string> = {
+export const STATUS_LABEL: Record<McpServer["status"], string> = {
   connecting: "connecting…",
   connected: "connected",
   unreachable: "unreachable",

@@ -96,7 +96,10 @@ import {
   LightbulbIcon, LoaderIcon, PencilIcon, PlugIcon, SparklesIcon,
   WrenchIcon, XIcon, ZapIcon,
 } from "./panelIcons.tsx";
-import { useMcpStore, allMcpTools } from "../store/mcpStore.ts";
+import { useMcpStore, allMcpTools, liveSelection } from "../store/mcpStore.ts";
+import { STATUS_LABEL as MCP_STATUS_LABEL } from "./McpPanel.tsx";
+import { StatusGlyph } from "./StatusGlyph.tsx";
+import { MCP_PHASE } from "../lib/domainPhase.ts";
 import { useThreadStore } from "../store/threadStore.ts";
 import { firstUnresolvedTurnId } from "../lib/threadResume.ts";
 import { ACCENT, ICON, INTERACTION, STATUS, SURFACE, TEXT, TYPE } from "../lib/tokens.ts";
@@ -2190,6 +2193,12 @@ export function BuildPane({
   const toggle = (id: string) =>
     setSelected((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
   const mcpTools = useMemo(() => allMcpTools(mcpServers), [mcpServers]);
+  useEffect(() => {
+    setSelectedMcp((current) => {
+      const kept = liveSelection(current, mcpServers);
+      return kept.length === current.length ? current : kept;
+    });
+  }, [mcpServers]);
   const toggleMcp = (ref: string) =>
     setSelectedMcp((s) => (s.includes(ref) ? s.filter((x) => x !== ref) : [...s, ref]));
 
@@ -3331,7 +3340,7 @@ export function BuildPane({
                       key={t.ref}
                       onClick={() => toggleMcp(t.ref)}
                       disabled={busy}
-                      title={`${t.serverLabel} — ${t.impact_reason}`}
+                      title={`${t.serverLabel}${t.serverStatus === "connected" ? "" : ` (${MCP_STATUS_LABEL[t.serverStatus]})`} — ${t.impact_reason}`}
                       className={`flex w-full items-center gap-1.5 rounded-control px-1.5 py-1 text-left text-caption transition-colors disabled:opacity-50 ${
                         on ? "bg-active text-ink" : "text-muted hover:text-ink"
                       }`}
@@ -3345,6 +3354,12 @@ export function BuildPane({
                       {/* Which server it came from is not decoration: two servers can
                           advertise the same tool name and mean different things. */}
                       <Truncate className="text-faint">{t.serverLabel}</Truncate>
+                      {t.serverStatus !== "connected" && (
+                        <span className="inline-flex shrink-0 items-center gap-1 text-tiny text-muted">
+                          <StatusGlyph phase={MCP_PHASE[t.serverStatus]} size={ICON.xs} title={MCP_STATUS_LABEL[t.serverStatus]} />
+                          {MCP_STATUS_LABEL[t.serverStatus]}
+                        </span>
+                      )}
                       {high && (
                         // The same word, the same colour and now the same chip the plan card and
                         // the MCP panel use for this fact one screen away.

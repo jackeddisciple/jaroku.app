@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { ConnectForm, CredentialRemovalConfirm, ENDPOINT_SETTLED, EditServerForm, MCP_EMPTY_ADMIN, MCP_EMPTY_MEMBER, McpPanel, RemovalConfirm, SCHEMA_DISPLAY_CHARS, SCHEMA_SHORTENED, TOKEN_DROPPED, controlBtn, schemaText, startAdd } from "./McpPanel.tsx";
 import { useBuildStore } from "../store/buildStore.ts";
-import { ADD_INTERRUPTED, DISCOVERY_STALE_MS, agentsUsing, isDiscovering, removalConsequences, useMcpStore } from "../store/mcpStore.ts";
+import { ADD_INTERRUPTED, DISCOVERY_STALE_MS, agentsUsing, allMcpTools, isDiscovering, liveSelection, removalConsequences, useMcpStore } from "../store/mcpStore.ts";
 import { useSessionStore } from "../store/sessionStore.ts";
 import { markup, seed, sessionAs } from "../lib/testRender.ts";
 import { resetWorkspaceStores } from "../store/reset.ts";
@@ -519,6 +519,21 @@ console.log("\nlong text wraps inside the panel, and a big schema is bounded");
   check("an ordinary schema is pretty printed as before", schemaText(small) === JSON.stringify(small, null, 2));
   const source = readFileSync(fileURLToPath(new URL("./McpPanel.tsx", import.meta.url)), "utf8");
   check("the schema block has a height of its own", /<pre className="[^"]*max-h-80 overflow-auto[^"]*">\s*\{schemaText\(tool\.input_schema\)\}/.test(source));
+}
+
+console.log("\nthe composer's tool picker holds only tools that exist, and says when their server is in trouble");
+{
+  const alpha = server({ tools: [tool("read_page"), tool("send_message")] });
+  const beta = server({ id: "beta", label: "Beta", status: "unreachable", tools: [tool("search")] });
+  const picked = ["alpha/send_message", "beta/search", "gone/read_page", "alpha/deleted_tool"];
+  check("a tick for a disconnected server or a vanished tool is dropped", liveSelection(picked, [alpha, beta]).join() === "alpha/send_message,beta/search");
+  check("...and nothing else changes order or goes", liveSelection(["beta/search", "alpha/read_page"], [alpha, beta]).join() === "beta/search,alpha/read_page");
+  check("once a server is gone none of its tools stay ticked", liveSelection(picked, [alpha]).join() === "alpha/send_message");
+  check("each listed tool carries its server's status", allMcpTools([alpha, beta]).map((t) => `${t.ref}:${t.serverStatus}`).join() === "alpha/read_page:connected,alpha/send_message:connected,beta/search:unreachable");
+
+  const build = readFileSync(fileURLToPath(new URL("./BuildPane.tsx", import.meta.url)), "utf8");
+  check("the composer prunes its ticks whenever the servers change", /useEffect\(\(\) => \{\s*setSelectedMcp\(\(current\) => \{\s*const kept = liveSelection\(current, mcpServers\);[\s\S]{0,120}\}, \[mcpServers\]\);/.test(build));
+  check("a tool from a server that is not connected says so in its row", /\{t\.serverStatus !== "connected" && \([\s\S]{0,260}MCP_STATUS_LABEL\[t\.serverStatus\]/.test(build));
 }
 
 console.log(fail === 0 ? "\nALL CORRECT" : `\n${fail} FAILURES`);

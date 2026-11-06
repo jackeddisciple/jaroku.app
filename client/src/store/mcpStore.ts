@@ -17,6 +17,7 @@ import type { AgentSummary, McpConfirmRequest, McpImpact, McpServer, McpTool } f
 /** A tool plus the server it came from, for the flat lists the selection UI needs. */
 export interface McpToolRef extends McpTool {
   serverLabel: string;
+  serverStatus: McpServer["status"];
   /** `"linear/create_issue"` — how a scoped tool is named on the wire and in a manifest. */
   ref: string;
 }
@@ -228,8 +229,13 @@ export function isDiscovering(discovering: Record<string, number>, serverId: str
 /** Every discovered tool across every connected server, flattened for selection. */
 export function allMcpTools(servers: McpServer[]): McpToolRef[] {
   return servers.flatMap((s) =>
-    s.tools.map((t) => ({ ...t, serverLabel: s.label, ref: `${s.id}/${t.name}` })),
+    s.tools.map((t) => ({ ...t, serverLabel: s.label, serverStatus: s.status, ref: `${s.id}/${t.name}` })),
   );
+}
+
+export function liveSelection(selected: readonly string[], servers: McpServer[]): string[] {
+  const live = new Set(allMcpTools(servers).map((tool) => tool.ref));
+  return selected.filter((ref) => live.has(ref));
 }
 
 export function planMcpTool(
