@@ -1039,9 +1039,9 @@ const mcpDiscovery = new McpDiscoveryQueue({
     // about would render an error against a row that still says "discovering".
     void settleMcpDiscovery(ctx, payload.serverId, () => {
       if (!result.ok && result.message) {
-        relay.broadcastMcp(ctx, { type: "error", message: result.message, serverId: payload.serverId });
+        relay.broadcastMcp(ctx, { type: "error", message: result.message, serverId: payload.serverId, ...originOf(payload) });
       } else if (result.message) {
-        relay.broadcastMcp(ctx, { type: "notice", message: result.message, serverId: payload.serverId });
+        relay.broadcastMcp(ctx, { type: "notice", message: result.message, serverId: payload.serverId, ...originOf(payload) });
       }
     });
     // §2.1'S `mcp_auth_required`, RAISED WHERE THE STATUS IS ALREADY KNOWN rather than by teaching
@@ -1064,6 +1064,7 @@ const mcpDiscovery = new McpDiscoveryQueue({
       // router applies to a 500.
       message: "that discovery could not be completed",
       serverId: payload.serverId,
+      ...originOf(payload),
     };
     void settleMcpDiscovery(ctx, payload.serverId, () => relay.broadcastMcp(ctx, failed));
   },
@@ -5740,7 +5741,7 @@ function refuseCommand(ctx: TenantContext, action: RateAction, message: string):
   else if (action === "agent.edit") relay.broadcastEdit(ctx, { type: "error", message });
   else if (action === "agent.explain") relay.broadcastReply(ctx, { type: "error", agentId: "", message });
   else if (action === "eval.start") relay.broadcastEval(ctx, { type: "error", message });
-  else if (action === "mcp.discover") relay.broadcastMcp(ctx, { type: "error", message });
+  else if (action === "mcp.discover") relay.sendMcpTo(ctx, ctx.requestId, { type: "error", message });
   else if (action === "member.invite") relay.broadcastMembers(ctx, { type: "error", message });
   else if (action === "connector.connect") relay.broadcastConnections(ctx, { type: "error", message });
   // The deploy panel, which is where every other deploy error already goes. Without this the
@@ -6094,6 +6095,10 @@ function endpointHost(endpoint: string): string | null {
   }
 }
 
+function originOf(cmd: { origin?: unknown }): { origin?: string } {
+  return typeof cmd.origin === "string" && /^[A-Za-z0-9_-]{1,64}$/.test(cmd.origin) ? { origin: cmd.origin } : {};
+}
+
 function addRef(cmd: { clientRef?: unknown }): { clientRef?: string } {
   return typeof cmd.clientRef === "string" && /^[A-Za-z0-9_-]{1,64}$/.test(cmd.clientRef) ? { clientRef: cmd.clientRef } : {};
 }
@@ -6159,13 +6164,14 @@ async function handleMcpCommand(ctx: TenantContext, cmd: McpCommand): Promise<vo
           endpoint: cmd.endpoint,
           label: cmd.label,
           authEnvKey: prepared.authEnvKey,
+          ...originOf(cmd),
         });
         // The endpoint may carry a path or query a user would not want echoed; log the id we
         // assigned and let the job's own completion log what happened to it.
         console.log(`[mcp] add ${prepared.id} queued`);
         auditMcp(ctx, "mcp.server.connected", prepared.id, { host: endpointHost(cmd.endpoint) });
         if (prepared.message) {
-          relay.broadcastMcp(ctx, { type: "notice", message: prepared.message, serverId: prepared.id });
+          relay.sendMcpTo(ctx, ctx.requestId, { type: "notice", message: prepared.message, serverId: prepared.id });
         }
         return;
       }
@@ -6180,7 +6186,7 @@ async function handleMcpCommand(ctx: TenantContext, cmd: McpCommand): Promise<vo
         // Queued, with an idempotency key of (workspace, server) and no attempt number — so
         // somebody pressing the button six times enqueues one discovery rather than six against
         // a server that is probably already struggling. See mcpDiscovery.ts.
-        await mcpDiscovery.enqueue(ctx, { kind: "rediscover", serverId: cmd.serverId });
+        await mcpDiscovery.enqueue(ctx, { kind: "rediscover", serverId: cmd.serverId, ...originOf(cmd) });
         console.log(`[mcp] rediscover ${cmd.serverId} queued`);
         return;
       }
@@ -6195,7 +6201,7 @@ async function handleMcpCommand(ctx: TenantContext, cmd: McpCommand): Promise<vo
         }
         broadcastMcpServers(ctx);
         if (!removed) {
-          relay.broadcastMcp(ctx, { type: "error", message: `no server called "${cmd.serverId}"` });
+          relay.sendMcpTo(ctx, ctx.requestId, { type: "error", message: `no server called "${cmd.serverId}"` });
         }
         return;
       }
@@ -6249,7 +6255,7 @@ async function handleMcpCommand(ctx: TenantContext, cmd: McpCommand): Promise<vo
         const token = typeof cmd.token === "string" && cmd.token.length ? cmd.token : null;
         const { result, warning } = await mcpRegistry.setCredential(ctx, cmd.serverId, token);
         if (!result.ok) {
-          relay.broadcastMcp(ctx, { type: "error", message: result.message ?? "could not store the credential", serverId: cmd.serverId });
+          relay.sendMcpTo(ctx, ctx.requestId, { type: "error", message: result.message ?? "could not store the credential", serverId: cmd.serverId });
           return;
         }
         // Log that a credential changed, never which value it changed to.
@@ -6258,8 +6264,8 @@ async function handleMcpCommand(ctx: TenantContext, cmd: McpCommand): Promise<vo
         // A stored credential is only useful if it works, so prove it immediately rather
         // than leaving the server sitting in auth_required until someone clicks refresh.
         relay.broadcastMcp(ctx, { type: "discovering", serverId: cmd.serverId, endpoint: result.server?.endpoint ?? "" });
-        if (warning) relay.broadcastMcp(ctx, { type: "notice", message: warning, serverId: cmd.serverId });
-        await mcpDiscovery.enqueue(ctx, { kind: "rediscover", serverId: cmd.serverId });
+        if (warning) relay.sendMcpTo(ctx, ctx.requestId, { type: "notice", message: warning, serverId: cmd.serverId });
+        await mcpDiscovery.enqueue(ctx, { kind: "rediscover", serverId: cmd.serverId, ...originOf(cmd) });
         return;
       }
 
@@ -6268,7 +6274,7 @@ async function handleMcpCommand(ctx: TenantContext, cmd: McpCommand): Promise<vo
         const impact = cmd.impact === "high" || cmd.impact === "low" ? cmd.impact : null;
         const updated = await mcpRegistry.setToolImpact(ctx, cmd.serverId, cmd.toolName, impact);
         if (!updated) {
-          relay.broadcastMcp(ctx, {
+          relay.sendMcpTo(ctx, ctx.requestId, {
             type: "error",
             message: `no tool "${cmd.toolName}" on "${cmd.serverId}"`,
             serverId: cmd.serverId,
@@ -6286,7 +6292,7 @@ async function handleMcpCommand(ctx: TenantContext, cmd: McpCommand): Promise<vo
   } catch (err) {
     const message = (err as Error)?.message ?? String(err);
     console.error(`[mcp] ${cmd.cmd} failed: ${message}`);
-    relay.broadcastMcp(ctx, { type: "error", message: `${cmd.cmd} failed: ${message}`, ...(cmd.cmd === "addMcpServer" ? addRef(cmd) : {}) });
+    relay.sendMcpTo(ctx, ctx.requestId, { type: "error", message: `${cmd.cmd} failed: ${message}`, ...(cmd.cmd === "addMcpServer" ? addRef(cmd) : {}) });
     if ((cmd.cmd === "rediscoverMcpServer" || cmd.cmd === "setMcpServerAuth") && typeof cmd.serverId === "string") {
       relay.broadcastMcp(ctx, { type: "discovered", serverId: cmd.serverId });
     }

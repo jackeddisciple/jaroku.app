@@ -7,6 +7,7 @@ import { useSessionStore } from "../store/sessionStore.ts";
 import { markup, seed, sessionAs } from "../lib/testRender.ts";
 import { resetWorkspaceStores } from "../store/reset.ts";
 import { announceAsks } from "./McpConfirmModal.tsx";
+import { TOAST_MAX_MS, TOAST_MS, toastDuration, useUiStore } from "../store/uiStore.ts";
 import type { McpServer, McpTool } from "../types.ts";
 
 let fail = 0;
@@ -324,6 +325,38 @@ console.log("\nthe panel can be used without a mouse or a screen");
   check("one new ask is said on its own", announceAsks([ask("a", "send_message", "Mailer")]) === "Mailer is waiting on you to allow send_message on alpha.");
   const both = announceAsks([ask("a", "send_message", "Mailer"), ask("b", "delete_row", null)]);
   check("two that arrive together are both said, rather than one replacing the other", /^2 tools are waiting on you: Mailer wants send_message on alpha; run run-b wants delete_row on alpha\.$/.test(both), both);
+}
+
+console.log("\nwhat MCP has to say reaches the person who asked, wherever they are");
+{
+  check("a short message stays long enough to read", toastDuration("connected") === TOAST_MS);
+  const long = "x".repeat(200);
+  check("a long one stays longer", toastDuration(long) > TOAST_MS && toastDuration(long) <= TOAST_MAX_MS, String(toastDuration(long)));
+  check("...up to a ceiling", toastDuration("x".repeat(5000)) === TOAST_MAX_MS);
+
+  const ui = useUiStore.getState();
+  useUiStore.setState({ toast: null, toastAfter: null });
+  ui.showToast("that endpoint could not be checked", "err");
+  const failed = useUiStore.getState().toast;
+  check("an error is shown for as long as its length needs", failed?.ms === toastDuration("that endpoint could not be checked"));
+  ui.showToast("2 advertised tools were refused as unusable");
+  check("a notice does not cover an error still being read", useUiStore.getState().toast?.id === failed?.id);
+  ui.dismissToast(failed?.id ?? -1);
+  check("...it follows once the error has gone", useUiStore.getState().toast?.message === "2 advertised tools were refused as unusable");
+  const before = useUiStore.getState().toast?.id;
+  for (let i = 0; i < 30; i++) ui.showToast("2 advertised tools were refused as unusable");
+  check("the same sentence thirty times is one toast, kept up rather than replaced", useUiStore.getState().toast?.id === before);
+  ui.showToast("a newer error", "err");
+  check("an error still replaces a notice at once", useUiStore.getState().toast?.message === "a newer error");
+  useUiStore.setState({ toast: null, toastAfter: null });
+
+  const socket = readFileSync(fileURLToPath(new URL("../lib/socket.ts", import.meta.url)), "utf8");
+  const mcp = /case "mcp": \{[\s\S]*?\n {4}\}\n/.exec(socket)?.[0] ?? "";
+  check("an MCP error is said in the corner toast, whichever panel is open", /type === "error"\) \{[\s\S]{0,240}if \(isOurs\(msg\.origin\)\) useUiStore\.getState\(\)\.showToast\(msg\.message, "err"\)/.test(mcp));
+  check("...and so is a notice", /type === "notice"\) \{ if \(isOurs\(msg\.origin\)\) useUiStore\.getState\(\)\.showToast\(msg\.message\); \}/.test(mcp));
+  check("...only in the tab whose action it is about", /cmd: "rediscoverMcpServer", serverId, origin: EVAL_ORIGIN/.test(socket) && /cmd: "setMcpServerAuth", serverId, token, origin: EVAL_ORIGIN/.test(socket) && /cmd: "addMcpServer", endpoint, label, token, clientRef, origin: EVAL_ORIGIN/.test(socket));
+  const source = readFileSync(fileURLToPath(new URL("./McpPanel.tsx", import.meta.url)), "utf8");
+  check("the panel no longer has to be open for any of it", !/useToastFrom/.test(source));
 }
 
 console.log(fail === 0 ? "\nALL CORRECT" : `\n${fail} FAILURES`);

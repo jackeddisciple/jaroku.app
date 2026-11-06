@@ -57,9 +57,6 @@ interface McpState {
   clearAdd: () => void;
   /** Server ids with a handshake in flight, plus null for an add that has no id yet. */
   discovering: Record<string, number>;
-  /** The last error, shown as a dismissible strip rather than swallowed. */
-  error: string | null;
-  notice: string | null;
 
   /**
    * Confirmations a run is blocked on, oldest first.
@@ -85,8 +82,6 @@ interface McpState {
   setDiscovering: (serverId: string | null, endpoint: string) => void;
   setDiscovered: (serverId: string) => void;
   forgetDiscovering: () => void;
-  setError: (message: string | null) => void;
-  setNotice: (message: string | null) => void;
 }
 
 const CONFIRM_GRACE_MS = 5_000;
@@ -132,8 +127,6 @@ export const useMcpStore = create<McpState>((set, get) => ({
   confirms: [],
   revealNonce: null,
   discovering: {},
-  error: null,
-  notice: null,
 
   setServers: (servers) =>
     set((s) => {
@@ -197,8 +190,6 @@ export const useMcpStore = create<McpState>((set, get) => ({
 
   revealConfirm: (revealNonce) => set({ revealNonce }),
 
-  setError: (error) => set({ error }),
-  setNotice: (notice) => set({ notice }),
 }));
 
 // --- selectors ---------------------------------------------------------------

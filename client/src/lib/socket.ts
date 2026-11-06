@@ -444,13 +444,10 @@ function dispatch(msg: ServerMessage): void {
       else if (msg.type === "discovered") m.setDiscovered(msg.serverId);
       else if (msg.type === "error") {
         if (msg.clientRef) m.settleAdd(msg.clientRef, { message: msg.message });
-        m.setError(msg.message);
-        if (msg.runId && msg.nonce) {
-          m.resolveConfirm(msg.runId, msg.nonce);
-          useUiStore.getState().showToast(msg.message, "err");
-        }
+        if (msg.runId && msg.nonce) m.resolveConfirm(msg.runId, msg.nonce);
+        if (isOurs(msg.origin)) useUiStore.getState().showToast(msg.message, "err");
       }
-      else if (msg.type === "notice") m.setNotice(msg.message);
+      else if (msg.type === "notice") { if (isOurs(msg.origin)) useUiStore.getState().showToast(msg.message); }
       else if (msg.type === "confirmRequest") m.addConfirm(msg);
       else if (msg.type === "confirmResolved") m.resolveConfirm(msg.runId, msg.nonce);
       else if (msg.type === "confirmsReplayed") m.reconcileConfirms(msg.nonces);
@@ -1849,18 +1846,18 @@ export function sendListMcpServers(): void {
 }
 /** Connect a server. `token` is written to runtime/.env server-side and never comes back. */
 export function sendAddMcpServer(endpoint: string, label?: string, token?: string, clientRef?: string): boolean {
-  return send({ cmd: "addMcpServer", endpoint, label, token, clientRef });
+  return send({ cmd: "addMcpServer", endpoint, label, token, clientRef, origin: EVAL_ORIGIN });
 }
 export function sendRemoveMcpServer(serverId: string): void {
   send({ cmd: "removeMcpServer", serverId });
 }
 /** Re-run the handshake. On failure the previously discovered tools are kept. */
 export function sendRediscoverMcpServer(serverId: string): void {
-  send({ cmd: "rediscoverMcpServer", serverId });
+  send({ cmd: "rediscoverMcpServer", serverId, origin: EVAL_ORIGIN });
 }
 /** Store or clear a credential. `null` removes the key from runtime/.env entirely. */
 export function sendSetMcpServerAuth(serverId: string, token: string | null): boolean {
-  return send({ cmd: "setMcpServerAuth", serverId, token });
+  return send({ cmd: "setMcpServerAuth", serverId, token, origin: EVAL_ORIGIN });
 }
 /**
  * Answer a pending confirmation. The run is blocked until this lands.

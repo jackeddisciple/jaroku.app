@@ -583,10 +583,11 @@ export type AddMcpServerCommand = {
    */
   token?: string;
   clientRef?: string;
+  origin?: string;
 };
 export type RemoveMcpServerCommand = { cmd: "removeMcpServer"; serverId: string };
 /** Re-run the handshake. On failure the previously discovered tools are kept. */
-export type RediscoverMcpServerCommand = { cmd: "rediscoverMcpServer"; serverId: string };
+export type RediscoverMcpServerCommand = { cmd: "rediscoverMcpServer"; serverId: string; origin?: string };
 export type ListMcpServersCommand = { cmd: "listMcpServers" };
 /**
  * A user's explicit override of the impact classification. `impact: null` clears it and
@@ -616,6 +617,7 @@ export type SetMcpServerAuthCommand = {
   cmd: "setMcpServerAuth";
   serverId: string;
   token: string | null;
+  origin?: string;
 };
 
 // Connector connections. Three commands, and none of them carries a credential in either
@@ -2282,9 +2284,9 @@ export type McpEvent =
   // able to say it is waiting rather than appear to have ignored the click.
   | { type: "discovering"; serverId: string | null; endpoint: string; clientRef?: string }
   | { type: "discovered"; serverId: string }
-  | { type: "error"; message: string; serverId?: string; runId?: string; nonce?: string; clientRef?: string }
+  | { type: "error"; message: string; serverId?: string; runId?: string; nonce?: string; clientRef?: string; origin?: string }
   // A discovery that succeeded but is worth a word anyway (e.g. a truncated tool list).
-  | { type: "notice"; message: string; serverId?: string }
+  | { type: "notice"; message: string; serverId?: string; origin?: string }
   // A run has HALTED before a high-impact MCP tool's first call and is waiting for an
   // answer. This is the one message on any channel that describes a blocked process, which
   // is why the client renders it as a modal rather than a notification.

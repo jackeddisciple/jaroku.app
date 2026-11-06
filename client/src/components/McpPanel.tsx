@@ -37,7 +37,6 @@ import { AlertTriangleIcon, EyeIcon, KeyIcon, PlugIcon, RefreshIcon, ShieldAlert
 import { useCanRun } from "../lib/useCapability.ts";
 import type { McpServer, McpTool } from "../types.ts";
 import { Icon } from "../lib/icons/registry.ts";
-import { useToastFrom } from "./Toast.tsx";
 
 /** What each status means, in the words a user would use to decide what to do next. */
 /**
@@ -505,11 +504,6 @@ export function ConnectForm() {
 export function McpPanel() {
   const canManage = useCanRun("addMcpServer");
   const servers = useMcpStore((s) => s.servers);
-  const error = useMcpStore((s) => s.error);
-  const notice = useMcpStore((s) => s.notice);
-  // A result or a refusal is said in the corner toast, not as a row that pushes the panel down.
-  useToastFrom(notice, () => useMcpStore.setState({ notice: null }));
-  useToastFrom(error, () => useMcpStore.setState({ error: null }), "err");
 
   const selectedId = useMcpStore((s) => s.selectedId);
   const setSelectedId = useMcpStore((s) => s.select);

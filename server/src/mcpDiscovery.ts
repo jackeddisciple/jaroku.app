@@ -61,6 +61,7 @@ export interface McpDiscoveryPayload {
   endpoint?: string;
   label?: string;
   authEnvKey?: string | null;
+  origin?: string;
 }
 
 export interface McpDiscoveryOptions {

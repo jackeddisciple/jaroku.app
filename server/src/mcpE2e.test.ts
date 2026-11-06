@@ -1004,6 +1004,26 @@ console.log("\nan add in flight is visible before its handshake ends");
   await slow.close();
 }
 
+console.log("\nwhat a command or a check has to say goes to the person who asked");
+{
+  const index = readFileSync(join(fileURLToPath(new URL(".", import.meta.url)), "index.ts"), "utf8");
+  const handler = /async function handleMcpCommand\([\s\S]*?\n\}\n/.exec(index)?.[0] ?? "";
+  check(handler.length > 0 && !/relay\.broadcastMcp\(ctx, \{\s*type: "(error|notice)"/.test(handler), "no refusal or notice from a command is broadcast to the workspace");
+  check(/action === "mcp\.discover"\) relay\.sendMcpTo\(ctx, ctx\.requestId, \{ type: "error", message \}\)/.test(index), "a rate or standing refusal goes to the person refused");
+  check((index.match(/serverId: payload\.serverId,\s*\.\.\.originOf\(payload\)/g) ?? []).length === 3, "a finished check's error or notice names the tab that asked for it");
+  check((handler.match(/\.\.\.originOf\(cmd\)/g) ?? []).length === 3, "...for an add, a re-check and a new credential alike");
+
+  const A = await workspace("origin");
+  const fixture = await startScriptedServer();
+  await connect(A, { endpoint: fixture.url, label: "Origin" });
+  fixture.set({ hook: ({ res }) => (res.writeHead(500, { "content-type": "text/plain" }).end("down"), true) });
+  await queue.enqueue(A, { kind: "rediscover", serverId: "origin", origin: "tab-123" });
+  await drain();
+  const last = results[results.length - 1];
+  check(last?.payload.origin === "tab-123" && !last.result.ok, "the tab travels with the job and comes back with its result", JSON.stringify(last?.payload));
+  await fixture.close();
+}
+
 console.log("\nadds that derive one id each keep their own row");
 {
   const A = await workspace("collide");

@@ -201,6 +201,11 @@ export const ONBOARDING_KEY_PREFIX = "jaroku.onboarding.";
 
 /** How long a toast stays: long enough to read a few words, short enough to be gone before it is in the way. */
 export const TOAST_MS = 2000;
+export const TOAST_MAX_MS = 10_000;
+
+export function toastDuration(message: string): number {
+  return Math.min(TOAST_MAX_MS, Math.max(TOAST_MS, 1_000 + message.length * 45));
+}
 
 /** The dot beside a toast's words. `neutral` has none. */
 export type ToastTone = "neutral" | "ok" | "err";
@@ -610,6 +615,7 @@ interface UiState {
    * is about something that just happened, and a workspace switch must not blank it.
    */
   toast: Toast | null;
+  toastAfter: Toast | null;
   showToast: (message: string, tone?: ToastTone, ms?: number) => void;
   dismissToast: (id: number) => void;
 
@@ -829,10 +835,21 @@ export const useUiStore = create<UiState>((set) => ({
   setRefusedRole: (refusedRole) => set({ refusedRole }),
 
   toast: null,
-  showToast: (message, tone = "neutral", ms = TOAST_MS) =>
-    set({ toast: { id: ++toastSeq, message, tone, ms, at: Date.now() } }),
+  toastAfter: null,
+  showToast: (message, tone = "neutral", ms) =>
+    set((s) => {
+      const now = Date.now();
+      const showing = s.toast && s.toast.at + s.toast.ms > now ? s.toast : null;
+      const next: Toast = { id: ++toastSeq, message, tone, ms: ms ?? toastDuration(message), at: now };
+      if (showing && showing.message === message && showing.tone === tone) return { toast: { ...showing, at: now } };
+      if (showing?.tone === "err" && tone !== "err") return { toastAfter: next };
+      return { toast: next };
+    }),
   // By id, so a timer left over from a toast that has since been replaced cannot clear the new one.
-  dismissToast: (id) => set((s) => (s.toast?.id === id ? { toast: null } : {})),
+  dismissToast: (id) =>
+    set((s) =>
+      s.toast?.id !== id ? {} : { toast: s.toastAfter ? { ...s.toastAfter, at: Date.now() } : null, toastAfter: null },
+    ),
 
   onboardingStep: onboarding.step,
   onboardingHintsShown: onboarding.hintsShown,
