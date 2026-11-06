@@ -15,6 +15,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { isDiscovering, useMcpStore } from "../store/mcpStore.ts";
 import { useSessionStore } from "../store/sessionStore.ts";
+import { useEntitlementStore } from "../store/entitlementStore.ts";
+import { useUiStore } from "../store/uiStore.ts";
+import { UpsellCard } from "./UpsellCard.tsx";
 import {
   sendAddMcpServer,
   sendListMcpServers,
@@ -511,6 +514,8 @@ export function McpPanel() {
   const toggleForm = useCallback(() => useMcpStore.getState().setFormOpen(!useMcpStore.getState().formOpen), []);
   const workspaceId = useSessionStore((s) => s.workspaceId) ?? "";
   const strip = useRef<HTMLDivElement>(null);
+  const atLimit = useEntitlementStore((s) => s.channel === "mcp" && s.refusal !== null);
+  const openBilling = useUiStore((s) => s.openWorkspacePanel);
 
   useEffect(() => sendListMcpServers(), []);
 
@@ -583,6 +588,12 @@ export function McpPanel() {
           </button>
         )}
       </div>
+
+      {atLimit && (
+        <div className="shrink-0 px-4 pb-2">
+          <UpsellCard channel="mcp" onUpgrade={() => openBilling("billing")} />
+        </div>
+      )}
 
       {canManage && adding && <ConnectForm key={workspaceId} />}
 

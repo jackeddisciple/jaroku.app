@@ -2284,7 +2284,7 @@ export type McpEvent =
   // able to say it is waiting rather than appear to have ignored the click.
   | { type: "discovering"; serverId: string | null; endpoint: string; clientRef?: string }
   | { type: "discovered"; serverId: string }
-  | { type: "error"; message: string; serverId?: string; runId?: string; nonce?: string; clientRef?: string; origin?: string }
+  | { type: "error"; message: string; serverId?: string; runId?: string; nonce?: string; clientRef?: string; origin?: string; entitlement?: unknown }
   // A discovery that succeeded but is worth a word anyway (e.g. a truncated tool list).
   | { type: "notice"; message: string; serverId?: string; origin?: string }
   // A run has HALTED before a high-impact MCP tool's first call and is waiting for an
@@ -4133,6 +4133,11 @@ export const COMMAND_CHANNEL: Record<string, string> = {
   setAgentCiConfig: "github", listScanFindings: "github",
 };
 
+export function echoedRef(msg: unknown): { clientRef?: string } {
+  const ref = (msg as { clientRef?: unknown } | undefined)?.clientRef;
+  return typeof ref === "string" && /^[A-Za-z0-9_-]{1,64}$/.test(ref) ? { clientRef: ref } : {};
+}
+
 export function channelFor(cmd: string): string {
   return Object.prototype.hasOwnProperty.call(COMMAND_CHANNEL, cmd) ? COMMAND_CHANNEL[cmd]! : "log";
 }
@@ -4923,6 +4928,7 @@ export class WsRelay {
     pending: Promise<TenantContext>,
     msg?: ClientCommand,
   ): Promise<boolean> {
+    const ref = echoedRef(msg);
     let ctx: TenantContext;
     try {
       ctx = await this.contextOf(ws, pending);
@@ -4939,6 +4945,7 @@ export class WsRelay {
         channel: channelFor(cmd),
         type: "error",
         message: `"${cmd}" is not a command this server authorises`,
+        ...ref,
       });
       return false;
     }
@@ -4959,6 +4966,7 @@ export class WsRelay {
         message: `${withArticle(ctx.role)} cannot do this — it needs ${capability}`,
         reason: "requires_role",
         role: roleFor(capability),
+        ...ref,
       });
       return false;
     }
@@ -4995,6 +5003,7 @@ export class WsRelay {
           channel: channelFor(cmd),
           type: "error",
           message: `"${cmd}" is not a command this server authorises against an agent`,
+          ...ref,
         });
         return false;
       }
@@ -5005,7 +5014,7 @@ export class WsRelay {
         // ask, because the answer is not a role — it is a grant, from an administrator of THAT
         // agent, and "ask an owner" would send somebody to the wrong person. And where the agent
         // is absent the sentence must not distinguish "not yours" from "does not exist" at all.
-        this.sendTo(ws, { channel: channelFor(cmd), type: "error", message: refusal.message });
+        this.sendTo(ws, { channel: channelFor(cmd), type: "error", message: refusal.message, ...ref });
         return false;
       }
     }
@@ -5029,6 +5038,7 @@ export class WsRelay {
         type: "error",
         message: refusal.message,
         entitlement: refusal.refusal,
+        ...ref,
       });
       return false;
     }

@@ -353,7 +353,7 @@ export class McpRegistry {
         status: "connecting", last_error: null, discovered_at: null,
       }, opts.maxServers ?? null);
       if (reserved) id = candidate;
-      else if (opts.maxServers !== undefined && opts.maxServers !== null && (await this.store.listServers(ctx)).length >= opts.maxServers) {
+      else if (opts.maxServers !== undefined && opts.maxServers !== null && (await this.store.countTowardLimit(ctx)) >= opts.maxServers) {
         return { ok: false, id: "", authEnvKey: null, atLimit: true, message: `this workspace is at its limit of ${opts.maxServers} MCP servers` };
       }
     }

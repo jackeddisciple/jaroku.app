@@ -6,6 +6,7 @@ import { ADD_INTERRUPTED, DISCOVERY_STALE_MS, isDiscovering, useMcpStore } from 
 import { useSessionStore } from "../store/sessionStore.ts";
 import { markup, seed, sessionAs } from "../lib/testRender.ts";
 import { resetWorkspaceStores } from "../store/reset.ts";
+import { useEntitlementStore } from "../store/entitlementStore.ts";
 import { announceAsks } from "./McpConfirmModal.tsx";
 import { TOAST_MAX_MS, TOAST_MS, toastDuration, useUiStore } from "../store/uiStore.ts";
 import type { McpServer, McpTool } from "../types.ts";
@@ -357,6 +358,26 @@ console.log("\nwhat MCP has to say reaches the person who asked, wherever they a
   check("...only in the tab whose action it is about", /cmd: "rediscoverMcpServer", serverId, origin: EVAL_ORIGIN/.test(socket) && /cmd: "setMcpServerAuth", serverId, token, origin: EVAL_ORIGIN/.test(socket) && /cmd: "addMcpServer", endpoint, label, token, clientRef, origin: EVAL_ORIGIN/.test(socket));
   const source = readFileSync(fileURLToPath(new URL("./McpPanel.tsx", import.meta.url)), "utf8");
   check("the panel no longer has to be open for any of it", !/useToastFrom/.test(source));
+}
+
+console.log("\nthe plan's server limit is explained where it was hit, with the way past it");
+{
+  seed(useSessionStore, sessionAs("admin"));
+  seed(useMcpStore, { servers: [server()], selectedId: null, formOpen: false });
+  seed(useEntitlementStore, {
+    channel: "mcp",
+    refusal: { error: "quota_exceeded", kind: "mcp_servers", current: 3, limit: 3, tier: "free", upgradeUrl: "/billing", unlocks: "pro", unlocksLabel: "Pro" },
+  });
+  const limited = markup(React.createElement(McpPanel));
+  check("the panel shows the limit it hit", /You have used all your connected MCP servers/.test(limited));
+  check("...the figures", /3 of 3 connected MCP servers used/.test(limited));
+  check("...and the plan that raises it", /Pro raises this limit/.test(limited));
+  seed(useEntitlementStore, { channel: "gen", refusal: { error: "quota_exceeded", kind: "agents", current: 3, limit: 3, tier: "free", upgradeUrl: "/billing", unlocks: "pro", unlocksLabel: "Pro" } });
+  check("a limit hit somewhere else is not shown here", !/You have used all your/.test(markup(React.createElement(McpPanel))));
+  seed(useEntitlementStore, { channel: null, refusal: null });
+
+  const socket = readFileSync(fileURLToPath(new URL("../lib/socket.ts", import.meta.url)), "utf8");
+  check("an accepted add puts the card away", /settleAdd\(msg\.clientRef, \{ serverId: msg\.serverId \}\);\s*if \(msg\.clientRef && useEntitlementStore\.getState\(\)\.channel === "mcp"\) useEntitlementStore\.getState\(\)\.clear\(\);/.test(socket));
 }
 
 console.log(fail === 0 ? "\nALL CORRECT" : `\n${fail} FAILURES`);

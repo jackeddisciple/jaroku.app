@@ -189,6 +189,7 @@ export function parseToolRef(ref: string): { serverId: string; toolName: string 
 const SERVER_COLUMNS = `id, label, endpoint, transport, auth_env_key, server_name,
                         server_version, protocol_version, status, last_error, discovered_at,
                         created_at, discovery_note, checked_at`;
+const COUNTS_TOWARD_LIMIT = `(discovered_at IS NOT NULL OR status = 'connecting')`;
 const TOOL_COLUMNS = `id, server_id, name, description, input_schema, schema_hash, impact,
                       impact_reason, impact_override, override_schema_hash, annotations,
                       discovered_at`;
@@ -253,6 +254,14 @@ export class McpStore {
       [ctx.workspaceId],
     );
     return Promise.all(rows.map((row) => this.hydrateServer(ctx, row)));
+  }
+
+  async countTowardLimit(ctx: TenantContext): Promise<number> {
+    const row = await this.q(ctx).get<{ n: number | string }>(
+      `SELECT count(*) AS n FROM mcp_servers WHERE workspace_id = ? AND ${COUNTS_TOWARD_LIMIT}`,
+      [ctx.workspaceId],
+    );
+    return Number(row?.n ?? 0);
   }
 
   async getServer(ctx: TenantContext, id: string): Promise<McpServer | null> {
@@ -326,7 +335,7 @@ export class McpStore {
          (workspace_id, id, label, endpoint, transport, auth_env_key, server_name,
           server_version, protocol_version, status, last_error, discovered_at, created_at)
        SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
-        WHERE (SELECT count(*) FROM mcp_servers WHERE workspace_id = ?) < ?
+        WHERE (SELECT count(*) FROM mcp_servers WHERE workspace_id = ? AND ${COUNTS_TOWARD_LIMIT}) < ?
        ON CONFLICT(workspace_id, id) DO NOTHING`,
       [
         ctx.workspaceId,

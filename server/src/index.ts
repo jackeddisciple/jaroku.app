@@ -43,6 +43,7 @@ import { fmtBytes, sweepEvalArtifacts, sweepOrphanedEvalArtifacts } from "./eval
 import {
   WsRelay,
   HISTORY_WINDOW_MAX,
+  echoedRef,
   type ForwardedCommand,
   type GenerateCommand,
   type McpCommand,
@@ -5476,7 +5477,7 @@ const relay = new WsRelay({
 const entitlementCounts: EntitlementCounts = {
   agents: (ctx) => builtAgentCount(ctx),
   liveDeployments: async (ctx) => (await deployStore.servingAgents(ctx)).size,
-  mcpServers: async (ctx) => (await mcpStore.listServers(ctx)).length,
+  mcpServers: (ctx) => mcpStore.countTowardLimit(ctx),
   members: async (ctx) => (await identityRepo.listMembers(ctx)).length,
   workspacesForUser: async (ctx) =>
     ctx.actorUserId ? (await identityRepo.workspacesForUser(ctx, ctx.actorUserId)).length : 1,
@@ -5709,7 +5710,7 @@ async function admitCommand(ctx: TenantContext, cmd: ForwardedCommand): Promise<
   if (!verdict.ok) {
     const message = enforcementRefusal(verdict.state);
     console.warn(`[abuse] ${ctx.workspaceId} refused ${cmd.cmd} — ${verdict.state.level}`);
-    refuseCommand(ctx, action, message);
+    refuseCommand(ctx, action, message, cmd);
     return false;
   }
   let decision;
@@ -5725,7 +5726,7 @@ async function admitCommand(ctx: TenantContext, cmd: ForwardedCommand): Promise<
   // Nearly weightless on purpose — see abuse/signals.ts. Tripping a limit is a client with a
   // loop in it and the limiter has already dealt with it; what this makes visible is a PATTERN.
   observe(ctx, { kind: "rate.limit_tripped", weight: SIGNALS["rate.limit_tripped"].weight, detail: { action } });
-  refuseCommand(ctx, action, rateRefusal(decision));
+  refuseCommand(ctx, action, rateRefusal(decision), cmd);
   return false;
 }
 
@@ -5736,12 +5737,12 @@ async function admitCommand(ctx: TenantContext, cmd: ForwardedCommand): Promise<
  * indistinguishable from the product being broken — and there is deliberately no general-purpose
  * "the server said no" channel to invent one on.
  */
-function refuseCommand(ctx: TenantContext, action: RateAction, message: string): void {
+function refuseCommand(ctx: TenantContext, action: RateAction, message: string, cmd?: ForwardedCommand): void {
   if (action === "agent.generate" || action === "agent.plan") relay.broadcastGen(ctx, { type: "error", message });
   else if (action === "agent.edit") relay.broadcastEdit(ctx, { type: "error", message });
   else if (action === "agent.explain") relay.broadcastReply(ctx, { type: "error", agentId: "", message });
   else if (action === "eval.start") relay.broadcastEval(ctx, { type: "error", message });
-  else if (action === "mcp.discover") relay.sendMcpTo(ctx, ctx.requestId, { type: "error", message });
+  else if (action === "mcp.discover") relay.sendMcpTo(ctx, ctx.requestId, { type: "error", message, ...echoedRef(cmd) });
   else if (action === "member.invite") relay.broadcastMembers(ctx, { type: "error", message });
   else if (action === "connector.connect") relay.broadcastConnections(ctx, { type: "error", message });
   // The deploy panel, which is where every other deploy error already goes. Without this the
@@ -6099,10 +6100,6 @@ function originOf(cmd: { origin?: unknown }): { origin?: string } {
   return typeof cmd.origin === "string" && /^[A-Za-z0-9_-]{1,64}$/.test(cmd.origin) ? { origin: cmd.origin } : {};
 }
 
-function addRef(cmd: { clientRef?: unknown }): { clientRef?: string } {
-  return typeof cmd.clientRef === "string" && /^[A-Za-z0-9_-]{1,64}$/.test(cmd.clientRef) ? { clientRef: cmd.clientRef } : {};
-}
-
 function broadcastMcpServers(ctx: TenantContext): void {
   void relay
     .broadcastMcpServers(ctx)
@@ -6122,7 +6119,7 @@ async function handleMcpCommand(ctx: TenantContext, cmd: McpCommand): Promise<vo
     switch (cmd.cmd) {
       case "addMcpServer": {
         if (typeof cmd.endpoint !== "string" || !cmd.endpoint.trim()) {
-          relay.sendMcpTo(ctx, ctx.requestId, { type: "error", message: "an endpoint is required", ...addRef(cmd) });
+          relay.sendMcpTo(ctx, ctx.requestId, { type: "error", message: "an endpoint is required", ...echoedRef(cmd) });
           return;
         }
         // THE ID AND THE CREDENTIAL ARE DECIDED HERE, SYNCHRONOUSLY; THE HANDSHAKE IS NOT.
@@ -6145,18 +6142,19 @@ async function handleMcpCommand(ctx: TenantContext, cmd: McpCommand): Promise<vo
           maxServers: planLimit === "unlimited" ? null : planLimit,
         });
         if (!prepared.ok) {
-          const refused = prepared.atLimit ? (await entitlementRefusalFor(ctx, cmd.cmd, null, { audit: false }))?.message : null;
+          const refused = prepared.atLimit ? await entitlementRefusalFor(ctx, cmd.cmd, null, { audit: false }) : null;
           relay.sendMcpTo(ctx, ctx.requestId, {
             type: "error",
-            message: refused ?? prepared.message ?? "that server could not be added",
-            ...addRef(cmd),
+            message: refused?.message ?? prepared.message ?? "that server could not be added",
+            ...(refused ? { entitlement: refused.refusal } : {}),
+            ...echoedRef(cmd),
           });
           broadcastMcpServers(ctx);
           return;
         }
         // A handshake against someone else's server takes as long as it takes. Saying so
         // is the difference between "connecting" and "the button did nothing".
-        relay.broadcastMcp(ctx, { type: "discovering", serverId: prepared.id, endpoint: cmd.endpoint, ...addRef(cmd) });
+        relay.broadcastMcp(ctx, { type: "discovering", serverId: prepared.id, endpoint: cmd.endpoint, ...echoedRef(cmd) });
         broadcastMcpServers(ctx);
         await mcpDiscovery.enqueue(ctx, {
           kind: "add",
@@ -6292,7 +6290,7 @@ async function handleMcpCommand(ctx: TenantContext, cmd: McpCommand): Promise<vo
   } catch (err) {
     const message = (err as Error)?.message ?? String(err);
     console.error(`[mcp] ${cmd.cmd} failed: ${message}`);
-    relay.sendMcpTo(ctx, ctx.requestId, { type: "error", message: `${cmd.cmd} failed: ${message}`, ...(cmd.cmd === "addMcpServer" ? addRef(cmd) : {}) });
+    relay.sendMcpTo(ctx, ctx.requestId, { type: "error", message: `${cmd.cmd} failed: ${message}`, ...(cmd.cmd === "addMcpServer" ? echoedRef(cmd) : {}) });
     if ((cmd.cmd === "rediscoverMcpServer" || cmd.cmd === "setMcpServerAuth") && typeof cmd.serverId === "string") {
       relay.broadcastMcp(ctx, { type: "discovered", serverId: cmd.serverId });
     }

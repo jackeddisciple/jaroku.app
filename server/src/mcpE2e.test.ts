@@ -24,6 +24,7 @@ import { authEnvKeyFor } from "./envWriter.ts";
 import { discover } from "./mcpClient.ts";
 import { isConfirmNonce, mcpRunCredentials, runScope } from "./mcpScope.ts";
 import { parseControlLine } from "./processManager.ts";
+import { echoedRef } from "./wsRelay.ts";
 import { PeerConfirms } from "./mcpConfirmPeers.ts";
 import { isSecretName, secretNameRefusal } from "./secrets/secretStore.ts";
 import { isHostOwnedPath, readOnlyPaths } from "./projectFs.ts";
@@ -979,11 +980,13 @@ console.log("\nan add in flight is visible before its handshake ends");
   const queued = add.indexOf("mcpDiscovery.enqueue(");
   check(prepared > 0 && snapshot > prepared && snapshot < queued, "the reserved row is broadcast once the add is accepted, before the handshake is queued");
   check(/type: "discovering", serverId: prepared\.id/.test(add), "and the discovering message names the row it reserved");
-  check(/type: "discovering", serverId: prepared\.id, endpoint: cmd\.endpoint, \.\.\.addRef\(cmd\)/.test(add), "the acceptance names the form that asked");
-  check(/sendMcpTo\(ctx, ctx\.requestId, \{ type: "error", message: "an endpoint is required", \.\.\.addRef\(cmd\) \}\)/.test(add), "an empty endpoint is refused to the person who asked, naming their form");
-  check(/if \(!prepared\.ok\) \{[\s\S]{0,200}relay\.sendMcpTo\(ctx, ctx\.requestId, \{[\s\S]{0,160}\.\.\.addRef\(cmd\)/.test(add), "and so is any other refusal of the add");
-  const ref = /function addRef\([\s\S]*?\n\}/.exec(index)?.[0] ?? "";
-  check(/\^\[A-Za-z0-9_-\]\{1,64\}\$/.test(ref), "a reference is only echoed when it is a short plain token");
+  check(/type: "discovering", serverId: prepared\.id, endpoint: cmd\.endpoint, \.\.\.echoedRef\(cmd\)/.test(add), "the acceptance names the form that asked");
+  check(/sendMcpTo\(ctx, ctx\.requestId, \{ type: "error", message: "an endpoint is required", \.\.\.echoedRef\(cmd\) \}\)/.test(add), "an empty endpoint is refused to the person who asked, naming their form");
+  check(/if \(!prepared\.ok\) \{[\s\S]{0,260}relay\.sendMcpTo\(ctx, ctx\.requestId, \{[\s\S]{0,260}\.\.\.echoedRef\(cmd\)/.test(add), "and so is any other refusal of the add");
+  check(Object.keys(echoedRef({ clientRef: "abc-123_X" })).length === 1, "a short plain reference is echoed");
+  for (const bad of ["", "x".repeat(65), "a b", "<script>", 12, null]) {
+    check(Object.keys(echoedRef({ clientRef: bad })).length === 0, `...and ${JSON.stringify(bad)} is not`);
+  }
   const settle = /async function settleMcpDiscovery\([\s\S]*?\n\}/.exec(index)?.[0] ?? "";
   check(settle.indexOf("broadcastMcpServers(ctx)") > 0 && settle.indexOf("say()") > settle.indexOf("broadcastMcpServers(ctx)") && settle.indexOf('type: "discovered"') > settle.indexOf("say()"), "a finished check sends its snapshot, then its message, then that it is over");
   check((index.match(/settleMcpDiscovery\(ctx, payload\.serverId/g) ?? []).length === 2, "...whether the handshake returned or threw");
@@ -1009,7 +1012,7 @@ console.log("\nwhat a command or a check has to say goes to the person who asked
   const index = readFileSync(join(fileURLToPath(new URL(".", import.meta.url)), "index.ts"), "utf8");
   const handler = /async function handleMcpCommand\([\s\S]*?\n\}\n/.exec(index)?.[0] ?? "";
   check(handler.length > 0 && !/relay\.broadcastMcp\(ctx, \{\s*type: "(error|notice)"/.test(handler), "no refusal or notice from a command is broadcast to the workspace");
-  check(/action === "mcp\.discover"\) relay\.sendMcpTo\(ctx, ctx\.requestId, \{ type: "error", message \}\)/.test(index), "a rate or standing refusal goes to the person refused");
+  check(/action === "mcp\.discover"\) relay\.sendMcpTo\(ctx, ctx\.requestId, \{ type: "error", message[,}]/.test(index), "a rate or standing refusal goes to the person refused");
   check((index.match(/serverId: payload\.serverId,\s*\.\.\.originOf\(payload\)/g) ?? []).length === 3, "a finished check's error or notice names the tab that asked for it");
   check((handler.match(/\.\.\.originOf\(cmd\)/g) ?? []).length === 3, "...for an add, a re-check and a new credential alike");
 
@@ -1022,6 +1025,41 @@ console.log("\nwhat a command or a check has to say goes to the person who asked
   const last = results[results.length - 1];
   check(last?.payload.origin === "tab-123" && !last.result.ok, "the tab travels with the job and comes back with its result", JSON.stringify(last?.payload));
   await fixture.close();
+}
+
+console.log("\na server that never connected does not use up the plan");
+{
+  const A = await workspace("typos");
+  const nowhere = new McpRegistry(store, secrets, async () => ({ v4: [], v6: [] }), refs);
+  for (const label of ["Typo1", "Typo2"]) {
+    const prepared = await nowhere.prepare(A, { endpoint: `https://${label.toLowerCase()}.invalid/mcp`, label, maxServers: 2 });
+    await nowhere.addServer(A, { endpoint: `https://${label.toLowerCase()}.invalid/mcp`, label, id: prepared.id, reserved: true });
+  }
+  check((await store.listServers(A)).length === 2, "two mistyped endpoints are still listed, to be fixed or removed");
+  check((await store.countTowardLimit(A)) === 0, "but neither counts toward the limit");
+  const fixture = await startScriptedServer();
+  const real = await registry.prepare(A, { endpoint: fixture.url, label: "Real", maxServers: 2 });
+  check(real.ok, "so a real one can still be added on a plan of two", String(real.message));
+  await queue.enqueue(A, { kind: "add", serverId: real.id, endpoint: fixture.url, label: "Real", authEnvKey: real.authEnvKey });
+  await drain();
+  check((await store.countTowardLimit(A)) === 1, "and counts once it has connected");
+  fixture.set({ hook: ({ res }) => (res.writeHead(500, { "content-type": "text/plain" }).end("down"), true) });
+  await queue.enqueue(A, { kind: "rediscover", serverId: real.id });
+  await drain();
+  check((await registry.get(A, real.id))?.status === "error" && (await store.countTowardLimit(A)) === 1, "a server that connected and then failed keeps its place");
+  const second = await registry.prepare(A, { endpoint: fixture.url, label: "Second", maxServers: 1 });
+  check(!second.ok && second.atLimit === true, "and a plan that is full is still full", String(second.message));
+  const pending = await registry.prepare(A, { endpoint: fixture.url, label: "Pending", maxServers: 2 });
+  check(pending.ok && (await store.countTowardLimit(A)) === 2, "an add still connecting holds its place too");
+  await fixture.close();
+
+  const index = readFileSync(join(fileURLToPath(new URL(".", import.meta.url)), "index.ts"), "utf8");
+  check(/mcpServers: \(ctx\) => mcpStore\.countTowardLimit\(ctx\)/.test(index), "the plan gate counts the same servers the reservation does");
+  check(/refused \? \{ entitlement: refused\.refusal \} : \{\}/.test(index), "a refusal at the limit carries what the upgrade card needs");
+  check(/action === "mcp\.discover"\) relay\.sendMcpTo\(ctx, ctx\.requestId, \{ type: "error", message, \.\.\.echoedRef\(cmd\) \}\)/.test(index), "a rate refusal of an add names the form that asked");
+  const relaySource = readFileSync(join(fileURLToPath(new URL(".", import.meta.url)), "wsRelay.ts"), "utf8");
+  const authorized = /private async authorized\([\s\S]*?\n {2}\}\n/.exec(relaySource)?.[0] ?? "";
+  check((authorized.match(/\.\.\.ref,|\.\.\.ref \}/g) ?? []).length === 5, "every refusal the relay itself makes names the form too", String((authorized.match(/\.\.\.ref,|\.\.\.ref \}/g) ?? []).length));
 }
 
 console.log("\nadds that derive one id each keep their own row");

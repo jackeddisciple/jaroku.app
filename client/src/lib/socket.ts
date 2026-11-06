@@ -440,6 +440,7 @@ function dispatch(msg: ServerMessage): void {
       else if (msg.type === "discovering") {
         m.setDiscovering(msg.serverId, msg.endpoint);
         if (msg.clientRef) m.settleAdd(msg.clientRef, { serverId: msg.serverId });
+        if (msg.clientRef && useEntitlementStore.getState().channel === "mcp") useEntitlementStore.getState().clear();
       }
       else if (msg.type === "discovered") m.setDiscovered(msg.serverId);
       else if (msg.type === "error") {
