@@ -28,6 +28,7 @@ import { isHostOwnedPath, readOnlyPaths } from "./projectFs.ts";
 import { safeObjectPath } from "./storage/keys.ts";
 import { buildManifest, grantWithout, projectCanCallMcp, withGrantOnly, withoutMcpGrant } from "./mcpManifest.ts";
 import { AgentRepository } from "./db/repositories/agents.ts";
+import { GithubPuller } from "./githubPullRunner.ts";
 import { startScriptedServer, type ScriptedRequest } from "../fixtures/mcp/scriptedServer.ts";
 
 let failures = 0;
@@ -921,6 +922,25 @@ console.log("\nthe host owned files cannot be reached by another spelling");
   check(safeObjectPath("agent.py:x") === null, "and neither is anything with a colon");
   const editor = readFileSync(join(fileURLToPath(new URL(".", import.meta.url)), "editor.ts"), "utf8");
   check(/isHostOwnedPath\(safe, blocked\)/.test(editor), "the edit loop asks this rather than an exact match");
+
+  const pullFrom = (path: string) =>
+    new GithubPuller({
+      repo: { linkFor: async () => ({ id: "link", repo_full_name: "o/r", branch: "main", subdirectory: "" }), record: async () => undefined } as never,
+      identity: { apiFor: async () => ({ api: { refSha: async () => "head", tree: async () => [{ path, sha: "blob", size: 14 }], blob: async () => '{"servers":[]}' } }) } as never,
+      agents: { bySlug: async () => ({ id: "pulled-agent", slug: "pulled", current_version: 1, connectors: [] }) } as never,
+      projects: {
+        readCurrent: async () => [{ path: "mcp_tools.json", content: '{"servers":[{"id":"alpha"}]}' }],
+        discardStaging: async () => undefined,
+      } as never,
+      runtimeDir: dir,
+      connectorFilesFor: () => [],
+      log: () => undefined,
+    }).pull(systemContextFor(randomUUID(), newRequestId()), { agentId: "pulled" }, () => undefined);
+  for (const path of ["MCP_TOOLS.JSON", "mcp_to~1.jso", "Tools/mcp_bridge.py"]) {
+    const pulled = await pullFrom(path);
+    check(pulled.refusal?.check === "protected", `a pull carrying ${path} is refused as a protected file`, JSON.stringify(pulled).slice(0, 160));
+  }
+  check((await pullFrom("agent.py")).refusal?.check !== "protected", "and a pull carrying an ordinary file is not");
 }
 
 console.log("\na replica holds the asks another replica raised, until they close");

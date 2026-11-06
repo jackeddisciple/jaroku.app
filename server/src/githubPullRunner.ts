@@ -44,7 +44,7 @@ import type { ProjectStore } from "./storage/projectStore.ts";
 import { newStagingId } from "./storage/keys.ts";
 import type { TenantContext } from "./db/tenant.ts";
 import type { CodeCheckSandbox } from "./sandbox/codeCheck.ts";
-import { isSafeAgentId, readOnlyPaths } from "./projectFs.ts";
+import { isHostOwnedPath, isSafeAgentId, readOnlyPaths } from "./projectFs.ts";
 import { validateProject, type ValidationResult } from "./validator.ts";
 import type { StageReport } from "./githubPushRunner.ts";
 
@@ -211,7 +211,9 @@ export class GithubPuller {
       const currentByPath = new Map(current.map((f) => [f.path, f.content]));
       const readOnly = readOnlyPaths(this.deps.connectorFilesFor(agent, agent.slug));
       const tampered = files.find(
-        (f) => readOnly.has(f.path) && currentByPath.has(f.path) && currentByPath.get(f.path) !== f.content,
+        (f) =>
+          (readOnly.has(f.path) && currentByPath.has(f.path) && currentByPath.get(f.path) !== f.content) ||
+          (!readOnly.has(f.path) && isHostOwnedPath(f.path, readOnly)),
       );
       if (tampered) {
         return await refuse({
