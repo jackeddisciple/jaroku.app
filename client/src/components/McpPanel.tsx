@@ -12,7 +12,7 @@
 // Every mutation goes over the mcp channel and comes back as a full snapshot, so there is no
 // optimistic local state here — the only local state is the add form and which row is open.
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { isDiscovering, useMcpStore } from "../store/mcpStore.ts";
 import {
   sendAddMcpServer,
@@ -327,6 +327,114 @@ function ServerDetail({ server }: { server: McpServer }) {
   );
 }
 
+export const NOT_SENT =
+  "Jaroku is not connected right now, so nothing was sent. What you typed is still here: press Connect again once it reconnects.";
+
+export interface AddDraft {
+  endpoint: string;
+  label: string;
+  token: string;
+}
+
+export type AddStart = "sent" | "busy" | "empty" | "offline";
+
+function newAddRef(): string {
+  return typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+    ? crypto.randomUUID()
+    : `add-${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;
+}
+
+export function startAdd(draft: AddDraft, send: typeof sendAddMcpServer = sendAddMcpServer): AddStart {
+  const store = useMcpStore.getState();
+  if (store.pendingAdd?.state === "sending") return "busy";
+  const endpoint = draft.endpoint.trim();
+  if (!endpoint) return "empty";
+  const ref = newAddRef();
+  if (!send(endpoint, draft.label.trim() || undefined, draft.token.trim() || undefined, ref)) return "offline";
+  store.beginAdd(ref, endpoint);
+  return "sent";
+}
+
+export function ConnectForm({ onDone }: { onDone: () => void }) {
+  const pendingAdd = useMcpStore((s) => s.pendingAdd);
+  const sending = pendingAdd?.state === "sending";
+  const [endpoint, setEndpoint] = useState("");
+  const [label, setLabel] = useState("");
+  const [token, setToken] = useState("");
+  const [formError, setFormError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!pendingAdd || pendingAdd.state === "sending") return;
+    if (pendingAdd.state === "accepted") {
+      setEndpoint("");
+      setLabel("");
+      setToken("");
+      setFormError(null);
+      onDone();
+    } else {
+      setFormError(pendingAdd.message);
+    }
+    useMcpStore.getState().clearAdd();
+  }, [pendingAdd, onDone]);
+
+  const submit = () => {
+    const started = startAdd({ endpoint, label, token });
+    if (started === "offline") setFormError(NOT_SENT);
+    else if (started === "sent") setFormError(null);
+  };
+
+  return (
+      <div className="shrink-0 px-4 pb-2">
+        <form autoComplete="off" onSubmit={(e) => e.preventDefault()} className="rounded-card border border-edge bg-panel p-2">
+          <input
+            autoFocus
+            name="mcp-server-endpoint"
+            autoComplete="off"
+            className="w-full rounded-input border border-edge bg-elevated px-2 py-1 text-tiny text-ink outline-none focus-visible:shadow-focusring placeholder:text-faint"
+            placeholder="https://example.com/mcp"
+            value={endpoint}
+            readOnly={sending}
+            onChange={(e) => setEndpoint(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && submit()}
+          />
+          <div className="mt-1.5 flex items-center gap-2">
+            <input
+              name="mcp-server-label"
+              autoComplete="off"
+              className="min-w-0 flex-1 rounded-input border border-edge bg-elevated px-2 py-1 text-tiny text-ink outline-none focus-visible:shadow-focusring placeholder:text-faint"
+              placeholder="name (optional)"
+              value={label}
+              readOnly={sending}
+              onChange={(e) => setLabel(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && submit()}
+            />
+            <SecretField
+              name="mcp-server-token"
+              className="min-w-0 flex-1 rounded-input border border-edge bg-elevated px-2 py-1 text-tiny text-ink outline-none focus-visible:shadow-focusring placeholder:text-faint"
+              placeholder="token (if it needs one)"
+              value={token}
+              readOnly={sending}
+              onChange={(e) => setToken(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && submit()}
+            />
+            <button type="button" className={primaryBtn} disabled={!endpoint.trim() || sending}
+              onClick={submit}>
+              {sending ? "connecting…" : "Connect"}
+            </button>
+          </div>
+          {formError && (
+            <p role="alert" className="mt-1.5 break-words text-tiny leading-[1.5] text-err">{formError}</p>
+          )}
+          <p className="mt-1.5 text-tiny leading-[1.5] text-faint">
+            Jaroku will ask the server what it can do and show you the answer. Nothing is
+            granted to any agent until you select it while planning. Only http(s) endpoints
+            are supported — stdio would mean running someone else's binary on your machine.
+          </p>
+        </form>
+      </div>
+  );
+}
+
 // --- the panel ---------------------------------------------------------------
 
 export function McpPanel() {
@@ -334,16 +442,13 @@ export function McpPanel() {
   const servers = useMcpStore((s) => s.servers);
   const error = useMcpStore((s) => s.error);
   const notice = useMcpStore((s) => s.notice);
-  const addingEndpoint = useMcpStore((s) => s.addingEndpoint);
   // A result or a refusal is said in the corner toast, not as a row that pushes the panel down.
   useToastFrom(notice, () => useMcpStore.setState({ notice: null }));
   useToastFrom(error, () => useMcpStore.setState({ error: null }), "err");
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
-  const [endpoint, setEndpoint] = useState("");
-  const [label, setLabel] = useState("");
-  const [token, setToken] = useState("");
+  const closeForm = useCallback(() => setAdding(false), []);
 
   useEffect(() => sendListMcpServers(), []);
 
@@ -353,15 +458,6 @@ export function McpPanel() {
   useEffect(() => {
     if (selected && selected.id !== selectedId) setSelectedId(selected.id);
   }, [selected, selectedId]);
-
-  const submit = () => {
-    if (!endpoint.trim()) return;
-    sendAddMcpServer(endpoint.trim(), label.trim() || undefined, token.trim() || undefined);
-    setEndpoint("");
-    setLabel("");
-    setToken("");
-    setAdding(false);
-  };
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
@@ -417,50 +513,7 @@ export function McpPanel() {
         )}
       </div>
 
-      {canManage && adding && (
-        <div className="shrink-0 px-4 pb-2">
-          <form autoComplete="off" onSubmit={(e) => e.preventDefault()} className="rounded-card border border-edge bg-panel p-2">
-            <input
-              autoFocus
-              name="mcp-server-endpoint"
-              autoComplete="off"
-              className="w-full rounded-input border border-edge bg-elevated px-2 py-1 text-tiny text-ink outline-none focus-visible:shadow-focusring placeholder:text-faint"
-              placeholder="https://example.com/mcp"
-              value={endpoint}
-              onChange={(e) => setEndpoint(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && submit()}
-            />
-            <div className="mt-1.5 flex items-center gap-2">
-              <input
-                name="mcp-server-label"
-                autoComplete="off"
-                className="min-w-0 flex-1 rounded-input border border-edge bg-elevated px-2 py-1 text-tiny text-ink outline-none focus-visible:shadow-focusring placeholder:text-faint"
-                placeholder="name (optional)"
-                value={label}
-                onChange={(e) => setLabel(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && submit()}
-              />
-              <SecretField
-                name="mcp-server-token"
-                className="min-w-0 flex-1 rounded-input border border-edge bg-elevated px-2 py-1 text-tiny text-ink outline-none focus-visible:shadow-focusring placeholder:text-faint"
-                placeholder="token (if it needs one)"
-                value={token}
-                onChange={(e) => setToken(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && submit()}
-              />
-              <button type="button" className={primaryBtn} disabled={!endpoint.trim() || Boolean(addingEndpoint)}
-                onClick={submit}>
-                {addingEndpoint ? "connecting…" : "Connect"}
-              </button>
-            </div>
-            <p className="mt-1.5 text-tiny leading-[1.5] text-faint">
-              Jaroku will ask the server what it can do and show you the answer. Nothing is
-              granted to any agent until you select it while planning. Only http(s) endpoints
-              are supported — stdio would mean running someone else's binary on your machine.
-            </p>
-          </form>
-        </div>
-      )}
+      {canManage && adding && <ConnectForm onDone={closeForm} />}
 
       {servers.length === 0 ? (
         <EmptyState

@@ -21,11 +21,27 @@ export interface McpToolRef extends McpTool {
   ref: string;
 }
 
+export interface PendingAdd {
+  ref: string;
+  endpoint: string;
+  state: "sending" | "accepted" | "refused";
+  serverId: string | null;
+  message: string | null;
+}
+
+export const ADD_INTERRUPTED =
+  "the connection to Jaroku dropped before it answered, so the server may or may not have been added. " +
+  "Check the list of servers before connecting it again.";
+
 interface McpState {
   servers: McpServer[];
+  pendingAdd: PendingAdd | null;
+  beginAdd: (ref: string, endpoint: string) => void;
+  settleAdd: (ref: string, outcome: { serverId: string | null } | { message: string }) => void;
+  interruptAdd: () => void;
+  clearAdd: () => void;
   /** Server ids with a handshake in flight, plus null for an add that has no id yet. */
   discovering: Record<string, number>;
-  addingEndpoint: string | null;
   /** The last error, shown as a dismissible strip rather than swallowed. */
   error: string | null;
   notice: string | null;
@@ -67,10 +83,26 @@ function without(discovering: Record<string, number>, serverId: string): Record<
 
 export const useMcpStore = create<McpState>((set, get) => ({
   servers: [],
+  pendingAdd: null,
+  beginAdd: (ref, endpoint) => set({ pendingAdd: { ref, endpoint, state: "sending", serverId: null, message: null } }),
+  settleAdd: (ref, outcome) =>
+    set((s) =>
+      s.pendingAdd?.ref !== ref || s.pendingAdd.state !== "sending"
+        ? s
+        : {
+            pendingAdd: "message" in outcome
+              ? { ...s.pendingAdd, state: "refused", message: outcome.message }
+              : { ...s.pendingAdd, state: "accepted", serverId: outcome.serverId },
+          },
+    ),
+  interruptAdd: () =>
+    set((s) =>
+      s.pendingAdd?.state === "sending" ? { pendingAdd: { ...s.pendingAdd, state: "refused", message: ADD_INTERRUPTED } } : s,
+    ),
+  clearAdd: () => set({ pendingAdd: null }),
   confirms: [],
   revealNonce: null,
   discovering: {},
-  addingEndpoint: null,
   error: null,
   notice: null,
 
@@ -80,15 +112,11 @@ export const useMcpStore = create<McpState>((set, get) => ({
       return {
         servers,
         discovering: Object.fromEntries(Object.entries(s.discovering).filter(([id]) => live.has(id))),
-        addingEndpoint: null,
       };
     }),
 
-  setDiscovering: (serverId, endpoint) => {
-    if (serverId === null) {
-      set({ addingEndpoint: endpoint });
-      return;
-    }
+  setDiscovering: (serverId) => {
+    if (serverId === null) return;
     const at = Date.now();
     set((s) => ({ discovering: { ...s.discovering, [serverId]: at } }));
     const stale = setTimeout(() => {

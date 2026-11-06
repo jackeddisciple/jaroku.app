@@ -437,9 +437,13 @@ function dispatch(msg: ServerMessage): void {
       // agent's MCP tool call is an ordinary tool_call Step and arrives on "trace".
       const m = useMcpStore.getState();
       if (msg.type === "servers") m.setServers(msg.servers);
-      else if (msg.type === "discovering") m.setDiscovering(msg.serverId, msg.endpoint);
+      else if (msg.type === "discovering") {
+        m.setDiscovering(msg.serverId, msg.endpoint);
+        if (msg.clientRef) m.settleAdd(msg.clientRef, { serverId: msg.serverId });
+      }
       else if (msg.type === "discovered") m.setDiscovered(msg.serverId);
       else if (msg.type === "error") {
+        if (msg.clientRef) m.settleAdd(msg.clientRef, { message: msg.message });
         m.setError(msg.message);
         if (msg.runId && msg.nonce) {
           m.resolveConfirm(msg.runId, msg.nonce);
@@ -965,6 +969,7 @@ async function connect(): Promise<void> {
       useUiStore.getState().showToast("Reconnected", "ok");
     }
     useMcpStore.getState().forgetDiscovering();
+    useMcpStore.getState().interruptAdd();
     // §5.1 STEP 7 — UNLOCK, AND HERE RATHER THAN AFTER THE SNAPSHOTS. `onopen` is the moment the
     // relay has accepted the ticket and the Origin, which is the last thing that can refuse this
     // switch; the snapshots that follow are data arriving into stores the UI already renders
@@ -1843,8 +1848,8 @@ export function sendListMcpServers(): void {
   send({ cmd: "listMcpServers" });
 }
 /** Connect a server. `token` is written to runtime/.env server-side and never comes back. */
-export function sendAddMcpServer(endpoint: string, label?: string, token?: string): void {
-  send({ cmd: "addMcpServer", endpoint, label, token });
+export function sendAddMcpServer(endpoint: string, label?: string, token?: string, clientRef?: string): boolean {
+  return send({ cmd: "addMcpServer", endpoint, label, token, clientRef });
 }
 export function sendRemoveMcpServer(serverId: string): void {
   send({ cmd: "removeMcpServer", serverId });

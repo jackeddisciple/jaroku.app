@@ -6094,6 +6094,10 @@ function endpointHost(endpoint: string): string | null {
   }
 }
 
+function addRef(cmd: { clientRef?: unknown }): { clientRef?: string } {
+  return typeof cmd.clientRef === "string" && /^[A-Za-z0-9_-]{1,64}$/.test(cmd.clientRef) ? { clientRef: cmd.clientRef } : {};
+}
+
 function broadcastMcpServers(ctx: TenantContext): void {
   void relay
     .broadcastMcpServers(ctx)
@@ -6113,7 +6117,7 @@ async function handleMcpCommand(ctx: TenantContext, cmd: McpCommand): Promise<vo
     switch (cmd.cmd) {
       case "addMcpServer": {
         if (typeof cmd.endpoint !== "string" || !cmd.endpoint.trim()) {
-          relay.broadcastMcp(ctx, { type: "error", message: "an endpoint is required" });
+          relay.sendMcpTo(ctx, ctx.requestId, { type: "error", message: "an endpoint is required", ...addRef(cmd) });
           return;
         }
         // THE ID AND THE CREDENTIAL ARE DECIDED HERE, SYNCHRONOUSLY; THE HANDSHAKE IS NOT.
@@ -6137,13 +6141,17 @@ async function handleMcpCommand(ctx: TenantContext, cmd: McpCommand): Promise<vo
         });
         if (!prepared.ok) {
           const refused = prepared.atLimit ? (await entitlementRefusalFor(ctx, cmd.cmd, null, { audit: false }))?.message : null;
-          relay.broadcastMcp(ctx, { type: "error", message: refused ?? prepared.message ?? "that server could not be added" });
+          relay.sendMcpTo(ctx, ctx.requestId, {
+            type: "error",
+            message: refused ?? prepared.message ?? "that server could not be added",
+            ...addRef(cmd),
+          });
           broadcastMcpServers(ctx);
           return;
         }
         // A handshake against someone else's server takes as long as it takes. Saying so
         // is the difference between "connecting" and "the button did nothing".
-        relay.broadcastMcp(ctx, { type: "discovering", serverId: prepared.id, endpoint: cmd.endpoint });
+        relay.broadcastMcp(ctx, { type: "discovering", serverId: prepared.id, endpoint: cmd.endpoint, ...addRef(cmd) });
         broadcastMcpServers(ctx);
         await mcpDiscovery.enqueue(ctx, {
           kind: "add",
@@ -6278,7 +6286,7 @@ async function handleMcpCommand(ctx: TenantContext, cmd: McpCommand): Promise<vo
   } catch (err) {
     const message = (err as Error)?.message ?? String(err);
     console.error(`[mcp] ${cmd.cmd} failed: ${message}`);
-    relay.broadcastMcp(ctx, { type: "error", message: `${cmd.cmd} failed: ${message}` });
+    relay.broadcastMcp(ctx, { type: "error", message: `${cmd.cmd} failed: ${message}`, ...(cmd.cmd === "addMcpServer" ? addRef(cmd) : {}) });
     if ((cmd.cmd === "rediscoverMcpServer" || cmd.cmd === "setMcpServerAuth") && typeof cmd.serverId === "string") {
       relay.broadcastMcp(ctx, { type: "discovered", serverId: cmd.serverId });
     }

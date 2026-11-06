@@ -311,7 +311,7 @@ function fillStores(): void {
   seed(useConnectionStore, { connections: [CONNECTOR], loaded: true, connecting: {}, error: null, notice: null });
   seed(useDeployStore, { deployments: [], railwayConfigured: true, loaded: true, plan: null, planning: false, serveToken: null, error: null, notice: null });
   seed(useGithubStore, { loaded: true, connected: true, views: {}, links: [], error: null, notice: null });
-  seed(useMcpStore, { servers: [], discovering: {}, addingEndpoint: null, error: null, notice: null });
+  seed(useMcpStore, { servers: [], discovering: {}, error: null, notice: null });
   seed(useSecretsStore, { elevated: true, gateLoaded: true, gate: "mutations", loaded: true, secrets: [], error: null, notice: null, pending: null });
 }
 

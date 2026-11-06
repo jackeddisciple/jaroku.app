@@ -849,9 +849,9 @@ export type McpConfirmVerdict = "once" | "run" | "deny";
 
 export type McpMessage =
   | { channel: "mcp"; type: "servers"; servers: McpServer[] }
-  | { channel: "mcp"; type: "discovering"; serverId: string | null; endpoint: string }
+  | { channel: "mcp"; type: "discovering"; serverId: string | null; endpoint: string; clientRef?: string }
   | { channel: "mcp"; type: "discovered"; serverId: string }
-  | { channel: "mcp"; type: "error"; message: string; serverId?: string; runId?: string; nonce?: string }
+  | { channel: "mcp"; type: "error"; message: string; serverId?: string; runId?: string; nonce?: string; clientRef?: string }
   | { channel: "mcp"; type: "notice"; message: string; serverId?: string }
   | ({ channel: "mcp"; type: "confirmRequest" } & McpConfirmRequest)
   | { channel: "mcp"; type: "confirmResolved"; runId: string; nonce: string; verdict: string }
@@ -2654,7 +2654,7 @@ export type ClientCommand =
   | { cmd: "listMcpServers" }
   // `token` is the only field in this union that carries a secret. It travels one way, over
   // the loopback socket, and is never sent back: a server reports `configured`, not its key.
-  | { cmd: "addMcpServer"; endpoint: string; label?: string; token?: string }
+  | { cmd: "addMcpServer"; endpoint: string; label?: string; token?: string; clientRef?: string }
   | { cmd: "removeMcpServer"; serverId: string }
   | { cmd: "rediscoverMcpServer"; serverId: string }
   | { cmd: "setMcpServerAuth"; serverId: string; token: string | null }

@@ -582,6 +582,7 @@ export type AddMcpServerCommand = {
    * `configured: true`, never its credential. See envWriter.ts.
    */
   token?: string;
+  clientRef?: string;
 };
 export type RemoveMcpServerCommand = { cmd: "removeMcpServer"; serverId: string };
 /** Re-run the handshake. On failure the previously discovered tools are kept. */
@@ -2279,9 +2280,9 @@ export type McpEvent =
   | { type: "servers"; servers: unknown[] }
   // A handshake is a network round trip against someone else's server; the UI needs to be
   // able to say it is waiting rather than appear to have ignored the click.
-  | { type: "discovering"; serverId: string | null; endpoint: string }
+  | { type: "discovering"; serverId: string | null; endpoint: string; clientRef?: string }
   | { type: "discovered"; serverId: string }
-  | { type: "error"; message: string; serverId?: string; runId?: string; nonce?: string }
+  | { type: "error"; message: string; serverId?: string; runId?: string; nonce?: string; clientRef?: string }
   // A discovery that succeeded but is worth a word anyway (e.g. a truncated tool list).
   | { type: "notice"; message: string; serverId?: string }
   // A run has HALTED before a high-impact MCP tool's first call and is waiting for an
