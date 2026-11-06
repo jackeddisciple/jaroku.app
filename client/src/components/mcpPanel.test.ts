@@ -1,7 +1,7 @@
 import React from "react";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { ConnectForm, CredentialRemovalConfirm, ENDPOINT_SETTLED, EditServerForm, MCP_EMPTY_ADMIN, MCP_EMPTY_MEMBER, McpPanel, RemovalConfirm, TOKEN_DROPPED, startAdd } from "./McpPanel.tsx";
+import { ConnectForm, CredentialRemovalConfirm, ENDPOINT_SETTLED, EditServerForm, MCP_EMPTY_ADMIN, MCP_EMPTY_MEMBER, McpPanel, RemovalConfirm, TOKEN_DROPPED, controlBtn, startAdd } from "./McpPanel.tsx";
 import { useBuildStore } from "../store/buildStore.ts";
 import { ADD_INTERRUPTED, DISCOVERY_STALE_MS, agentsUsing, isDiscovering, removalConsequences, useMcpStore } from "../store/mcpStore.ts";
 import { useSessionStore } from "../store/sessionStore.ts";
@@ -464,6 +464,33 @@ console.log("\nan empty panel tells each role what it can do next");
   const admin = markup(React.createElement(McpPanel));
   check("an admin is told what connecting one does", admin.includes(MCP_EMPTY_ADMIN.replace("—", "&#8212;")) || admin.includes(MCP_EMPTY_ADMIN));
   check("...and not to ask somebody else", !admin.includes(MCP_EMPTY_MEMBER));
+}
+
+console.log("\nwhat a person reads to decide is readable, and the controls are big enough to hit");
+{
+  const config = readFileSync(fileURLToPath(new URL("../../tailwind.config.js", import.meta.url)), "utf8");
+  const colour = (name: string): string => new RegExp(`^\\s*${name}: "(#[0-9A-Fa-f]{6})"`, "m").exec(config)?.[1] ?? "";
+  const luminance = (hex: string): number => {
+    const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255).map((c) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4));
+    return 0.2126 * r! + 0.7152 * g! + 0.0722 * b!;
+  };
+  const contrast = (a: string, b: string): number => {
+    const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+    return (hi! + 0.05) / (lo! + 0.05);
+  };
+  const ratio = Math.min(contrast(colour("muted"), colour("bg")), contrast(colour("muted"), colour("panel")));
+  check("the colour now used for the reason, the time and the claim meets AA at small sizes", ratio >= 4.5, ratio.toFixed(2));
+
+  seed(useSessionStore, sessionAs("admin"));
+  seed(useMcpStore, { servers: [server({ server_name: "Mock", server_version: "1.0", tools: [tool("read_page")] })], selectedId: null, discovering: {} });
+  const html = markup(React.createElement(McpPanel));
+  check("the reason a tool was classified is not faint", /<p class="[^"]*text-muted[^"]*">[^<]*its name begins with a read verb/.test(html));
+  check("nor is the server's claim about itself", /<span class="text-muted"> — its own claim, unverified<\/span>/.test(html));
+  check("nor when it was last checked", /<p class="px-2 py-1\.5 text-tiny text-muted">1 tool/.test(html));
+  for (const label of ["re-check", "edit", "disconnect"]) {
+    check(`${label} is at least 24px tall`, new RegExp(`<button[^>]*class="[^"]*min-h-6[^"]*"[^>]*>(?:(?!</button>).)*${label}</button>`, "s").test(html));
+  }
+  check("every control in that row shares the taller class", controlBtn.includes("min-h-6"));
 }
 
 console.log(fail === 0 ? "\nALL CORRECT" : `\n${fail} FAILURES`);

@@ -53,6 +53,8 @@ import { Icon } from "../lib/icons/registry.ts";
  * break the rule that a shape means the same thing in every tab. This table is the sentence, and it
  * is why the label stays beside the mark rather than being folded into it.
  */
+export const controlBtn = `${secondaryBtn} min-h-6`;
+
 const STATUS_LABEL: Record<McpServer["status"], string> = {
   connecting: "connecting…",
   connected: "connected",
@@ -110,7 +112,7 @@ function ToolRow({ tool, serverId }: { tool: McpTool; serverId: string }) {
           {tool.description && (
             <p className="mt-0.5 text-tiny leading-[1.5] text-muted">{tool.description}</p>
           )}
-          <p className="mt-0.5 text-tiny leading-[1.5] text-faint">
+          <p className="mt-0.5 text-tiny leading-[1.5] text-muted">
             {tool.overridden ? `Jaroku said ${tool.computed_impact}: ` : ""}
             {tool.impact_reason}
           </p>
@@ -257,7 +259,7 @@ export function RemovalConfirm({ server, onKeep }: { server: McpServer; onKeep: 
       <p className="text-tiny leading-[1.5] text-ink">{removalConsequences(server, agents)}</p>
       {failed && <p role="alert" className="mt-1 text-tiny leading-[1.5] text-err">{NOT_SENT}</p>}
       <div className="mt-2 flex items-center gap-2">
-        <button type="button" className={secondaryBtn + " hover:!text-err"}
+        <button type="button" className={controlBtn + " hover:!text-err"}
           onClick={() => (sendRemoveMcpServer(server.id) ? onKeep() : setFailed(true))}>
           <XIcon size={ICON.xs} />
           Disconnect {server.label}
@@ -280,7 +282,7 @@ export function CredentialRemovalConfirm({ server, onKeep, onRemoved }: { server
       </p>
       {failed && <p role="alert" className="mt-1 text-tiny leading-[1.5] text-err">{NOT_SENT}</p>}
       <div className="mt-2 flex items-center gap-2">
-        <button type="button" className={secondaryBtn + " hover:!text-err"}
+        <button type="button" className={controlBtn + " hover:!text-err"}
           onClick={() => (sendSetMcpServerAuth(server.id, null) ? onRemoved() : setFailed(true))}>
           Remove the credential
         </button>
@@ -349,7 +351,7 @@ function ServerDetail({ server }: { server: McpServer }) {
             </span>
             {server.protocol_version ? ` · MCP ${server.protocol_version}` : ""}
             {/* Everything on this line is the server's own claim about itself. */}
-            <span className="text-faint"> — its own claim, unverified</span>
+            <span className="text-muted"> — its own claim, unverified</span>
           </p>
         )}
 
@@ -367,20 +369,20 @@ function ServerDetail({ server }: { server: McpServer }) {
             failing — because that is what `mcp:read` is for. */}
         {canManage && (
           <div className="mt-2 flex items-center gap-2 flex-wrap">
-            <button className={secondaryBtn} disabled={discovering || server.status === "connecting"}
+            <button className={controlBtn} disabled={discovering || server.status === "connecting"}
               onClick={() => sendRediscoverMcpServer(server.id)}
               title="Ask the server what it can do, again. A failure keeps the tools already discovered.">
               <RefreshIcon size={ICON.xs} />
               {discovering ? "checking…" : "re-check"}
             </button>
-            <button className={secondaryBtn} aria-expanded={showToken} onClick={() => setShowToken((v) => !v)}>
+            <button className={controlBtn} aria-expanded={showToken} onClick={() => setShowToken((v) => !v)}>
               <KeyIcon size={ICON.xs} />
               {server.configured ? "replace credential" : "add a credential"}
             </button>
-            <button className={secondaryBtn} aria-expanded={editing} onClick={() => setEditing((v) => !v)}>
+            <button className={controlBtn} aria-expanded={editing} onClick={() => setEditing((v) => !v)}>
               edit
             </button>
-            <button className={secondaryBtn + " ml-auto hover:!text-err"}
+            <button className={controlBtn + " ml-auto hover:!text-err"}
               aria-expanded={confirming === "disconnect"}
               onClick={() => setConfirming((v) => (v === "disconnect" ? null : "disconnect"))}>
               <XIcon size={ICON.xs} />
@@ -466,7 +468,7 @@ function ServerDetail({ server }: { server: McpServer }) {
           />
         ) : (
           <>
-            <p className="px-2 py-1.5 text-tiny text-faint">
+            <p className="px-2 py-1.5 text-tiny text-muted">
               {server.tools.length} tool{server.tools.length === 1 ? "" : "s"}
               {highCount > 0 && `, ${highCount} needing confirmation before first use`}
               {lastChecked && ` · last checked ${new Date(lastChecked).toLocaleString()}`}
