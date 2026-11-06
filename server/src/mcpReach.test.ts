@@ -545,6 +545,11 @@ async function main(): Promise<void> {
       check(actions.has(action), `${action} is recorded`, [...actions].join());
     }
     check(!JSON.stringify(rows).includes("audited-token"), "and no credential is in any of them");
+    c.clear();
+    c.send({ cmd: "addMcpServer", endpoint: "example.invalid/mcp", label: "No Scheme" });
+    await sleep(2500);
+    const crashed = c.log.filter((m) => m["channel"] === "mcp" && m["type"] === "error" && /failed:/.test(String(m["message"])));
+    check(crashed.length === 0, "an endpoint typed without a scheme is refused, not a crash", JSON.stringify(crashed.map((m) => m["message"])));
     c.close();
   }
 

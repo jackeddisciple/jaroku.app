@@ -6081,6 +6081,14 @@ function auditMcp(ctx: TenantContext, action: string, targetId: string, metadata
     .catch((err) => console.error(`[mcp] could not record ${action}:`, (err as Error)?.message ?? err));
 }
 
+function endpointHost(endpoint: string): string | null {
+  try {
+    return new URL(endpoint.trim()).hostname;
+  } catch {
+    return null;
+  }
+}
+
 function broadcastMcpServers(): void {
   void relay
     .broadcastMcpServers()
@@ -6133,7 +6141,7 @@ async function handleMcpCommand(ctx: TenantContext, cmd: McpCommand): Promise<vo
         // The endpoint may carry a path or query a user would not want echoed; log the id we
         // assigned and let the job's own completion log what happened to it.
         console.log(`[mcp] add ${prepared.id} queued`);
-        auditMcp(ctx, "mcp.server.connected", prepared.id, { host: new URL(cmd.endpoint.trim()).hostname });
+        auditMcp(ctx, "mcp.server.connected", prepared.id, { host: endpointHost(cmd.endpoint) });
         if (prepared.message) {
           relay.broadcastMcp(ctx, { type: "notice", message: prepared.message, serverId: prepared.id });
         }
