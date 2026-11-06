@@ -235,6 +235,7 @@ export const COMMAND_ENTITLEMENT: Record<string, EntitlementKind | typeof NO_ENT
   cancelEval: NO_ENTITLEMENT,
   listMcpServers: NO_ENTITLEMENT,
   rediscoverMcpServer: NO_ENTITLEMENT,
+  updateMcpServer: NO_ENTITLEMENT,
   setMcpServerAuth: NO_ENTITLEMENT,
   setMcpToolImpact: NO_ENTITLEMENT,
   resolveMcpConfirm: NO_ENTITLEMENT,
