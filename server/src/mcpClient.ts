@@ -171,6 +171,7 @@ export interface DiscoverySuccess {
    * does not exist.
    */
   rejected: number;
+  duplicates: number;
 }
 
 export interface DiscoveryFailure {
@@ -369,6 +370,7 @@ export async function discover(opts: DiscoverOptions): Promise<DiscoveryResult> 
     await client.connect(transport, { timeout: Math.min(timeout, remaining() || 1) });
 
     const tools: AdvertisedTool[] = [];
+    const cursors = new Set<string>();
     let cursor: string | undefined;
     let pages = 0;
     let truncated = false;
@@ -401,14 +403,26 @@ export async function discover(opts: DiscoverOptions): Promise<DiscoveryResult> 
         }
         tools.push(tool);
       }
-      cursor = typeof page.nextCursor === "string" ? page.nextCursor : undefined;
+      const next = typeof page.nextCursor === "string" && page.nextCursor !== "" ? page.nextCursor : undefined;
+      cursor = next !== undefined && !cursors.has(next) ? next : undefined;
+      if (cursor !== undefined) cursors.add(cursor);
     } while (cursor !== undefined && !truncated);
 
     // A server may advertise the same name twice; the last one would silently win at call
     // time. Keeping the first and dropping the rest makes the collision visible in the
     // count rather than in behaviour.
-    const seen = new Set<string>();
-    const unique = tools.filter((t) => (seen.has(t.name) ? false : (seen.add(t.name), true)));
+    const seen = new Map<string, string>();
+    let duplicates = 0;
+    const unique = tools.filter((t) => {
+      const shape = JSON.stringify(t);
+      const first = seen.get(t.name);
+      if (first === undefined) {
+        seen.set(t.name, shape);
+        return true;
+      }
+      if (first !== shape) duplicates++;
+      return false;
+    });
 
     // serverInfo is a claim like any other, and it is rendered in the panel and logged. Bound
     // and strip it for the same reason the tool fields are.
@@ -422,7 +436,8 @@ export async function discover(opts: DiscoverOptions): Promise<DiscoveryResult> 
         : null,
       tools: unique,
       truncated,
-      rejected: rejected + (tools.length - unique.length),
+      rejected,
+      duplicates,
     };
   };
 

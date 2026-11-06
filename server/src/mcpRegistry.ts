@@ -661,8 +661,9 @@ export class McpRegistry {
 
 /** Two things can be worth saying at once; neither should hide the other. */
 function joinMessages(...parts: (string | null)[]): string | null {
-  const kept = parts.filter((p): p is string => Boolean(p));
-  return kept.length ? kept.join(" ") : null;
+  const kept = parts.map((p) => p?.trim() ?? "").filter((p) => p.length > 0);
+  if (kept.length === 0) return null;
+  return kept.map((p, i) => (i < kept.length - 1 && !/[.!?…]$/.test(p) ? `${p}.` : p)).join(" ");
 }
 
 /**
@@ -682,6 +683,10 @@ function truncationNote(result: Extract<DiscoveryResult, { ok: true }>): string 
       ? `${result.rejected} advertised tool${result.rejected > 1 ? "s were" : " was"} refused as ` +
         `unusable — a tool name must be 1-128 characters of letters, digits, underscores or ` +
         `hyphens, and its schema must be under 64KB`
+      : null,
+    result.duplicates
+      ? `${result.duplicates} advertised tool${result.duplicates > 1 ? "s" : ""} reused the name of a ` +
+        `different tool already listed, so only the first tool of each name was kept`
       : null,
   );
 }

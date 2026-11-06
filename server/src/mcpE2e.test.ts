@@ -30,7 +30,7 @@ import { safeObjectPath } from "./storage/keys.ts";
 import { buildManifest, grantWithout, projectCanCallMcp, withGrantOnly, withoutMcpGrant } from "./mcpManifest.ts";
 import { AgentRepository } from "./db/repositories/agents.ts";
 import { GithubPuller } from "./githubPullRunner.ts";
-import { startScriptedServer, type ScriptedRequest } from "../fixtures/mcp/scriptedServer.ts";
+import { replyResult, startScriptedServer, type ScriptedRequest } from "../fixtures/mcp/scriptedServer.ts";
 
 let failures = 0;
 const check = (ok: boolean, msg: string, detail = ""): void => {
@@ -744,6 +744,77 @@ console.log("\ndiscovery connects to the address that was checked, not to a fres
   check(!refused.ok, "and the handshake goes to the checked address rather than asking DNS again");
   check(!/ENOTFOUND|EAI_AGAIN|getaddrinfo/.test(refused.message ?? ""), "so the failure is the connection's, never a second lookup's", refused.message ?? "");
   await fixture.close();
+}
+
+console.log("\nan empty cursor ends the list, and a repeated name is called what it is");
+{
+  const A = await workspace("cursor");
+  const listed = [
+    { name: "read_page", description: "Reads.", inputSchema: { type: "object", properties: {} } },
+    { name: "list_items", description: "Lists.", inputSchema: { type: "object", properties: {} } },
+    { name: "get_item", description: "Gets.", inputSchema: { type: "object", properties: {} } },
+  ];
+  const paged = (nextCursor: (cursor: unknown) => unknown, tools: unknown[] = listed) => ({
+    hook: ({ rpc, id, body, res }: ScriptedRequest) => {
+      if (rpc !== "tools/list") return false;
+      const cursor = (JSON.parse(body) as { params?: { cursor?: unknown } }).params?.cursor;
+      replyResult(res, id, { tools, nextCursor: nextCursor(cursor) });
+      return true;
+    },
+  });
+  const said = (from: number) => results.slice(from).map((r) => r.result.message ?? "").join(" ");
+  const lists = (server: { seen: { rpc: string | null }[] }) => server.seen.filter((r) => r.rpc === "tools/list").length;
+
+  const empty = await startScriptedServer(paged(() => ""));
+  let before = results.length;
+  await connect(A, { endpoint: empty.url, label: "EmptyCursor" });
+  const row = await registry.get(A, "emptycursor");
+  check(lists(empty) === 1, "an empty cursor is the last page", String(lists(empty)));
+  check(row?.status === "connected" && row.tools.length === 3, "and the tools on it are all kept", `${row?.status} ${row?.tools.length}`);
+  check(said(before) === "", "and nothing claims the list was cut or refused", said(before));
+  await empty.close();
+
+  const loop = await startScriptedServer(paged(() => "again"));
+  before = results.length;
+  await connect(A, { endpoint: loop.url, label: "LoopCursor" });
+  check(lists(loop) === 2, "a cursor the server already sent ends the list", String(lists(loop)));
+  check((await registry.get(A, "loopcursor"))?.tools.length === 3, "without losing a tool");
+  check(said(before) === "", "and it is not reported as more tools than Jaroku accepts", said(before));
+  await loop.close();
+
+  const twice = await startScriptedServer({ tools: [listed[0], listed[0], listed[1]] });
+  before = results.length;
+  await connect(A, { endpoint: twice.url, label: "Twice" });
+  check((await registry.get(A, "twice"))?.tools.map((t) => t.name).join() === "list_items,read_page", "a tool listed twice is kept once");
+  check(said(before) === "", "and nothing is lost, so nothing is said", said(before));
+  await twice.close();
+
+  const clash = await startScriptedServer({ tools: [listed[0], { ...listed[0], description: "Deletes a page." }, listed[1]] });
+  before = results.length;
+  await connect(A, { endpoint: clash.url, label: "Clash" });
+  const kept = (await registry.get(A, "clash"))?.tools.find((t) => t.name === "read_page");
+  check(kept?.description === "Reads.", "two different tools under one name keep the first", String(kept?.description));
+  check(/^1 advertised tool reused the name of a different tool already listed/.test(said(before)), "and the second is reported as a reused name", said(before));
+  check(!/refused as unusable|tool name must be/.test(said(before)), "not as an illegal one", said(before));
+  await clash.close();
+
+  const endless = await startScriptedServer({
+    hook: ({ rpc, id, body, res }: ScriptedRequest) => {
+      if (rpc !== "tools/list") return false;
+      const page = Number((JSON.parse(body) as { params?: { cursor?: unknown } }).params?.cursor ?? 0);
+      replyResult(res, id, {
+        tools: [{ name: "has spaces", inputSchema: {} }, { ...listed[0], description: `Reads page ${page}.` }],
+        nextCursor: String(page + 1),
+      });
+      return true;
+    },
+  });
+  before = results.length;
+  await connect(A, { endpoint: endless.url, label: "Endless" });
+  const message = said(before);
+  check(/the list was truncated\. 50 advertised tools were refused as unusable/.test(message), "each sentence ends before the next begins", message);
+  check(/64KB\. 49 advertised tools reused the name of a different tool/.test(message), "and reused names are counted apart from the refusals", message);
+  await endless.close();
 }
 
 console.log("\nadds that derive one id each keep their own row");
