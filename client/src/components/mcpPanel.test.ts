@@ -1,7 +1,7 @@
 import React from "react";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { ConnectForm, McpPanel, startAdd } from "./McpPanel.tsx";
+import { ConnectForm, McpPanel, TOKEN_DROPPED, startAdd } from "./McpPanel.tsx";
 import { ADD_INTERRUPTED, DISCOVERY_STALE_MS, isDiscovering, useMcpStore } from "../store/mcpStore.ts";
 import { useSessionStore } from "../store/sessionStore.ts";
 import { markup, seed, sessionAs } from "../lib/testRender.ts";
@@ -180,8 +180,9 @@ console.log("\nconnecting keeps what was typed until the server answers");
   store.clearAdd();
   startAdd({ endpoint: "https://c.example/mcp", label: "", token: "" }, () => true);
   store.settleAdd(useMcpStore.getState().pendingAdd?.ref ?? "", { serverId: "c_example" });
-  const accepted = useMcpStore.getState().pendingAdd;
-  check("an acceptance names the row it reserved", accepted?.state === "accepted" && accepted.serverId === "c_example");
+  const accepted = useMcpStore.getState();
+  check("an acceptance ends the wait", accepted.pendingAdd === null);
+  check("...and selects the row it reserved", accepted.selectedId === "c_example");
 
   store.clearAdd();
   startAdd({ endpoint: "https://d.example/mcp", label: "", token: "" }, () => true);
@@ -193,7 +194,7 @@ console.log("\nconnecting keeps what was typed until the server answers");
   check("...and a reconnect with nothing waiting leaves nothing behind", useMcpStore.getState().pendingAdd === null);
 
   seed(useMcpStore, { pendingAdd: { ref: "r", endpoint: "https://e.example/mcp", state: "sending", serverId: null, message: null } });
-  const form = markup(React.createElement(ConnectForm, { onDone: () => {} }));
+  const form = markup(React.createElement(ConnectForm));
   check("while waiting the button reads connecting and cannot be pressed", /<button[^>]*disabled=""[^>]*>connecting\u2026<\/button>/.test(form), form.slice(0, 300));
   check("...and what was typed cannot change under it", (form.match(/readOnly=""/gi) ?? []).length === 3);
   seed(useMcpStore, { pendingAdd: null });
@@ -209,7 +210,7 @@ console.log("\nEnter submits a form only as its button would");
 {
   const source = readFileSync(fileURLToPath(new URL("./McpPanel.tsx", import.meta.url)), "utf8");
   check("no field in the panel handles Enter by itself", !/onKeyDown/.test(source));
-  const form = markup(React.createElement(ConnectForm, { onDone: () => {} }));
+  const form = markup(React.createElement(ConnectForm));
   check("the connect form is a form", /^<div[^>]*><form/.test(form));
   check("...whose Connect is its submit button", /<button type="submit"[^>]*disabled=""[^>]*>Connect<\/button>/.test(form), form.slice(0, 400));
   check("...and submitting it goes through the guarded start", /onSubmit=\{\(e\) => \{\s*e\.preventDefault\(\);\s*submit\(\);/.test(source) && /const started = startAdd\(/.test(source));
@@ -222,11 +223,66 @@ console.log("\nswitching workspace drops whatever was typed for the old one");
 {
   const source = readFileSync(fileURLToPath(new URL("./McpPanel.tsx", import.meta.url)), "utf8");
   check("the connect form is rebuilt for each workspace, so a typed credential does not follow", /<ConnectForm key=\{workspaceId\} /.test(source));
-  check("...and closes when the workspace changes", /useEffect\(\(\) => \{\s*setAdding\(false\);\s*setSelectedId\(null\);\s*\}, \[workspaceId\]\);/.test(source));
+  useMcpStore.getState().setFormOpen(true);
+  useMcpStore.getState().setDraft({ endpoint: "https://old.example/mcp", label: "Old" });
+  useMcpStore.getState().select("old_server");
+  useMcpStore.getState().setTokenDropped(true);
   check("a server's credential field is rebuilt too, even where both workspaces have a server of that name", source.includes("<ServerDetail key={`${workspaceId}:${selected.id}`}"));
   useMcpStore.getState().beginAdd("ref-old", "https://old.example/mcp");
   resetWorkspaceStores();
-  check("an add the old workspace was waiting on is forgotten", useMcpStore.getState().pendingAdd === null);
+  const after = useMcpStore.getState();
+  check("an add the old workspace was waiting on is forgotten", after.pendingAdd === null);
+  check("...and so are its open form, its draft, its selection and its notes", !after.formOpen && after.draft.endpoint === "" && after.draft.label === "" && after.selectedId === null && !after.tokenDropped);
+}
+
+console.log("\nwhat is selected and what was typed survive leaving the panel");
+{
+  const store = useMcpStore.getState();
+  const alpha = server();
+  const beta = server({ id: "beta", label: "Beta", tools: [tool("send_message")] });
+  seed(useSessionStore, sessionAs("admin"));
+  seed(useMcpStore, { servers: [alpha, beta], selectedId: "beta", formOpen: false, draft: { endpoint: "", label: "" }, pendingAdd: null, tokenDropped: false });
+  const chosen = markup(React.createElement(McpPanel));
+  check("the server last selected is the one shown when the panel opens again", />send_message</.test(chosen));
+
+  seed(useMcpStore, { formOpen: true, draft: { endpoint: "https://half.example/mcp", label: "Half" } });
+  const reopened = markup(React.createElement(McpPanel));
+  check("a half filled form is still open", /name="mcp-server-endpoint"/.test(reopened));
+  check("...with the endpoint and name that were typed", /value="https:\/\/half\.example\/mcp"/.test(reopened) && /value="Half"/.test(reopened));
+  check("...but never with a credential", /name="mcp-server-token"[^>]*value=""/.test(reopened));
+  check("and without a note when no token was lost", !reopened.includes("was cleared when you left"));
+
+  seed(useMcpStore, { tokenDropped: true });
+  const dropped = markup(React.createElement(McpPanel));
+  check("a token that was typed and dropped is said to be gone", dropped.includes(TOKEN_DROPPED));
+  seed(useMcpStore, { tokenDropped: false, formOpen: false, draft: { endpoint: "", label: "" } });
+
+  store.clearAdd();
+  startAdd({ endpoint: "https://new.example/mcp", label: "New", token: "" }, () => true);
+  store.setFormOpen(true);
+  store.setDraft({ endpoint: "https://new.example/mcp", label: "New" });
+  store.settleAdd(useMcpStore.getState().pendingAdd?.ref ?? "", { serverId: "new_server" });
+  const settled = useMcpStore.getState();
+  check("a server just added is selected", settled.selectedId === "new_server");
+  check("...and its form closes and empties, wherever the person was", !settled.formOpen && settled.draft.endpoint === "" && settled.draft.label === "");
+
+  store.select("beta");
+  store.setFormOpen(true);
+  store.setDraft({ endpoint: "https://typo.example" });
+  startAdd({ endpoint: "https://typo.example", label: "", token: "" }, () => true);
+  store.settleAdd(useMcpStore.getState().pendingAdd?.ref ?? "", { message: "could not find" });
+  const kept = useMcpStore.getState();
+  check("a refused add keeps its form and its draft", kept.formOpen && kept.draft.endpoint === "https://typo.example" && kept.selectedId === "beta");
+  store.clearAdd();
+
+  const source = readFileSync(fileURLToPath(new URL("./McpPanel.tsx", import.meta.url)), "utf8");
+  check("the selected server is scrolled into view", /\[data-mcp-server="\$\{selected\.id\}"\]`\)\?\.scrollIntoView\?\.\(/.test(source));
+  const row = /<div className="flex shrink-0 items-center gap-1 border-b border-hair px-4 py-2">[\s\S]*?\n {6}<\/div>\n/.exec(source)?.[0] ?? "";
+  const scroller = /<div ref=\{strip\} className="[^"]*overflow-x-auto[^"]*">[\s\S]*?\n {8}<\/div>\n/.exec(row)?.[0] ?? "";
+  check("only the chips scroll", scroller.includes("servers.map(") && !/overflow-x-auto/.test(row.replace(scroller, "")));
+  check("so Connect a server is never scrolled out of sight", row.includes("Connect a server") && !scroller.includes("Connect a server"));
+  check("a token typed and then left behind is noted, never kept", /if \(typed\.current && useMcpStore\.getState\(\)\.formOpen\) useMcpStore\.getState\(\)\.setTokenDropped\(true\)/.test(source));
+  seed(useMcpStore, { servers: [], selectedId: null, formOpen: false });
 }
 
 console.log(fail === 0 ? "\nALL CORRECT" : `\n${fail} FAILURES`);

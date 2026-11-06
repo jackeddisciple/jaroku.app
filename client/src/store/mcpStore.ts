@@ -24,7 +24,7 @@ export interface McpToolRef extends McpTool {
 export interface PendingAdd {
   ref: string;
   endpoint: string;
-  state: "sending" | "accepted" | "refused";
+  state: "sending" | "refused";
   serverId: string | null;
   message: string | null;
 }
@@ -33,8 +33,23 @@ export const ADD_INTERRUPTED =
   "the connection to Jaroku dropped before it answered, so the server may or may not have been added. " +
   "Check the list of servers before connecting it again.";
 
+export interface AddFormDraft {
+  endpoint: string;
+  label: string;
+}
+
+const EMPTY_DRAFT: AddFormDraft = { endpoint: "", label: "" };
+
 interface McpState {
   servers: McpServer[];
+  selectedId: string | null;
+  select: (serverId: string | null) => void;
+  formOpen: boolean;
+  setFormOpen: (open: boolean) => void;
+  draft: AddFormDraft;
+  setDraft: (patch: Partial<AddFormDraft>) => void;
+  tokenDropped: boolean;
+  setTokenDropped: (dropped: boolean) => void;
   pendingAdd: PendingAdd | null;
   beginAdd: (ref: string, endpoint: string) => void;
   settleAdd: (ref: string, outcome: { serverId: string | null } | { message: string }) => void;
@@ -83,6 +98,14 @@ function without(discovering: Record<string, number>, serverId: string): Record<
 
 export const useMcpStore = create<McpState>((set, get) => ({
   servers: [],
+  selectedId: null,
+  select: (selectedId) => set({ selectedId }),
+  formOpen: false,
+  setFormOpen: (formOpen) => set({ formOpen }),
+  draft: EMPTY_DRAFT,
+  setDraft: (patch) => set((s) => ({ draft: { ...s.draft, ...patch } })),
+  tokenDropped: false,
+  setTokenDropped: (tokenDropped) => set({ tokenDropped }),
   pendingAdd: null,
   beginAdd: (ref, endpoint) => set({ pendingAdd: { ref, endpoint, state: "sending", serverId: null, message: null } }),
   settleAdd: (ref, outcome) =>
@@ -90,9 +113,15 @@ export const useMcpStore = create<McpState>((set, get) => ({
       s.pendingAdd?.ref !== ref || s.pendingAdd.state !== "sending"
         ? s
         : {
-            pendingAdd: "message" in outcome
-              ? { ...s.pendingAdd, state: "refused", message: outcome.message }
-              : { ...s.pendingAdd, state: "accepted", serverId: outcome.serverId },
+            ...("message" in outcome
+              ? { pendingAdd: { ...s.pendingAdd, state: "refused" as const, message: outcome.message } }
+              : {
+                  pendingAdd: null,
+                  selectedId: outcome.serverId ?? s.selectedId,
+                  formOpen: false,
+                  draft: EMPTY_DRAFT,
+                  tokenDropped: false,
+                }),
           },
     ),
   interruptAdd: () =>
