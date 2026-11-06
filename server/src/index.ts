@@ -1037,12 +1037,13 @@ const mcpDiscovery = new McpDiscoveryQueue({
     );
     // The snapshot first, then the message: a client that got a notice before the list it is
     // about would render an error against a row that still says "discovering".
-    broadcastMcpServers();
-    if (!result.ok && result.message) {
-      relay.broadcastMcp(ctx, { type: "error", message: result.message, serverId: payload.serverId });
-    } else if (result.message) {
-      relay.broadcastMcp(ctx, { type: "notice", message: result.message, serverId: payload.serverId });
-    }
+    void settleMcpDiscovery(ctx, payload.serverId, () => {
+      if (!result.ok && result.message) {
+        relay.broadcastMcp(ctx, { type: "error", message: result.message, serverId: payload.serverId });
+      } else if (result.message) {
+        relay.broadcastMcp(ctx, { type: "notice", message: result.message, serverId: payload.serverId });
+      }
+    });
     // §2.1'S `mcp_auth_required`, RAISED WHERE THE STATUS IS ALREADY KNOWN rather than by teaching
     // the registry what an Inbox is. A server asking for a credential is Blocking the moment
     // discovery says so — every agent scoped to it can call nothing — and this is the one place both
@@ -1056,15 +1057,15 @@ const mcpDiscovery = new McpDiscoveryQueue({
   },
   onError: (ctx, payload, err) => {
     console.error(`[mcp] ${payload.kind} ${payload.serverId} threw:`, err);
-    relay.broadcastMcp(ctx, {
-      type: "error",
+    const failed = {
+      type: "error" as const,
       // Not the exception's text. Everything below a thrown error here is a bug in this
       // codebase, and its message describes the inside of the server — the same rule the HTTP
       // router applies to a 500.
       message: "that discovery could not be completed",
       serverId: payload.serverId,
-    });
-    broadcastMcpServers();
+    };
+    void settleMcpDiscovery(ctx, payload.serverId, () => relay.broadcastMcp(ctx, failed));
   },
 });
 // AND THE OTHER CLASS THIS PROCESS DRAINS ITSELF: a workspace asking for everything it has.
@@ -6093,10 +6094,18 @@ function endpointHost(endpoint: string): string | null {
   }
 }
 
-function broadcastMcpServers(): void {
+function broadcastMcpServers(ctx: TenantContext): void {
   void relay
-    .broadcastMcpServers()
+    .broadcastMcpServers(ctx)
     .catch((err) => console.error("[mcp] snapshot failed:", (err as Error).message));
+}
+
+async function settleMcpDiscovery(ctx: TenantContext, serverId: string, say: () => void): Promise<void> {
+  await relay
+    .broadcastMcpServers(ctx)
+    .catch((err) => console.error("[mcp] snapshot failed:", (err as Error).message));
+  say();
+  relay.broadcastMcp(ctx, { type: "discovered", serverId });
 }
 
 async function handleMcpCommand(ctx: TenantContext, cmd: McpCommand): Promise<void> {
@@ -6129,13 +6138,13 @@ async function handleMcpCommand(ctx: TenantContext, cmd: McpCommand): Promise<vo
         if (!prepared.ok) {
           const refused = prepared.atLimit ? (await entitlementRefusalFor(ctx, cmd.cmd, null, { audit: false }))?.message : null;
           relay.broadcastMcp(ctx, { type: "error", message: refused ?? prepared.message ?? "that server could not be added" });
-          broadcastMcpServers();
+          broadcastMcpServers(ctx);
           return;
         }
         // A handshake against someone else's server takes as long as it takes. Saying so
         // is the difference between "connecting" and "the button did nothing".
         relay.broadcastMcp(ctx, { type: "discovering", serverId: prepared.id, endpoint: cmd.endpoint });
-        broadcastMcpServers();
+        broadcastMcpServers(ctx);
         await mcpDiscovery.enqueue(ctx, {
           kind: "add",
           serverId: prepared.id,
@@ -6176,7 +6185,7 @@ async function handleMcpCommand(ctx: TenantContext, cmd: McpCommand): Promise<vo
           console.log(`[mcp] removed ${cmd.serverId}`);
           auditMcp(ctx, "mcp.server.disconnected", cmd.serverId);
         }
-        broadcastMcpServers();
+        broadcastMcpServers(ctx);
         if (!removed) {
           relay.broadcastMcp(ctx, { type: "error", message: `no server called "${cmd.serverId}"` });
         }
@@ -6262,7 +6271,7 @@ async function handleMcpCommand(ctx: TenantContext, cmd: McpCommand): Promise<vo
           `[mcp] ${cmd.serverId}/${cmd.toolName} impact ${impact ? `overridden to ${impact}` : "override cleared"} (classifier says ${updated.computed_impact})`,
         );
         auditMcp(ctx, "mcp.tool.impact_set", cmd.serverId, { tool: cmd.toolName, impact, classified: updated.computed_impact });
-        broadcastMcpServers();
+        broadcastMcpServers(ctx);
         return;
       }
     }
@@ -6270,6 +6279,9 @@ async function handleMcpCommand(ctx: TenantContext, cmd: McpCommand): Promise<vo
     const message = (err as Error)?.message ?? String(err);
     console.error(`[mcp] ${cmd.cmd} failed: ${message}`);
     relay.broadcastMcp(ctx, { type: "error", message: `${cmd.cmd} failed: ${message}` });
+    if ((cmd.cmd === "rediscoverMcpServer" || cmd.cmd === "setMcpServerAuth") && typeof cmd.serverId === "string") {
+      relay.broadcastMcp(ctx, { type: "discovered", serverId: cmd.serverId });
+    }
   }
 }
 

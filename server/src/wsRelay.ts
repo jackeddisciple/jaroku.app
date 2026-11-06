@@ -2280,6 +2280,7 @@ export type McpEvent =
   // A handshake is a network round trip against someone else's server; the UI needs to be
   // able to say it is waiting rather than appear to have ignored the click.
   | { type: "discovering"; serverId: string | null; endpoint: string }
+  | { type: "discovered"; serverId: string }
   | { type: "error"; message: string; serverId?: string; runId?: string; nonce?: string }
   // A discovery that succeeded but is worth a word anyway (e.g. a truncated tool list).
   | { type: "notice"; message: string; serverId?: string }
@@ -5691,8 +5692,9 @@ export class WsRelay {
   }
 
   /** Rebuild a snapshot per recipient. For the channels whose payload IS a query result. */
-  async broadcastMcpServers(): Promise<void> {
+  async broadcastMcpServers(scope?: TenantContext): Promise<void> {
     await this.perClient(async (ws, ctx) => {
+      if (scope && ctx.workspaceId !== scope.workspaceId) return;
       this.sendTo(ws, { channel: "mcp", type: "servers", servers: (await this.opts.listMcpServers?.(ctx)) ?? [] });
     });
   }

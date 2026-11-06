@@ -1,6 +1,6 @@
 import React from "react";
 import { McpPanel } from "./McpPanel.tsx";
-import { isDiscovering, useMcpStore } from "../store/mcpStore.ts";
+import { DISCOVERY_STALE_MS, isDiscovering, useMcpStore } from "../store/mcpStore.ts";
 import { useSessionStore } from "../store/sessionStore.ts";
 import { markup, seed, sessionAs } from "../lib/testRender.ts";
 import type { McpServer, McpTool } from "../types.ts";
@@ -89,8 +89,8 @@ console.log("\na server named after an object's own property is not stuck checki
   for (const id of ["constructor", "tostring", "hasownproperty", "valueof", "isprototypeof"]) {
     check(`${id} is not being checked when nothing is`, !isDiscovering({}, id));
   }
-  const held: Record<string, true> = {};
-  held["constructor"] = true;
+  const held: Record<string, number> = {};
+  held["constructor"] = Date.now();
   check("a server that is being checked still says so", isDiscovering(held, "constructor"));
   const row = render([server({ id: "constructor", label: "constructor" })]);
   const recheck = /<button[^>]*>(?:(?!<\/button>).)*re-check<\/button>/s.exec(row)?.[0] ?? "";
@@ -104,6 +104,49 @@ console.log("\nan add in flight shows as a server connecting");
   check("the reserved row has its own chip", />Pending</.test(pending));
   check("...marked as connecting", /title="connecting…"/.test(pending));
   check("...and its detail says so", /connecting…<\/span>/.test(pending));
+}
+
+console.log("\nchecking lasts until that check ends, and no longer");
+{
+  const store = useMcpStore.getState();
+  const alpha = server();
+  const beta = server({ id: "beta", label: "Beta" });
+  seed(useMcpStore, { servers: [alpha, beta], discovering: {}, addingEndpoint: null, error: null, notice: null });
+  store.setDiscovering("alpha", alpha.endpoint);
+  store.setServers([alpha, beta]);
+  check("a snapshot about something else does not end a check", isDiscovering(useMcpStore.getState().discovering, "alpha"));
+  seed(useMcpStore, { servers: useMcpStore.getState().servers, discovering: useMcpStore.getState().discovering });
+  const checking = markup(React.createElement(McpPanel));
+  check("...so the button still reads checking", /checking…/.test(checking));
+  store.setDiscovered("beta");
+  check("the end of another server's check does not end this one", isDiscovering(useMcpStore.getState().discovering, "alpha"));
+  store.setDiscovered("alpha");
+  check("its own end does", !isDiscovering(useMcpStore.getState().discovering, "alpha"));
+
+  store.setDiscovering("beta", beta.endpoint);
+  store.setServers([alpha]);
+  check("a server that has gone is no longer being checked", !isDiscovering(useMcpStore.getState().discovering, "beta"));
+
+  store.setDiscovering("alpha", alpha.endpoint);
+  store.forgetDiscovering();
+  check("a socket that reconnects forgets checks whose end it may have missed", !isDiscovering(useMcpStore.getState().discovering, "alpha"));
+
+  const realTimeout = globalThis.setTimeout;
+  let fire: (() => void) | null = null;
+  let waited = 0;
+  globalThis.setTimeout = ((fn: () => void, ms: number) => {
+    fire = fn;
+    waited = ms;
+    return 0;
+  }) as unknown as typeof setTimeout;
+  try {
+    store.setDiscovering("alpha", alpha.endpoint);
+  } finally {
+    globalThis.setTimeout = realTimeout;
+  }
+  check("a check whose end never arrives is given up on", waited === DISCOVERY_STALE_MS && fire !== null, String(waited));
+  (fire as (() => void) | null)?.();
+  check("...and then stops reading as checking", !isDiscovering(useMcpStore.getState().discovering, "alpha"));
 }
 
 console.log(fail === 0 ? "\nALL CORRECT" : `\n${fail} FAILURES`);

@@ -975,10 +975,13 @@ console.log("\nan add in flight is visible before its handshake ends");
   const index = readFileSync(join(fileURLToPath(new URL(".", import.meta.url)), "index.ts"), "utf8");
   const add = /case "addMcpServer": \{[\s\S]*?\n {6}\}\n/.exec(index)?.[0] ?? "";
   const prepared = add.indexOf("mcpRegistry.prepare(");
-  const snapshot = add.indexOf("broadcastMcpServers();", prepared);
+  const snapshot = add.indexOf("broadcastMcpServers(ctx);", prepared);
   const queued = add.indexOf("mcpDiscovery.enqueue(");
   check(prepared > 0 && snapshot > prepared && snapshot < queued, "the reserved row is broadcast once the add is accepted, before the handshake is queued");
   check(/type: "discovering", serverId: prepared\.id/.test(add), "and the discovering message names the row it reserved");
+  const settle = /async function settleMcpDiscovery\([\s\S]*?\n\}/.exec(index)?.[0] ?? "";
+  check(settle.indexOf("broadcastMcpServers(ctx)") > 0 && settle.indexOf("say()") > settle.indexOf("broadcastMcpServers(ctx)") && settle.indexOf('type: "discovered"') > settle.indexOf("say()"), "a finished check sends its snapshot, then its message, then that it is over");
+  check((index.match(/settleMcpDiscovery\(ctx, payload\.serverId/g) ?? []).length === 2, "...whether the handshake returned or threw");
 
   const A = await workspace("inflight");
   const slow = await startScriptedServer({

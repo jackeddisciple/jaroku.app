@@ -24,7 +24,7 @@ export interface McpToolRef extends McpTool {
 interface McpState {
   servers: McpServer[];
   /** Server ids with a handshake in flight, plus null for an add that has no id yet. */
-  discovering: Record<string, true>;
+  discovering: Record<string, number>;
   addingEndpoint: string | null;
   /** The last error, shown as a dismissible strip rather than swallowed. */
   error: string | null;
@@ -52,13 +52,20 @@ interface McpState {
   reconcileConfirms: (nonces: readonly string[]) => void;
   expireConfirms: (now: number) => void;
   setDiscovering: (serverId: string | null, endpoint: string) => void;
+  setDiscovered: (serverId: string) => void;
+  forgetDiscovering: () => void;
   setError: (message: string | null) => void;
   setNotice: (message: string | null) => void;
 }
 
 const CONFIRM_GRACE_MS = 5_000;
+export const DISCOVERY_STALE_MS = 3 * 60_000;
 
-export const useMcpStore = create<McpState>((set) => ({
+function without(discovering: Record<string, number>, serverId: string): Record<string, number> {
+  return Object.fromEntries(Object.entries(discovering).filter(([id]) => id !== serverId));
+}
+
+export const useMcpStore = create<McpState>((set, get) => ({
   servers: [],
   confirms: [],
   revealNonce: null,
@@ -68,17 +75,34 @@ export const useMcpStore = create<McpState>((set) => ({
   notice: null,
 
   setServers: (servers) =>
-    // A snapshot ends every in-flight handshake it could possibly describe. Clearing the
-    // whole map rather than one key means a discovery that failed in a way we did not
-    // anticipate cannot leave a spinner running forever.
-    set({ servers, discovering: {}, addingEndpoint: null }),
+    set((s) => {
+      const live = new Set(servers.map((server) => server.id));
+      return {
+        servers,
+        discovering: Object.fromEntries(Object.entries(s.discovering).filter(([id]) => live.has(id))),
+        addingEndpoint: null,
+      };
+    }),
 
-  setDiscovering: (serverId, endpoint) =>
-    set((s) =>
-      serverId === null
-        ? { addingEndpoint: endpoint }
-        : { discovering: { ...s.discovering, [serverId]: true } },
-    ),
+  setDiscovering: (serverId, endpoint) => {
+    if (serverId === null) {
+      set({ addingEndpoint: endpoint });
+      return;
+    }
+    const at = Date.now();
+    set((s) => ({ discovering: { ...s.discovering, [serverId]: at } }));
+    const stale = setTimeout(() => {
+      if (isDiscovering(get().discovering, serverId) && get().discovering[serverId] === at) {
+        set((s) => ({ discovering: without(s.discovering, serverId) }));
+      }
+    }, DISCOVERY_STALE_MS);
+    (stale as { unref?: () => void }).unref?.();
+  },
+
+  setDiscovered: (serverId) =>
+    set((s) => (isDiscovering(s.discovering, serverId) ? { discovering: without(s.discovering, serverId) } : s)),
+
+  forgetDiscovering: () => set((s) => (Object.keys(s.discovering).length === 0 ? s : { discovering: {} })),
 
   addConfirm: (req) =>
     set((s) =>
@@ -123,7 +147,7 @@ export const useMcpStore = create<McpState>((set) => ({
 // --- selectors ---------------------------------------------------------------
 // Exported as pure functions so no component re-derives them differently.
 
-export function isDiscovering(discovering: Record<string, true>, serverId: string): boolean {
+export function isDiscovering(discovering: Record<string, number>, serverId: string): boolean {
   return Object.prototype.hasOwnProperty.call(discovering, serverId);
 }
 

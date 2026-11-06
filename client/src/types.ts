@@ -850,6 +850,7 @@ export type McpConfirmVerdict = "once" | "run" | "deny";
 export type McpMessage =
   | { channel: "mcp"; type: "servers"; servers: McpServer[] }
   | { channel: "mcp"; type: "discovering"; serverId: string | null; endpoint: string }
+  | { channel: "mcp"; type: "discovered"; serverId: string }
   | { channel: "mcp"; type: "error"; message: string; serverId?: string; runId?: string; nonce?: string }
   | { channel: "mcp"; type: "notice"; message: string; serverId?: string }
   | ({ channel: "mcp"; type: "confirmRequest" } & McpConfirmRequest)

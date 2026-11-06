@@ -438,6 +438,7 @@ function dispatch(msg: ServerMessage): void {
       const m = useMcpStore.getState();
       if (msg.type === "servers") m.setServers(msg.servers);
       else if (msg.type === "discovering") m.setDiscovering(msg.serverId, msg.endpoint);
+      else if (msg.type === "discovered") m.setDiscovered(msg.serverId);
       else if (msg.type === "error") {
         m.setError(msg.message);
         if (msg.runId && msg.nonce) {
@@ -963,6 +964,7 @@ async function connect(): Promise<void> {
       outage = false;
       useUiStore.getState().showToast("Reconnected", "ok");
     }
+    useMcpStore.getState().forgetDiscovering();
     // §5.1 STEP 7 — UNLOCK, AND HERE RATHER THAN AFTER THE SNAPSHOTS. `onopen` is the moment the
     // relay has accepted the ticket and the Origin, which is the last thing that can refuse this
     // switch; the snapshots that follow are data arriving into stores the UI already renders

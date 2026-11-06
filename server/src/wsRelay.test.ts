@@ -288,6 +288,15 @@ console.log("\nbroadcasts are built per recipient");
     "an MCP registry broadcast is scoped per client",
     `A got ${ma?.servers?.[0]?.id}, B got ${mb?.servers?.[0]?.id}`);
 
+  const beforeAScoped = a.inbox.length;
+  const beforeBScoped = b.inbox.length;
+  await relay.broadcastMcpServers(ctxA);
+  await sleep(400);
+  const scopedA = a.inbox.slice(beforeAScoped).filter((m: any) => m.channel === "mcp" && m.type === "servers");
+  const scopedB = b.inbox.slice(beforeBScoped).filter((m: any) => m.channel === "mcp" && m.type === "servers");
+  check(scopedA.length === 1 && (scopedA[0] as any).servers?.[0]?.id === "server_a", "a change in one workspace refreshes that workspace's MCP list");
+  check(scopedB.length === 0, "and sends nothing to another workspace's sockets", `B got ${scopedB.length}`);
+
   const da = a.inbox.slice(beforeA2).filter((m: any) => m.channel === "deploy" && m.type === "deployments").pop() as any;
   const dbm = b.inbox.slice(beforeB2).filter((m: any) => m.channel === "deploy" && m.type === "deployments").pop() as any;
   check(da?.deployments?.[0]?.id === "deploy_a" && dbm?.deployments?.[0]?.id === "deploy_b",
