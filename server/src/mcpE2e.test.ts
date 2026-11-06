@@ -899,6 +899,33 @@ console.log("\nwhat discovery refused stays on the server's row");
   await fixture.close();
 }
 
+console.log("\na failed check still moves when the server was last checked");
+{
+  const A = await workspace("checked");
+  const fixture = await startScriptedServer();
+  await connect(A, { endpoint: fixture.url, label: "Checked" });
+  const first = await registry.get(A, "checked");
+  check(Boolean(first?.checked_at) && Boolean(first?.discovered_at), "a connect stamps when it was checked and when its tools were found", JSON.stringify(first));
+  const recheck = async () => {
+    await new Promise((r) => setTimeout(r, 15));
+    await queue.enqueue(A, { kind: "rediscover", serverId: "checked" });
+    await drain();
+    return registry.get(A, "checked");
+  };
+
+  fixture.set({ hook: ({ res }) => (res.writeHead(500, { "content-type": "text/plain" }).end("down"), true) });
+  const failed = await recheck();
+  check(failed?.status === "error", "the server is down", String(failed?.status));
+  check((failed?.checked_at ?? "") > (first?.checked_at ?? ""), "a failed re-check moves the time it was last checked", `${first?.checked_at} ${failed?.checked_at}`);
+  check(failed?.discovered_at === first?.discovered_at, "and leaves the time its tools were found", `${first?.discovered_at} ${failed?.discovered_at}`);
+
+  fixture.set({ hook: undefined });
+  const back = await recheck();
+  check(back?.status === "connected" && (back.checked_at ?? "") > (failed?.checked_at ?? ""), "a good re-check moves it again", `${back?.status} ${back?.checked_at}`);
+  check((back?.discovered_at ?? "") > (first?.discovered_at ?? ""), "...and the tools are new", String(back?.discovered_at));
+  await fixture.close();
+}
+
 console.log("\nadds that derive one id each keep their own row");
 {
   const A = await workspace("collide");

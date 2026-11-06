@@ -412,7 +412,7 @@ export class McpRegistry {
         return true;
       }
       if (row.status === "connected") return this.store.recordHandshake(ctx, id, row);
-      await this.store.setServerStatus(ctx, id, row.status, row.last_error);
+      await this.store.setServerStatus(ctx, id, row.status, row.last_error, new Date().toISOString());
       return (await this.store.getServer(ctx, id)) !== null;
     };
 
@@ -520,7 +520,7 @@ export class McpRegistry {
       // The tool list is LEFT ALONE, like every other rediscover failure — see this method's
       // own note. A repointed server must not silently strip every agent scoped to it; it must
       // stop being talked to and say why.
-      await this.store.setServerStatus(ctx, id, status, refusal);
+      await this.store.setServerStatus(ctx, id, status, refusal, new Date().toISOString());
       return { ok: false, server: await this.get(ctx, id), message: refusal };
     }
 
@@ -529,7 +529,7 @@ export class McpRegistry {
     if (!(await this.store.getServer(ctx, id))) return { ok: false, server: null, message: null };
 
     if (!result.ok) {
-      await this.store.setServerStatus(ctx, id, result.status, result.error);
+      await this.store.setServerStatus(ctx, id, result.status, result.error, new Date().toISOString());
       return { ok: false, server: await this.get(ctx, id), message: result.error };
     }
 
@@ -537,7 +537,7 @@ export class McpRegistry {
       const message =
         "this server now advertises no usable tools, so the last list was kept. Re-check once it is " +
         "healthy, or disconnect it if that is what you want.";
-      await this.store.setServerStatus(ctx, id, "error", message);
+      await this.store.setServerStatus(ctx, id, "error", message, new Date().toISOString());
       return { ok: false, server: await this.get(ctx, id), message };
     }
 
@@ -642,7 +642,7 @@ export class McpRegistry {
     } catch (err) {
       console.error(`[mcp] could not store the tools of ${id}:`, (err as Error)?.message ?? err);
       const message = "this server answered, but its tool list could not be stored";
-      await this.store.setServerStatus(ctx, id, "error", message);
+      await this.store.setServerStatus(ctx, id, "error", message, new Date().toISOString());
       return message;
     }
   }

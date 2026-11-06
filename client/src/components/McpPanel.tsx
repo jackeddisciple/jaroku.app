@@ -180,6 +180,7 @@ function ServerDetail({ server }: { server: McpServer }) {
   const [token, setToken] = useState("");
   const [showToken, setShowToken] = useState(false);
   const highCount = server.tools.filter((t) => t.impact === "high").length;
+  const lastChecked = server.checked_at ?? server.discovered_at;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
@@ -304,7 +305,9 @@ function ServerDetail({ server }: { server: McpServer }) {
             <p className="px-2 py-1.5 text-tiny text-faint">
               {server.tools.length} tool{server.tools.length === 1 ? "" : "s"}
               {highCount > 0 && `, ${highCount} needing confirmation before first use`}
-              {server.discovered_at && ` · last checked ${new Date(server.discovered_at).toLocaleString()}`}
+              {lastChecked && ` · last checked ${new Date(lastChecked).toLocaleString()}`}
+              {server.status !== "connected" && server.discovered_at && lastChecked !== server.discovered_at &&
+                ` · tools from ${new Date(server.discovered_at).toLocaleString()}`}
             </p>
             {server.discovery_note && (
               <p className="flex items-start gap-1.5 px-2 pb-1.5 text-tiny leading-[1.5] text-muted">

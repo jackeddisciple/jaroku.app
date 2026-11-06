@@ -810,6 +810,7 @@ export interface McpServer {
   discovered_at: string | null;
   created_at: string;
   discovery_note?: string | null;
+  checked_at?: string | null;
   /** A credential is stored. Never the credential itself — that never crosses the wire. */
   configured: boolean;
   tools: McpTool[];

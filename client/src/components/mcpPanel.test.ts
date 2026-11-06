@@ -71,5 +71,18 @@ console.log("\nrefused tools are said on the server, not only in a toast");
   check("and a clean list carries no note", !/refused|truncated/.test(listed));
 }
 
+console.log("\nlast checked moves with every check, not only a successful one");
+{
+  const found = "2026-11-07T10:00:00.000Z";
+  const checked = "2026-11-07T11:30:00.000Z";
+  const failed = render([server({ status: "unreachable", discovered_at: found, checked_at: checked, tools: [tool("read_page")] })]);
+  check("a failed check moves last checked", failed.includes(`last checked ${new Date(checked).toLocaleString()}`));
+  check("...and says which check the tools came from", failed.includes(`tools from ${new Date(found).toLocaleString()}`));
+  const healthy = render([server({ discovered_at: found, checked_at: checked, tools: [tool("read_page")] })]);
+  check("a healthy server shows only when it was checked", healthy.includes(`last checked ${new Date(checked).toLocaleString()}`) && !healthy.includes("tools from"));
+  const older = render([server({ discovered_at: found, tools: [tool("read_page")] })]);
+  check("a row from before checks were stamped still reads its discovery time", older.includes(`last checked ${new Date(found).toLocaleString()}`));
+}
+
 console.log(fail === 0 ? "\nALL CORRECT" : `\n${fail} FAILURES`);
 (globalThis as { process?: { exit(code: number): void } }).process?.exit(fail === 0 ? 0 : 1);

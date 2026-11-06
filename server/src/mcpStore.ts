@@ -81,6 +81,7 @@ export interface McpServer {
   discovered_at: string | null;
   created_at: string;
   discovery_note?: string | null;
+  checked_at?: string | null;
 }
 
 export type McpImpact = "high" | "low";
@@ -187,7 +188,7 @@ export function parseToolRef(ref: string): { serverId: string; toolName: string 
 // connected client receives.
 const SERVER_COLUMNS = `id, label, endpoint, transport, auth_env_key, server_name,
                         server_version, protocol_version, status, last_error, discovered_at,
-                        created_at, discovery_note`;
+                        created_at, discovery_note, checked_at`;
 const TOOL_COLUMNS = `id, server_id, name, description, input_schema, schema_hash, impact,
                       impact_reason, impact_override, override_schema_hash, annotations,
                       discovered_at`;
@@ -360,10 +361,11 @@ export class McpStore {
     id: string,
     status: McpServerStatus,
     lastError: string | null,
+    checkedAt: string | null = null,
   ): Promise<void> {
     await this.q(ctx).run(
-      `UPDATE mcp_servers SET status = ?, last_error = ? WHERE id = ? AND workspace_id = ?`,
-      [status, lastError, id, ctx.workspaceId],
+      `UPDATE mcp_servers SET status = ?, last_error = ?, checked_at = COALESCE(?, checked_at) WHERE id = ? AND workspace_id = ?`,
+      [status, lastError, checkedAt, id, ctx.workspaceId],
     );
   }
 
@@ -374,9 +376,10 @@ export class McpStore {
   ): Promise<boolean> {
     const res = await this.q(ctx).run(
       `UPDATE mcp_servers
-          SET server_name = ?, server_version = ?, protocol_version = ?, status = 'connected', last_error = NULL
+          SET server_name = ?, server_version = ?, protocol_version = ?, status = 'connected', last_error = NULL,
+              checked_at = ?
         WHERE id = ? AND workspace_id = ?`,
-      [claim.server_name, claim.server_version, claim.protocol_version, id, ctx.workspaceId],
+      [claim.server_name, claim.server_version, claim.protocol_version, nowIso(), id, ctx.workspaceId],
     );
     return res.changes > 0;
   }
