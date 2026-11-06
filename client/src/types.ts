@@ -809,6 +809,7 @@ export interface McpServer {
   last_error: string | null;
   discovered_at: string | null;
   created_at: string;
+  discovery_note?: string | null;
   /** A credential is stored. Never the credential itself — that never crosses the wire. */
   configured: boolean;
   tools: McpTool[];

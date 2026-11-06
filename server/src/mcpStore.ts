@@ -80,6 +80,7 @@ export interface McpServer {
   /** When the tool list below was last refreshed. Null until a handshake has succeeded. */
   discovered_at: string | null;
   created_at: string;
+  discovery_note?: string | null;
 }
 
 export type McpImpact = "high" | "low";
@@ -186,7 +187,7 @@ export function parseToolRef(ref: string): { serverId: string; toolName: string 
 // connected client receives.
 const SERVER_COLUMNS = `id, label, endpoint, transport, auth_env_key, server_name,
                         server_version, protocol_version, status, last_error, discovered_at,
-                        created_at`;
+                        created_at, discovery_note`;
 const TOOL_COLUMNS = `id, server_id, name, description, input_schema, schema_hash, impact,
                       impact_reason, impact_override, override_schema_hash, annotations,
                       discovered_at`;
@@ -451,6 +452,7 @@ export class McpStore {
     ctx: TenantContext,
     serverId: string,
     discovered: DiscoveredTool[],
+    note: string | null = null,
   ): Promise<McpTool[]> {
     const previous = new Map((await this.listTools(ctx, serverId)).map((t) => [t.name, t]));
     const retired = await this.retiredOverrides(ctx, serverId);
@@ -512,9 +514,10 @@ export class McpStore {
           ],
         );
       }
-      const stamped = await tx.run(`UPDATE mcp_servers SET discovered_at = ?, retired_overrides = ? WHERE id = ? AND workspace_id = ?`, [
+      const stamped = await tx.run(`UPDATE mcp_servers SET discovered_at = ?, retired_overrides = ?, discovery_note = ? WHERE id = ? AND workspace_id = ?`, [
         at,
         JSON.stringify(nextRetired),
+        note,
         serverId,
         ctx.workspaceId,
       ]);

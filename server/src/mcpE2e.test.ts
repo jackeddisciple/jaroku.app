@@ -866,6 +866,39 @@ console.log("\nan empty cursor ends the list, and a repeated name is called what
   await endless.close();
 }
 
+console.log("\nwhat discovery refused stays on the server's row");
+{
+  const A = await workspace("note");
+  const fixture = await startScriptedServer({ tools: [{ name: "has spaces", inputSchema: {} }, { name: "bad.dot", inputSchema: {} }] });
+  await connect(A, { endpoint: fixture.url, label: "Refusing" });
+  const row = await registry.get(A, "refusing");
+  check(row?.status === "connected" && row.tools.length === 0, "a server whose every tool is refused still connects", `${row?.status} ${row?.tools.length}`);
+  check(/^2 advertised tools were refused as unusable/.test(row?.discovery_note ?? ""), "and its row says two tools were refused", String(row?.discovery_note));
+  const listed = (await store.listServers(A)).find((s) => s.id === "refusing");
+  check(listed?.discovery_note === row?.discovery_note, "the note is part of the snapshot every client receives");
+
+  const recheck = async () => {
+    await queue.enqueue(A, { kind: "rediscover", serverId: "refusing" });
+    await drain();
+    return registry.get(A, "refusing");
+  };
+  fixture.set({ tools: [{ name: "read_page", inputSchema: {} }, { name: "has spaces", inputSchema: {} }] });
+  const partly = await recheck();
+  check(partly?.tools.length === 1 && /^1 advertised tool was refused/.test(partly.discovery_note ?? ""), "a re-check replaces the note with what it found", String(partly?.discovery_note));
+
+  fixture.set({ tools: [{ name: "read_page", inputSchema: {} }] });
+  const clean = await recheck();
+  check(clean?.discovery_note === null, "a clean list clears it", String(clean?.discovery_note));
+
+  fixture.set({ tools: [{ name: "read_page", inputSchema: {} }, { name: "has spaces", inputSchema: {} }] });
+  await recheck();
+  fixture.set({ tools: "nope" });
+  const failed = await recheck();
+  check(failed?.status === "error" && failed.tools.length === 1, "a failed re-check keeps the list it had", `${failed?.status} ${failed?.tools.length}`);
+  check(/^1 advertised tool was refused/.test(failed?.discovery_note ?? ""), "...and the note that describes that list", String(failed?.discovery_note));
+  await fixture.close();
+}
+
 console.log("\nadds that derive one id each keep their own row");
 {
   const A = await workspace("collide");

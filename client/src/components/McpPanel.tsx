@@ -292,10 +292,10 @@ function ServerDetail({ server }: { server: McpServer }) {
           <EmptyState
             size="inline"
             icon={PlugIcon}
-            title={server.status === "connected" ? "No tools advertised" : "No tools discovered yet"}
+            title={server.status !== "connected" ? "No tools discovered yet" : server.discovery_note ? "No usable tools" : "No tools advertised"}
             hint={
               server.status === "connected"
-                ? "The handshake succeeded and this server offered nothing to call."
+                ? server.discovery_note ?? "The handshake succeeded and this server offered nothing to call."
                 : "Connect successfully to see what this server says it can do."
             }
           />
@@ -306,6 +306,14 @@ function ServerDetail({ server }: { server: McpServer }) {
               {highCount > 0 && `, ${highCount} needing confirmation before first use`}
               {server.discovered_at && ` · last checked ${new Date(server.discovered_at).toLocaleString()}`}
             </p>
+            {server.discovery_note && (
+              <p className="flex items-start gap-1.5 px-2 pb-1.5 text-tiny leading-[1.5] text-muted">
+                <span className="mt-0.5 shrink-0" style={{ color: STATUS.pending }}>
+                  <AlertTriangleIcon size={ICON.xs} />
+                </span>
+                <span className="min-w-0 break-words">{server.discovery_note}</span>
+              </p>
+            )}
             {server.tools.map((t) => (
               <ToolRow key={t.name} tool={t} serverId={server.id} />
             ))}

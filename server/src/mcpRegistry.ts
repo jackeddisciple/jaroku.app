@@ -637,7 +637,7 @@ export class McpRegistry {
     result: Extract<DiscoveryResult, { ok: true }>,
   ): Promise<string | null> {
     try {
-      await this.store.replaceTools(ctx, id, this.classifyAll(result));
+      await this.store.replaceTools(ctx, id, this.classifyAll(result), truncationNote(result));
       return null;
     } catch (err) {
       console.error(`[mcp] could not store the tools of ${id}:`, (err as Error)?.message ?? err);
