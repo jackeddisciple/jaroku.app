@@ -37,12 +37,12 @@ import { validatorVerdict } from "../lib/validatorVerdict.ts";
 import { absTime, fmtCost, fmtLatency, relTime } from "../lib/format.ts";
 import { ACCENT, ICON, STATUS, TEXT, TYPE } from "../lib/tokens.ts";
 import { useUiStore } from "../store/uiStore.ts";
-import { useMcpStore } from "../store/mcpStore.ts";
+import { allMcpTools, useMcpStore } from "../store/mcpStore.ts";
 import { useCanRun } from "../lib/useCapability.ts";
 import { sendSetAgentTools } from "../lib/socket.ts";
 import { useThreadStore } from "../store/threadStore.ts";
 import { useAgentGridStore } from "../store/agentGridStore.ts";
-import type { AgentDetailView } from "../types.ts";
+import type { AgentDetailView, McpServer } from "../types.ts";
 import { Icon } from "../lib/icons/registry.ts";
 import { ProviderMark } from "../lib/icons.tsx";
 
@@ -101,6 +101,19 @@ const TABS: { id: TabId; label: string; icon: (p: { size?: number }) => React.Re
  * COLLAPSED BY DEFAULT. This tab's job is to answer "what can this agent touch", and a list of
  * every tool in the workspace on top of that answer would bury it.
  */
+export interface GrantRow {
+  ref: string;
+  gone: boolean;
+  high: boolean;
+}
+
+export function grantRows(servers: McpServer[], granted: readonly string[]): GrantRow[] {
+  const tools = new Map(allMcpTools(servers).map((tool) => [tool.ref, tool]));
+  return [...new Set([...tools.keys(), ...granted])]
+    .sort()
+    .map((ref) => ({ ref, gone: !tools.has(ref), high: tools.get(ref)?.impact === "high" }));
+}
+
 function McpGrantEditor({ detail }: { detail: AgentDetailView }) {
   const slug = detail.card.slug;
   const mayWrite = useCanRun("setAgentTools", slug);
@@ -113,11 +126,10 @@ function McpGrantEditor({ detail }: { detail: AgentDetailView }) {
   if (!mayWrite) return null;
 
   const granted = detail.tools.map((t) => t.ref);
-  const available = servers.flatMap((s) => s.tools.map((t) => `${s.id}/${t.name}`));
   // A REF WHOSE SERVER HAS GONE IS OFFERED AS A ROW THAT IS ON AND CANNOT BE TURNED BACK ON. It is
   // what the `unresolved` chip is about, and unticking it is the repair — so it belongs in the list
   // rather than being filtered out of the one place it can be removed from.
-  const rows = [...new Set([...available, ...granted])].sort();
+  const rows = grantRows(servers, granted);
   const chosen = draft ?? granted;
 
   return (
@@ -139,8 +151,7 @@ function McpGrantEditor({ detail }: { detail: AgentDetailView }) {
               No MCP server is connected to this workspace, so there is nothing to grant.
             </div>
           ) : (
-            rows.map((ref) => {
-              const gone = !available.includes(ref);
+            rows.map(({ ref, gone, high }) => {
               return (
                 <label key={ref} className="flex min-w-0 cursor-pointer items-center gap-2 text-tiny text-ink">
                   <input
@@ -157,6 +168,11 @@ function McpGrantEditor({ detail }: { detail: AgentDetailView }) {
                     }
                   />
                   <Truncate className="min-w-0 flex-1" title={ref}>{ref}</Truncate>
+                  {high && (
+                    <Chip size="sm" caps variant="bare" color={STATUS.pending} className="shrink-0" title="Asks before it runs the first time">
+                      confirms
+                    </Chip>
+                  )}
                   {gone && (
                     <Chip size="sm" caps color={STATUS.error} className="shrink-0" title="This server is no longer in the workspace">
                       gone

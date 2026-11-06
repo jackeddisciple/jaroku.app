@@ -7,6 +7,7 @@ import { ADD_INTERRUPTED, DISCOVERY_STALE_MS, agentsUsing, allMcpTools, isDiscov
 import { useSessionStore } from "../store/sessionStore.ts";
 import { markup, seed, sessionAs } from "../lib/testRender.ts";
 import { resetWorkspaceStores } from "../store/reset.ts";
+import { grantRows } from "./AgentTabs.tsx";
 import { useEntitlementStore } from "../store/entitlementStore.ts";
 import { announceAsks } from "./McpConfirmModal.tsx";
 import { TOAST_MAX_MS, TOAST_MS, toastDuration, useUiStore } from "../store/uiStore.ts";
@@ -544,6 +545,20 @@ console.log("\ntools ticked for one agent are not carried into the next");
   const cleared = build.indexOf("setSelectedMcp([]);");
   check("...keyed on the agent the composer is building, which is set before the effect reads it", declared > 0 && cleared > declared);
   check("the ticks are sent as they stand when a plan or a build goes out", (build.match(/selectedMcp, attachRefs/g) ?? []).length >= 2);
+}
+
+console.log("\nthe grant editor marks a tool that asks first, as the composer does");
+{
+  const alpha = server({ tools: [tool("read_page"), tool("delete_everything", { impact: "high", computed_impact: "high" })] });
+  const rows = grantRows([alpha], ["alpha/read_page", "gone/send"]);
+  check("every tool in the workspace and every granted ref is a row", rows.map((r) => r.ref).join() === "alpha/delete_everything,alpha/read_page,gone/send");
+  check("a high impact tool is marked as one", rows.find((r) => r.ref === "alpha/delete_everything")?.high === true);
+  check("a read is not", rows.find((r) => r.ref === "alpha/read_page")?.high === false);
+  check("a ref whose server has gone is still offered, as gone", rows.find((r) => r.ref === "gone/send")?.gone === true);
+  const lowered = server({ tools: [tool("send_message", { impact: "low", computed_impact: "high", overridden: true })] });
+  check("the mark follows the impact that governs, not the classifier's first answer", grantRows([lowered], [])[0]?.high === false);
+  const tabs = readFileSync(fileURLToPath(new URL("./AgentTabs.tsx", import.meta.url)), "utf8");
+  check("the row shows the same confirms chip the composer shows", /\{high && \(\s*<Chip size="sm" caps variant="bare" color=\{STATUS\.pending\}[^>]*title="Asks before it runs the first time">\s*confirms/.test(tabs));
 }
 
 console.log(fail === 0 ? "\nALL CORRECT" : `\n${fail} FAILURES`);
