@@ -212,6 +212,7 @@ class ToolNotApproved(RuntimeError):
 # nothing is granted, and the empty string is as good a key as any for a case that never reaches
 # here.
 _run_grants: set[tuple[str, str]] = set()
+_called: set[tuple[str, str]] = set()
 
 
 def _grant_key(key: str) -> tuple[str, str]:
@@ -757,6 +758,7 @@ def _make_tool(server: dict[str, Any], spec: dict[str, Any]) -> StructuredTool:
         #    that asks about calls the host would otherwise never hear of. Smart and Fast differ
         #    from each other by whether the HOST auto-answers, which it decides from its own row —
         #    asking it more often is always safe, and asking it less never happens here.
+        call_key = _grant_key(f"{server_id}/{name}")
         if high_impact or PERMISSION_MODE == "strict":
             _confirm(
                 server_id,
@@ -764,7 +766,9 @@ def _make_tool(server: dict[str, Any], spec: dict[str, Any]) -> StructuredTool:
                 kwargs,
                 impact_reason if high_impact else "Strict mode confirms every tool call",
                 impact="high" if high_impact else "low",
+                first_call=call_key not in _called,
             )
+        _called.add(call_key)
 
         # 3. The credential, read at the moment of use and never held anywhere.
         token = os.environ.get(auth_env_key) if auth_env_key else None

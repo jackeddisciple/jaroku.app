@@ -268,6 +268,54 @@ print(json.dumps({"loaded": load_env(Path(${JSON.stringify(envFile)}), verbose=F
   check(JSON.stringify(loaded["loaded"]) === JSON.stringify(["SOME_REAL_KEY"]), "only the real key is loaded", JSON.stringify(loaded));
 }
 
+console.log("\nthe bridge says truthfully which call is a tool's first in the run");
+{
+  const callTwice = (env: string) => python(`
+import os, importlib, tempfile
+os.environ["JAROKU_RUN_ID"] = "run-modes"
+${env}
+B = importlib.reload(B)
+asked = []
+def confirm(server, name, args, reason, impact="high", first_call=True):
+    asked.append({"tool": name, "reason": reason, "impact": impact, "first": first_call})
+B._confirm = confirm
+B._run_call = lambda endpoint, token, tool, args: None
+B._result_text = lambda server, name, result: "ok"
+tools = {t.name: t for t in B.build_tools(json.loads(${JSON.stringify(MANIFEST)}))}
+for name in ["read_page", "read_page", "send_message", "send_message"]:
+    tools[name].invoke({})
+print(json.dumps({"asked": asked}))
+`) as Promise<{ asked?: { tool: string; reason: string; impact: string; first: boolean }[]; crashed?: string }>;
+  const local = `os.environ["JAROKU_CONTROL_DIR"] = tempfile.mkdtemp()\nos.environ.pop("JAROKU_CONTROL_PLANE_URL", None)\n`;
+
+  const strict = await callTwice(`${local}os.environ["JAROKU_PERMISSION_MODE"] = "strict"`);
+  const asks = strict.asked ?? [];
+  check(!strict.crashed, "the bridge runs", String(strict.crashed ?? ""));
+  check(asks.map((a) => `${a.tool}:${a.first}`).join() === "read_page:true,read_page:false,send_message:true,send_message:false", "each ask says whether it is that tool's first call in the run, not always the first", JSON.stringify(asks));
+  check(asks.filter((a) => a.tool === "read_page").every((a) => a.impact === "low" && a.reason === "Strict mode confirms every tool call"), "...with the impact and reason it always gave", JSON.stringify(asks));
+
+  const smart = await callTwice(`${local}os.environ["JAROKU_PERMISSION_MODE"] = "smart"`);
+  check((smart.asked ?? []).map((a) => `${a.tool}:${a.first}`).join() === "send_message:true,send_message:false", "a high impact tool called twice says so on its second ask too", JSON.stringify(smart.asked));
+  check(!(smart.asked ?? []).some((a) => a.tool === "read_page"), "and who is asked is unchanged: a read in Smart still does not ask");
+
+  const fresh = await python(`
+import os, importlib, tempfile
+os.environ["JAROKU_CONTROL_DIR"] = tempfile.mkdtemp()
+os.environ["JAROKU_PERMISSION_MODE"] = "strict"
+B = importlib.reload(B)
+asked = []
+B._confirm = lambda server, name, args, reason, impact="high", first_call=True: asked.append([os.environ["JAROKU_RUN_ID"], first_call])
+B._run_call = lambda endpoint, token, tool, args: None
+B._result_text = lambda server, name, result: "ok"
+tool = {t.name: t for t in B.build_tools(json.loads(${JSON.stringify(MANIFEST)}))}["read_page"]
+for run in ["run-one", "run-one", "run-two"]:
+    os.environ["JAROKU_RUN_ID"] = run
+    tool.invoke({})
+print(json.dumps({"asked": asked}))
+`);
+  check(JSON.stringify(fresh["asked"]) === JSON.stringify([["run-one", true], ["run-one", false], ["run-two", true]]), "a new run starts every tool's count again", JSON.stringify(fresh));
+}
+
 rmSync(dir, { recursive: true, force: true });
 console.log(failures === 0 ? "\nALL CORRECT" : `\n${failures} FAILURES`);
 process.exit(failures === 0 ? 0 : 1);
