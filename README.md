@@ -1,4 +1,4 @@
-# Jaroku
+# Jaroku (For Mac Devices)
 
 ## **A local-first workbench for building, running, tracing, editing and evaluating AI agents.**
 
