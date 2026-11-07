@@ -1,7 +1,7 @@
 import React from "react";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { ConnectForm, CredentialHome, CredentialRemovalConfirm, ENDPOINT_SETTLED, EditServerForm, MCP_EMPTY_ADMIN, MCP_EMPTY_MEMBER, McpPanel, NOT_SENT, RemovalConfirm, SCHEMA_DISPLAY_CHARS, SCHEMA_SHORTENED, TOKEN_DROPPED, controlBtn, notSent, sameToolRow, schemaText, startAdd, storedCredentialTitle } from "./McpPanel.tsx";
+import { ConnectForm, CredentialHome, CredentialRemovalConfirm, ENDPOINT_SETTLED, EditServerForm, MCP_EMPTY_ADMIN, MCP_EMPTY_MEMBER, MCP_LABEL_MAX, McpPanel, NOT_SENT, RemovalConfirm, SCHEMA_DISPLAY_CHARS, SCHEMA_SHORTENED, TOKEN_DROPPED, controlBtn, notSent, sameToolRow, schemaText, startAdd, storedCredentialTitle } from "./McpPanel.tsx";
 import { FIRST_TOOL_PAGE, TOOL_PAGE, matchTools, moreToolsLabel, searchTools, showMoreTools, toolWindow } from "../lib/toolWindow.ts";
 import { useBuildStore } from "../store/buildStore.ts";
 import { ADD_INTERRUPTED, DISCOVERY_STALE_MS, agentsUsing, allMcpTools, isDiscovering, liveSelection, mcpToolSearchText, removalConsequences, useMcpStore } from "../store/mcpStore.ts";
@@ -679,6 +679,20 @@ console.log("\nevery MCP panel action says when it was not sent, naming the butt
   check("...naming the button that was pressed", /setImpact\(high \? "low" : "high", high \? "stop asking first" : "treat as high impact"\)/.test(source) && /setImpact\(null, tool\.override_voided \? "clear my old setting" : "use Jaroku's classification"\)/.test(source));
   const socket = readFileSync(fileURLToPath(new URL("../lib/socket.ts", import.meta.url)), "utf8");
   check("and the socket reports whether an impact change was sent", /export function sendSetMcpToolImpact\([^)]*\): boolean \{\s*return send\(/.test(socket));
+}
+
+console.log("\na server's name stops where the server would cut it");
+{
+  const kept = /export const MAX_LABEL_CHARS = (\d+);/.exec(
+    readFileSync(fileURLToPath(new URL("../../../server/src/mcpText.ts", import.meta.url)), "utf8"),
+  )?.[1];
+  check("the panel's limit is the server's", Number(kept) === MCP_LABEL_MAX, `${kept} vs ${MCP_LABEL_MAX}`);
+  seed(useMcpStore, { formOpen: true, draft: { endpoint: "", label: "" }, pendingAdd: null, tokenDropped: false });
+  const connect = markup(React.createElement(ConnectForm));
+  check("connecting takes no longer a name than is kept", new RegExp(`name="mcp-server-label"[^>]*maxLength="${MCP_LABEL_MAX}"|maxLength="${MCP_LABEL_MAX}"[^>]*name="mcp-server-label"`, "i").test(connect), connect.match(/<input[^>]*mcp-server-label[^>]*>/)?.[0] ?? "");
+  seed(useMcpStore, { formOpen: false });
+  const editing = markup(React.createElement(EditServerForm, { server: server(), onDone: () => {} }));
+  check("...and neither does renaming", new RegExp(`name="mcp-server-edit-label"[^>]*maxLength="${MCP_LABEL_MAX}"|maxLength="${MCP_LABEL_MAX}"[^>]*name="mcp-server-edit-label"`, "i").test(editing), editing.match(/<input[^>]*mcp-server-edit-label[^>]*>/)?.[0] ?? "");
 }
 
 console.log(fail === 0 ? "\nALL CORRECT" : `\n${fail} FAILURES`);

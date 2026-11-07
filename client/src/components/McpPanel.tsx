@@ -296,6 +296,7 @@ export function EditServerForm({ server, onDone }: { server: McpServer; onDone: 
         name="mcp-server-edit-label"
         aria-label="Name"
         autoComplete="off"
+        maxLength={MCP_LABEL_MAX}
         className="w-full rounded-input border border-edge bg-elevated px-2 py-1 text-tiny text-ink outline-none focus-visible:shadow-focusring placeholder:text-faint"
         placeholder="name"
         value={label}
@@ -617,6 +618,8 @@ export function startAdd(draft: AddDraft, send: typeof sendAddMcpServer = sendAd
   return "sent";
 }
 
+export const MCP_LABEL_MAX = 80;
+
 export const TOKEN_DROPPED =
   "The token you had typed was cleared when you left this panel, because Jaroku does not keep a credential it has not sent. Type it again if the server needs one.";
 
@@ -695,6 +698,7 @@ export function ConnectForm() {
             name="mcp-server-label"
             aria-label="Name (optional)"
             autoComplete="off"
+            maxLength={MCP_LABEL_MAX}
             className="min-w-0 flex-1 rounded-input border border-edge bg-elevated px-2 py-1 text-tiny text-ink outline-none focus-visible:shadow-focusring placeholder:text-faint"
             placeholder="name (optional)"
             value={label}
