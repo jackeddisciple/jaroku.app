@@ -3190,6 +3190,16 @@ function noteToolRefused(p: PendingConfirm, outcome: "denied" | "timed_out"): vo
     .catch((err) => console.error("[work] could not record a refused tool call:", (err as Error).message));
 }
 
+async function namedAsk(ctx: TenantContext, ask: PendingConfirm): Promise<void> {
+  if (!ask.agentSlug) return;
+  try {
+    const agent = await agentRepo.bySlug(ctx, ask.agentSlug);
+    if (agent) ask.agentName = agent.display_name ?? agent.slug;
+  } catch (err) {
+    console.error("[mcp] could not name the agent an ask belongs to:", (err as Error).message);
+  }
+}
+
 function handleHostedMcpConfirmRequest(runId: string, payload: Record<string, unknown>): void {
   const nonce = payload.nonce;
   if (!isConfirmNonce(nonce)) return;
@@ -12489,13 +12499,16 @@ onBothPools("control", ({ runId: slotRunId, ctrl }) => {
       const impactReason = granted.impact === "high" ? granted.reason : "Strict mode confirms every tool call";
       const args = String(ctrl.args ?? "{}");
       const timeoutS = typeof ctrl.timeout_s === "number" ? ctrl.timeout_s : 120;
+      const slug = liveRuns.get(runId)?.agentId ?? null;
       const local: PendingConfirm = {
         runId, workspaceId: runCtx.workspaceId, nonce, server, tool,
-        impactReason, args, timeoutS, requestedAt: Date.now(), workItemId: null, agentName: null,
+        impactReason, args, timeoutS, requestedAt: Date.now(), workItemId: null, agentName: slug, agentSlug: slug,
       };
       pendingConfirms.set(confirmKey(runId, nonce), local);
       console.log(`[mcp] ${runId} is waiting for confirmation of ${server}/${tool}`);
-      relay.broadcastMcp(runCtx, confirmRequestOf(local), runBarred.get(runId));
+      void namedAsk(runCtx, local).then(() => {
+        if (pendingConfirms.has(confirmKey(runId, nonce))) relay.broadcastMcp(runCtx, confirmRequestOf(local), runBarred.get(runId));
+      });
       // A halted graph waiting on a person is §3.3's `needs_you`, and the derivation reads
       // `pendingConfirms` live — so the fact is already true and nothing was telling the list.
       // The row turns amber while the run is blocked, and back when `clearConfirms` fires.

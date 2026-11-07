@@ -244,6 +244,8 @@ async function main(): Promise<void> {
     check(after.asked.map((a) => a["tool"]).join() === "read_page", "the raised tool asks and the lowered one does not", JSON.stringify(after.asked.map((a) => a["tool"])));
     check(/you marked it/.test(String(after.asked[0]?.["impactReason"])), "and the ask says why", String(after.asked[0]?.["impactReason"]));
     check(after.calls.length === 2, "and both still run once approved", JSON.stringify(after.calls));
+    check(/existing/i.test(String(after.asked[0]?.["agentName"] ?? "")), "the ask names the agent that is asking, not only its run", String(after.asked[0]?.["agentName"]));
+    check(after.asked[0]?.["agentSlug"] === agent, "...and which agent that is", String(after.asked[0]?.["agentSlug"]));
     c.close();
   }
 
