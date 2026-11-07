@@ -1015,6 +1015,8 @@ console.log(`[server] secret store: ${secrets.kind}${secrets.kind === "dotenv" ?
 // first's, so both then authenticated as whoever wrote last.
 const mcpRegistry = new McpRegistry(mcpStore, secrets, undefined, secretRefs);
 
+let reconcileInboxNow: (ctx: TenantContext) => void = () => {};
+
 // AND DISCOVERY MOVES OFF THE REQUEST PATH.
 //
 // A handshake is a round trip to a third party nobody here controls, bounded by mcpClient's own
@@ -1055,6 +1057,7 @@ const mcpDiscovery = new McpDiscoveryQueue({
     // the reconciler can ask it. Raised on the event, it would put a card on the board every time a
     // third party restarted.
     if (result.server) noteInbox("an MCP server needing a credential", noteMcpStatus(inboxDeps, ctx, result.server));
+    reconcileInboxNow(ctx);
   },
   onError: (ctx, payload, err) => {
     console.error(`[mcp] ${payload.kind} ${payload.serverId} threw:`, err);
@@ -2076,6 +2079,11 @@ const sweepInbox = (): void => {
       if (line) console.log(line);
     })
     .catch((err) => console.error("[inbox] sweep failed:", (err as Error)?.message ?? err));
+};
+reconcileInboxNow = (ctx) => {
+  void inboxReconciler
+    .sweepWorkspace(systemContextFor(ctx.workspaceId, newRequestId()))
+    .catch((err) => console.error("[inbox] could not settle one workspace:", (err as Error)?.message ?? err));
 };
 setInterval(sweepInbox, 60_000).unref();
 // AND ONCE AT BOOT, ON THE NEXT TICK RATHER THAN NOW.
@@ -6266,6 +6274,7 @@ async function handleMcpCommand(ctx: TenantContext, cmd: McpCommand): Promise<vo
         if (removed) {
           console.log(`[mcp] removed ${cmd.serverId}`);
           auditMcp(ctx, "mcp.server.disconnected", cmd.serverId);
+          reconcileInboxNow(ctx);
         }
         broadcastMcpServers(ctx);
         if (!removed) {

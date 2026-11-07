@@ -449,6 +449,54 @@ async function main(): Promise<void> {
     await guarded.close();
   }
 
+  console.log("\na server's credential card settles as soon as the server is removed or given its credential");
+  {
+    const { c } = await person("authcard");
+    const cardFor = async (serverId: string): Promise<Message | null> => {
+      for (let attempt = 0; attempt < 20; attempt++) {
+        const from = c.log.length;
+        c.send({ cmd: "listInbox" });
+        for (let i = 0; i < 20; i++) {
+          await sleep(100);
+          const snapshot = c.log.slice(from).reverse().find((m) => m["channel"] === "inbox" && m["type"] === "inbox");
+          const card = (snapshot?.["items"] as Message[] | undefined)?.find(
+            (item) => item["type"] === "mcp_auth_required" && item["subject_id"] === serverId,
+          );
+          if (card) return card;
+          if (snapshot) break;
+        }
+      }
+      return null;
+    };
+    const settledWithin = async (itemId: unknown, ms: number): Promise<boolean> => {
+      for (let waited = 0; waited < ms; waited += 100) {
+        if (c.log.some((m) => m["channel"] === "inbox" && m["type"] === "inboxDelta" && m["kind"] === "resolved" && m["itemId"] === itemId)) return true;
+        await sleep(100);
+      }
+      return false;
+    };
+
+    const removedServer = await startScriptedServer({ token: "never-given" });
+    const removedRow = await addServer(c, removedServer.url, "Unwanted");
+    check(removedRow?.["status"] === "auth_required", "a server that wants a credential says so", String(removedRow?.["status"]));
+    const removedCard = await cardFor("unwanted");
+    check(removedCard !== null, "and puts a card on the board");
+    c.send({ cmd: "removeMcpServer", serverId: "unwanted" });
+    check(await settledWithin(removedCard?.["id"], 4000), "removing the server settles its card at once rather than on the next sweep");
+    await removedServer.close();
+
+    const fixedServer = await startScriptedServer({ token: "given-later" });
+    await addServer(c, fixedServer.url, "Fixable");
+    const fixedCard = await cardFor("fixable");
+    check(fixedCard !== null, "a second server's card is raised too");
+    c.send({ cmd: "setMcpServerAuth", serverId: "fixable", token: "given-later" });
+    check(await settledWithin(fixedCard?.["id"], 4000), "and giving it the credential it wanted settles that card at once");
+    for (let i = 0; i < 40 && c.server("fixable")?.["status"] !== "connected"; i++) await sleep(100);
+    check(c.server("fixable")?.["status"] === "connected", "because the server now answers", String(c.server("fixable")?.["status"]));
+    c.close();
+    await fixedServer.close();
+  }
+
   console.log("\na reused name does not point an existing agent at a different server");
   {
     const first = await startScriptedServer();

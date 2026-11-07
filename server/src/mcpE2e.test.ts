@@ -1147,6 +1147,17 @@ console.log("\nallowing a tool for the run answers every ask for it in that run"
   check(/if \(verdict === "run"\) \{\s*for \(const sibling of coveredByRunGrant\(pending, pendingConfirms\.values\(\)\)\) \{\s*if \(pendingConfirms\.has\(confirmKey\(sibling\.runId, sibling\.nonce\)\)\) answerConfirm\(ctx, sibling, "run"\);/.test(answer), "and the answer is given to each of them, once, as allowed for the run");
 }
 
+console.log("\na server's Inbox card is settled when the server changes, not on the next sweep");
+{
+  const index = readFileSync(join(fileURLToPath(new URL(".", import.meta.url)), "index.ts"), "utf8");
+  check(/reconcileInboxNow = \(ctx\) => \{\s*void inboxReconciler\s*\.sweepWorkspace\(systemContextFor\(ctx\.workspaceId, newRequestId\(\)\)\)\s*\.catch\(/.test(index), "one workspace can be reconciled on demand, the way the timer reconciles it");
+  const discovered = /onResult: \(ctx, payload, result\) => \{[\s\S]*?\n {2}\},\n/.exec(index)?.[0] ?? "";
+  check(/noteMcpStatus\(inboxDeps, ctx, result\.server\)\);\s*reconcileInboxNow\(ctx\);/.test(discovered), "a finished check or credential change reconciles the workspace it happened in");
+  const remove = /case "removeMcpServer": \{[\s\S]*?\n {6}\}\n/.exec(index)?.[0] ?? "";
+  check(/auditMcp\(ctx, "mcp\.server\.disconnected", cmd\.serverId\);\s*reconcileInboxNow\(ctx\);/.test(remove), "and so does removing a server, so its card does not outlive it");
+  check(index.indexOf("let reconcileInboxNow") < index.indexOf("const mcpDiscovery = new McpDiscoveryQueue"), "the hook exists before the queue that calls it");
+}
+
 console.log("\nevery message about changing a grant points at a control that exists");
 {
   const here = fileURLToPath(new URL(".", import.meta.url));
