@@ -493,6 +493,10 @@ async function main(): Promise<void> {
     check(await settledWithin(fixedCard?.["id"], 4000), "and giving it the credential it wanted settles that card at once");
     for (let i = 0; i < 40 && c.server("fixable")?.["status"] !== "connected"; i++) await sleep(100);
     check(c.server("fixable")?.["status"] === "connected", "because the server now answers", String(c.server("fixable")?.["status"]));
+    c.send({ cmd: "setMcpServerAuth", serverId: "fixable", token: null });
+    for (let i = 0; i < 50 && c.server("fixable")?.["status"] !== "auth_required"; i++) await sleep(100);
+    check(c.server("fixable")?.["status"] === "auth_required", "taking the credential away leaves the server asking for one again", String(c.server("fixable")?.["status"]));
+    check((await cardFor("fixable")) !== null, "and removing a credential puts the card back on the board");
     c.close();
     await fixedServer.close();
   }
