@@ -46,6 +46,7 @@ import { DEPLOY_ARTIFACTS, hostOwnedPaths, listProjectFiles, readOnlyPaths } fro
 import { filesFromDirectory } from "./storage/projectStore.ts";
 import { loadConnectors } from "./connectors.ts";
 import { writeDeployArtifacts } from "./deployArtifacts.ts";
+import { VENDORED_RUNTIME_ENTRIES } from "./dockerfile.ts";
 import { BRIDGE_FILE, MANIFEST_FILE } from "./mcpManifest.ts";
 
 const SERVER_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -155,7 +156,7 @@ console.log("\nagainst a project that actually exists");
 
   const runtimeDir = tmpDir("runtime");
   fs.mkdirSync(join(runtimeDir, "agents"), { recursive: true });
-  for (const name of ["tool_templates", "jaroku_runner", "jaroku_interceptor", "pyproject.toml", ".python-version", "uv.lock", ".venv"]) {
+  for (const name of new Set(["tool_templates", ...VENDORED_RUNTIME_ENTRIES, "pyproject.toml", ".python-version", "uv.lock", ".venv"])) {
     if (existsSync(join(RUNTIME_DIR, name))) fs.symlinkSync(join(RUNTIME_DIR, name), join(runtimeDir, name));
   }
 

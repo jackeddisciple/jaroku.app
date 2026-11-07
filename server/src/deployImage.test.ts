@@ -13,7 +13,7 @@
 // the vendoring lands. Neither needs Docker, which this machine does not have and CI does not
 // want on the server job.
 
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -236,6 +236,48 @@ for (const entry of VENDORED_RUNTIME_ENTRIES) {
     "...and no staging directory orphaned",
     !existsSync(join(runtimeDir, "agents", ".staging", `${agentId}__deploy`)),
   );
+}
+
+{
+  seedProject();
+  for (const entry of VENDORED_RUNTIME_ENTRIES) {
+    const from = join(REAL_RUNTIME, entry);
+    const to = join(runtimeDir, entry);
+    if (statSync(from).isDirectory()) symlinkSync(from, to, process.platform === "win32" ? "junction" : "dir");
+    else cpSync(from, to);
+  }
+  check(
+    "a runtime whose packages are links to a checkout is a runtime too",
+    lstatSync(join(runtimeDir, "jaroku_interceptor")).isSymbolicLink(),
+  );
+  let crashed = "";
+  let written: ReturnType<typeof writeDeployArtifacts> | null = null;
+  try {
+    written = writeDeployArtifacts({ runtimeDir, agentId, provider: "anthropic" });
+  } catch (err) {
+    crashed = (err as Error).message;
+  }
+  check("a deploy vendors from it rather than crashing", crashed === "" && written !== null, crashed);
+  const vendored = join(projectDir, VENDORED_RUNTIME_DIR, "jaroku_interceptor");
+  check(
+    "...copying the package itself, not a link back to the checkout",
+    existsSync(vendored) && lstatSync(vendored).isDirectory() && !lstatSync(vendored).isSymbolicLink(),
+  );
+  check(
+    "...byte for byte",
+    existsSync(join(vendored, "callback.py")) &&
+      readFileSync(join(vendored, "callback.py"), "utf8") === readFileSync(join(REAL_RUNTIME, "jaroku_interceptor", "callback.py"), "utf8"),
+  );
+  check(
+    "...and without this machine's bytecode",
+    !readdirSync(vendored).includes("__pycache__"),
+  );
+  check(
+    "...and counted like any other vendored file",
+    (written?.vendored ?? []).some((p) => p === `${VENDORED_RUNTIME_DIR}/jaroku_interceptor/callback.py`),
+    (written?.vendored ?? []).slice(0, 5).join(", "),
+  );
+  check("the checkout it linked to is left as it was", existsSync(join(REAL_RUNTIME, "jaroku_interceptor", "callback.py")));
 }
 
 rmSync(scratch, { recursive: true, force: true });

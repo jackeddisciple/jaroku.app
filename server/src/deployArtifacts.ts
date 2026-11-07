@@ -14,7 +14,7 @@
 // showing what you changed.
 
 import {
-  copyFileSync, cpSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync,
+  copyFileSync, cpSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync,
 } from "node:fs";
 import { basename, dirname, join } from "node:path";
 
@@ -114,8 +114,8 @@ function vendorRuntime(runtimeDir: string, staging: string): { paths: string[]; 
       throw new Error(`cannot vendor ${entry} for the image: ${source} does not exist`);
     }
     const dest = join(target, entry);
-    if (lstatSync(source).isDirectory()) {
-      cpSync(source, dest, { recursive: true, filter: (src) => basename(src) !== "__pycache__" });
+    if (statSync(source).isDirectory()) {
+      cpSync(source, dest, { recursive: true, dereference: true, filter: (src) => basename(src) !== "__pycache__" });
       measure(dest, `${VENDORED_RUNTIME_DIR}/${entry}`);
     } else {
       copyFileSync(source, dest);
