@@ -473,7 +473,7 @@ console.log("\nevery transition §3.3 derives from refreshes the list");
     { fact: "a run ending (liveRuns down, lastEndedInError)", start: 'onBothPools("event"', chars: 8000 },
     { fact: "a run crashing or being killed", start: 'onBothPools("exit"', chars: 8000 },
     { fact: "a run that never started", start: 'onBothPools("spawnError"' },
-    { fact: "an MCP confirmation opening", start: 'ctrl.ctrl === "tool_confirm"' },
+    { fact: "an MCP confirmation opening", start: 'ctrl.ctrl === "tool_confirm"', chars: 6000 },
     { fact: "an MCP confirmation being cleared", start: "function clearConfirms" },
     // Answered through `answerConfirm`, which Stop on a waiting job shares — see the check below.
     { fact: "an MCP confirmation being answered", start: "function answerConfirm" },
