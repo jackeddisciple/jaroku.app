@@ -32,8 +32,41 @@
 // returns a warning, because a token that silently reverts on restart is a genuinely
 // baffling bug to hit.
 
+import { spawnSync } from "node:child_process";
 import { chmodSync, existsSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { parseLine } from "./env.ts";
+
+const BROAD_WINDOWS_GROUPS = ["*S-1-1-0", "*S-1-5-11", "*S-1-5-32-545"];
+
+let windowsAccount: string | null | undefined;
+
+function windowsTool(name: string): string {
+  return join(process.env["SystemRoot"] ?? "C:\\Windows", "System32", name);
+}
+
+function windowsAccountSid(): string | null {
+  if (windowsAccount === undefined) {
+    const who = spawnSync(windowsTool("whoami.exe"), ["/user", "/fo", "csv", "/nh"], { encoding: "utf8", windowsHide: true });
+    windowsAccount = /"(S-1-[0-9-]+)"/.exec(who.stdout ?? "")?.[1] ?? null;
+  }
+  return windowsAccount;
+}
+
+export function restrictToOwner(path: string): void {
+  if (process.platform !== "win32") {
+    chmodSync(path, 0o600);
+    return;
+  }
+  const sid = windowsAccountSid();
+  if (!sid) throw new Error("could not tell which Windows account this server runs as");
+  const result = spawnSync(
+    windowsTool("icacls.exe"),
+    [path, "/inheritance:r", "/grant:r", `*${sid}:F`, "/remove:g", ...BROAD_WINDOWS_GROUPS],
+    { encoding: "utf8", windowsHide: true },
+  );
+  if (result.status !== 0) throw new Error(`icacls could not restrict the file: ${result.error?.message ?? result.status}`);
+}
 
 /** The env var name a server's credential lives under. Derived, so it is never a guess. */
 export function authEnvKeyFor(serverId: string): string {
@@ -148,7 +181,7 @@ export function setEnvVar(path: string, key: string, value: string): { ok: boole
 
   writeFileSync(path, next, { encoding: "utf8", mode: 0o600 });
   try {
-    chmodSync(path, 0o600);
+    restrictToOwner(path);
   } catch {
     // A file we cannot chmod (an odd filesystem, a mount option) is still a file we wrote.
     // Failing the whole write over the permission bits would be the worse outcome.

@@ -8,9 +8,9 @@
 //   npm run test:env-writer
 
 import { randomUUID } from "node:crypto";
-import { readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
-import { tmpdir } from "node:os";
+import { tmpdir, userInfo } from "node:os";
 import { join } from "node:path";
 import { authEnvKeyFor, clearEnvVar, setEnvVar } from "./envWriter.ts";
 import { loadRuntimeEnv } from "./env.ts";
@@ -23,6 +23,26 @@ const check = (name: string, ok: boolean, detail = "") => {
 
 /** The one-time comment setEnvVar writes above the first key it appends. */
 const HEADER = "# Written by Jaroku";
+
+const icacls = join(process.env["SystemRoot"] ?? "C:\\Windows", "System32", "icacls.exe");
+
+const windowsAcl = (p: string): string[] =>
+  (spawnSync(icacls, [p], { encoding: "utf8" }).stdout ?? "")
+    .replace(p, "")
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter((l) => l.includes(":("));
+
+const ownerAlone = (p: string): { ok: boolean; detail: string } => {
+  if (process.platform !== "win32") {
+    const mode = statSync(p).mode & 0o777;
+    return { ok: mode === 0o600, detail: mode.toString(8) };
+  }
+  const acl = windowsAcl(p);
+  const account = `\\${userInfo().username}:(F)`.toLowerCase();
+  const only = acl.length === 1 && acl[0]!.toLowerCase().endsWith(account) && !acl[0]!.includes("(I)");
+  return { ok: only, detail: acl.join(" | ") };
+};
 
 const paths: string[] = [];
 const tmpEnv = (contents: string): string => {
@@ -67,8 +87,12 @@ SLACK_BOT_TOKEN=xoxb-123
     after.indexOf("JAROKU_MCP_LINEAR_TOKEN") > after.indexOf("SLACK_BOT_TOKEN"));
 
   // A file holding secrets should not be the one that is world-readable.
-  check("the file is chmod 600", (statSync(p).mode & 0o777) === 0o600,
-    (statSync(p).mode & 0o777).toString(8));
+  if (process.platform === "win32") {
+    check("the file is readable by its owner alone", ownerAlone(p).ok, ownerAlone(p).detail);
+  } else {
+    check("the file is chmod 600", (statSync(p).mode & 0o777) === 0o600,
+      (statSync(p).mode & 0o777).toString(8));
+  }
 
   // It has to be readable back by the loader that every other key goes through.
   delete process.env["JAROKU_MCP_LINEAR_TOKEN"];
@@ -236,6 +260,22 @@ print(json.dumps(out))
   check("the key NAME reveals nothing about the value",
     !authEnvKeyFor("secret").includes("s3cr3t"));
   delete process.env["JAROKU_MCP_SECRET_TOKEN"];
+}
+
+{
+  const p = tmpEnv(ORIGINAL);
+  if (process.platform === "win32") {
+    spawnSync(icacls, [p, "/grant", "*S-1-1-0:R", "*S-1-5-32-545:R"], { encoding: "utf8" });
+  } else {
+    chmodSync(p, 0o644);
+  }
+  check("a file anybody could read is the starting point", !ownerAlone(p).ok, ownerAlone(p).detail);
+  setEnvVar(p, "JAROKU_MCP_OPENED_TOKEN", "opened-then-closed");
+  check("writing a credential into it closes it to everybody but its owner", ownerAlone(p).ok, ownerAlone(p).detail);
+  setEnvVar(p, "JAROKU_MCP_OPENED_TOKEN", "rewritten");
+  check("...and rewriting one keeps it closed", ownerAlone(p).ok, ownerAlone(p).detail);
+  check("the owner can still read it back", readFileSync(p, "utf8").includes("JAROKU_MCP_OPENED_TOKEN=rewritten"));
+  delete process.env["JAROKU_MCP_OPENED_TOKEN"];
 }
 
 for (const p of paths) rmSync(p, { force: true });
