@@ -1,7 +1,8 @@
 import React from "react";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { ConnectForm, CredentialHome, CredentialRemovalConfirm, ENDPOINT_SETTLED, EditServerForm, MCP_EMPTY_ADMIN, MCP_EMPTY_MEMBER, McpPanel, RemovalConfirm, SCHEMA_DISPLAY_CHARS, SCHEMA_SHORTENED, TOKEN_DROPPED, controlBtn, schemaText, startAdd, storedCredentialTitle } from "./McpPanel.tsx";
+import { ConnectForm, CredentialHome, CredentialRemovalConfirm, ENDPOINT_SETTLED, EditServerForm, MCP_EMPTY_ADMIN, MCP_EMPTY_MEMBER, McpPanel, RemovalConfirm, SCHEMA_DISPLAY_CHARS, SCHEMA_SHORTENED, TOKEN_DROPPED, controlBtn, sameToolRow, schemaText, startAdd, storedCredentialTitle } from "./McpPanel.tsx";
+import { FIRST_TOOL_PAGE, TOOL_PAGE, matchTools, moreToolsLabel, searchTools, showMoreTools, toolWindow } from "../lib/toolWindow.ts";
 import { useBuildStore } from "../store/buildStore.ts";
 import { ADD_INTERRUPTED, DISCOVERY_STALE_MS, agentsUsing, allMcpTools, isDiscovering, liveSelection, removalConsequences, useMcpStore } from "../store/mcpStore.ts";
 import { useSessionStore } from "../store/sessionStore.ts";
@@ -593,6 +594,49 @@ console.log("\na credential is said to be kept where this server keeps it");
   const source = readFileSync(fileURLToPath(new URL("./McpPanel.tsx", import.meta.url)), "utf8");
   check("the credential form says it through the same rule", /<CredentialHome server=\{server\} \/> It is never logged and never sent back to this page\./.test(source));
   seed(useMcpStore, { selectedId: null });
+}
+
+console.log("\na server with hundreds of tools renders a page of them, not all of them");
+{
+  const many = Array.from({ length: 500 }, (_, i) => tool(`tool_${String(i).padStart(3, "0")}`, {
+    description: i % 2 ? `reads page ${i}` : `writes row ${i}`,
+    schema_hash: `h${i}`,
+  }));
+  seed(useMcpStore, { selectedId: "alpha" });
+  const html = render([server({ tools: many })]);
+  const rows = html.match(/>schema<\/button>/g)?.length ?? 0;
+  check("only the first page of rows is drawn", rows === TOOL_PAGE, String(rows));
+  check("...starting with the first tool", html.includes(">tool_000<") && html.includes(`>tool_${String(TOOL_PAGE - 1).padStart(3, "0")}<`) && !html.includes(`>tool_${String(TOOL_PAGE).padStart(3, "0")}<`));
+  check("the count still says how many there are", /500 tools/.test(html));
+  check("the rest are one press away", html.includes(`Show ${TOOL_PAGE} more (${500 - TOOL_PAGE} not shown)`), html.match(/Show [^<]*/)?.[0] ?? "");
+  check("and a long list can be searched", /type="search"[^>]*name="mcp-tool-filter"|name="mcp-tool-filter"[^>]*type="search"/.test(html) && html.includes('aria-label="Find a tool on Alpha"'));
+  const few = render([server({ tools: many.slice(0, 12) })]);
+  check("a short list is drawn whole, with no search and nothing more to show", (few.match(/>schema<\/button>/g)?.length ?? 0) === 12 && !few.includes("mcp-tool-filter") && !/Show (the other|\d+ more)/.test(few));
+  const fiveThousand = render([server({ tools: Array.from({ length: 5000 }, (_, i) => tool(`t${i}`, { schema_hash: `x${i}` })) })]);
+  check("the page drawn does not grow with the list behind it", fiveThousand.length < html.length * 1.5, `${fiveThousand.length} vs ${html.length}`);
+  seed(useMcpStore, { selectedId: null });
+
+  let state = FIRST_TOOL_PAGE;
+  const text = (t: McpTool): string => `${t.name} ${t.description ?? ""}`;
+  const windowOf = () => toolWindow(many, matchTools(many, state.query, text), state);
+  check("the first page is a page", windowOf().visible.length === TOOL_PAGE && windowOf().remaining === 500 - TOOL_PAGE);
+  state = showMoreTools(state);
+  check("showing more adds one more page", windowOf().visible.length === TOOL_PAGE * 2 && windowOf().remaining === 500 - TOOL_PAGE * 2);
+  state = searchTools("  WRITES ");
+  check("a search matches descriptions, ignoring case and spaces around it", windowOf().matched === 250 && windowOf().visible.every((t) => (t.description ?? "").startsWith("writes")), String(windowOf().matched));
+  check("...and starts again from its first page", windowOf().visible.length === TOOL_PAGE);
+  state = searchTools("tool_499");
+  check("a name finds its one tool wherever it sits in the list", windowOf().matched === 1 && windowOf().visible[0]?.name === "tool_499" && windowOf().remaining === 0);
+  state = searchTools("nothing called this");
+  check("a search that matches nothing shows nothing", windowOf().matched === 0 && windowOf().visible.length === 0);
+  check("the last few are offered by name", moreToolsLabel(7) === "Show the other 7");
+
+  const row = { tool: many[1]!, serverId: "alpha" };
+  check("a row whose tool arrived again unchanged is not drawn again", sameToolRow(row, { tool: { ...many[1]! }, serverId: "alpha" }));
+  check("...but one whose impact moved is", !sameToolRow(row, { tool: { ...many[1]!, impact: "high" }, serverId: "alpha" }));
+  check("...or whose schema changed", !sameToolRow(row, { tool: { ...many[1]!, schema_hash: "changed" }, serverId: "alpha" }));
+  check("...or whose override was voided", !sameToolRow(row, { tool: { ...many[1]!, override_voided: true }, serverId: "alpha" }));
+  check("...or that now belongs to another server", !sameToolRow(row, { tool: many[1]!, serverId: "beta" }));
 }
 
 console.log(fail === 0 ? "\nALL CORRECT" : `\n${fail} FAILURES`);

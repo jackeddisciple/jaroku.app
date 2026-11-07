@@ -12,7 +12,7 @@
 // Every mutation goes over the mcp channel and comes back as a full snapshot, so there is no
 // optimistic local state here — the only local state is the add form and which row is open.
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { isDiscovering, removalConsequences, useMcpStore } from "../store/mcpStore.ts";
 import { useBuildStore } from "../store/buildStore.ts";
 import { useSessionStore } from "../store/sessionStore.ts";
@@ -40,6 +40,7 @@ import { SectionHeader } from "./SectionHeader.tsx";
 import { MCP_PHASE } from "../lib/domainPhase.ts";
 import { AlertTriangleIcon, EyeIcon, KeyIcon, PlugIcon, RefreshIcon, ShieldAlertIcon, ChevronDownIcon, UserCircleIcon, XIcon } from "./panelIcons.tsx";
 import { useCanRun } from "../lib/useCapability.ts";
+import { moreToolsLabel, useToolWindow } from "../lib/toolWindow.ts";
 import type { McpServer, McpTool } from "../types.ts";
 import { Icon } from "../lib/icons/registry.ts";
 
@@ -76,7 +77,7 @@ export const STATUS_LABEL: Record<McpServer["status"], string> = {
 
 // --- one discovered tool -----------------------------------------------------
 
-function ToolRow({ tool, serverId }: { tool: McpTool; serverId: string }) {
+function ToolRowView({ tool, serverId }: { tool: McpTool; serverId: string }) {
   // §8.2 — "MCP panel / Grant-revoke tools". The command is `setMcpToolImpact` and its capability
   // is `mcp:manage`, the admin's: raising a tool to high impact decides whether every agent in the
   // workspace has to be asked before running it, and lowering one stops the asking entirely.
@@ -185,6 +186,63 @@ function ToolRow({ tool, serverId }: { tool: McpTool; serverId: string }) {
         </div>
       </div>
     </div>
+  );
+}
+
+export function sameToolRow(a: { tool: McpTool; serverId: string }, b: { tool: McpTool; serverId: string }): boolean {
+  if (a.serverId !== b.serverId) return false;
+  const x = a.tool;
+  const y = b.tool;
+  return (
+    x === y ||
+    (x.name === y.name &&
+      x.schema_hash === y.schema_hash &&
+      x.impact === y.impact &&
+      x.computed_impact === y.computed_impact &&
+      x.overridden === y.overridden &&
+      x.override_voided === y.override_voided &&
+      x.description === y.description &&
+      x.impact_reason === y.impact_reason)
+  );
+}
+
+const ToolRow = memo(ToolRowView, sameToolRow);
+
+const toolText = (tool: McpTool): string => `${tool.name} ${tool.description ?? ""}`;
+
+export function ToolList({ server }: { server: McpServer }) {
+  const tools = useToolWindow(server.tools, toolText);
+  return (
+    <>
+      {tools.filterable && (
+        <div className="px-2 pb-1.5">
+          <input
+            type="search"
+            name="mcp-tool-filter"
+            value={tools.query}
+            onChange={(e) => tools.search(e.target.value)}
+            placeholder="Find a tool by name or description"
+            aria-label={`Find a tool on ${server.label}`}
+            autoComplete="off"
+            spellCheck={false}
+            className="h-6 w-full rounded-input border border-hair bg-elevated px-2 text-tiny text-ink outline-none placeholder:text-faint focus-visible:shadow-focusring"
+          />
+        </div>
+      )}
+      {tools.visible.map((t) => (
+        <ToolRow key={t.name} tool={t} serverId={server.id} />
+      ))}
+      {tools.query.trim() !== "" && tools.matched === 0 && (
+        <p className="px-2 py-1.5 text-tiny text-muted">No tool on {server.label} matches that.</p>
+      )}
+      {tools.remaining > 0 && (
+        <div className="px-2 pt-1">
+          <button type="button" className={controlBtn} onClick={tools.more}>
+            {moreToolsLabel(tools.remaining)}
+          </button>
+        </div>
+      )}
+    </>
   );
 }
 
@@ -511,9 +569,7 @@ function ServerDetail({ server }: { server: McpServer }) {
                 <span className="min-w-0 break-words">{server.discovery_note}</span>
               </p>
             )}
-            {server.tools.map((t) => (
-              <ToolRow key={t.name} tool={t} serverId={server.id} />
-            ))}
+            <ToolList server={server} />
           </>
         )}
       </div>
