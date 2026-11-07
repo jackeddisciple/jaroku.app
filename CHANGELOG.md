@@ -8,6 +8,53 @@ release notes and the commits in that release's range.
 
 ---
 
+## v0.4.2 : MCP Panel fixes and improvements
+
+The second half of a full pass over MCP servers: the 40 issues left open after the first round.
+Every fix below landed as its own commit with its own test.
+
+### Fixed
+
+- **Connecting a server:** an add shows as connecting the moment it is accepted, the form keeps
+  what you typed until the server answers, Enter obeys a disabled Connect, and the new server is
+  selected. Half-typed values no longer follow you into another workspace.
+- **Errors that say what happened:** a refused connection, a name that did not resolve, a rejected
+  credential and an invalid MCP answer are named as such. An endpoint without a scheme is told so,
+  `localhost` and `[::1]` work in development, and malformed commands are refused cleanly.
+- **Where results land:** a result reaches the person who asked, whichever tab they are on, and
+  toasts last long enough to read without overwriting each other.
+- **Discovery:** an empty or repeated cursor ends the tool list, duplicates are counted as
+  duplicates, refused tools are explained on the server's row, "last checked" moves on every check,
+  each workspace runs at most two discoveries at once, and a check's spinner lasts until it ends.
+- **Plan limit:** reaching it shows the upgrade card in the panel, and servers that never connected
+  no longer count toward it.
+- **Managing servers:** disconnecting a server or removing its credential asks first and says what
+  is lost. A server can be renamed, an endpoint that never connected can be fixed, a voided override
+  clears in one step, and a member with no servers is told to ask an admin.
+- **Grants and asks:** an unchanged grant no longer makes a version, each tool is kept once, Allow
+  for this run answers every waiting ask for that tool, a local run's ask names its agent, and the
+  composer drops ticks whose tool is gone or that belong to another agent. Messages point at
+  controls that exist.
+- **Inbox:** a server's credential card settles as soon as the server is removed or given its
+  credential, and Inbox actions no longer report a send that never left the tab.
+- **Layout and accessibility:** long text wraps, large schemas are bounded, reasons meet contrast,
+  controls are at least 24px tall, fields are labelled, Escape cancels the forms, and the selected
+  server is announced.
+- **Hosted and Windows:** hosted workspaces are told their credential is kept encrypted in the
+  workspace vault, `runtime/.env` is readable by its owner alone on Windows, a slow import gets a
+  second try before a valid project is discarded, and an edit's error no longer shows server paths.
+
+### Added
+
+- **Long tool lists:** the MCP panel, the composer's MCP tools and the grant editor show 50 tools
+  at a time, with a search.
+- **Offline feedback:** an MCP action that could not be sent says so and names the button to press
+  again, and a grant that was not sent stays as you left it.
+- **Cleaner sessions:** discovery ends the session it opens on a third-party server and no longer
+  holds open an event stream it never reads.
+
+---
+
 ## v0.4.1 : Evals bug fixes and improvements
 
 A full pass over the Evals tab, from a live test that ran real evals against two agents on the
