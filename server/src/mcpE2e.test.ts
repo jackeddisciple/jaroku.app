@@ -723,6 +723,48 @@ console.log("\nthe discovery deadline bounds every wait");
   await dribble.close();
 }
 
+console.log("\na discovery ends the session it opened, and opens no stream it would not read");
+{
+  const sessions: (string | null)[] = [];
+  const polite = await startScriptedServer({
+    token: "session-token",
+    hook: ({ method, req }) => {
+      if (method === "DELETE") sessions.push(typeof req.headers["mcp-session-id"] === "string" ? req.headers["mcp-session-id"] : null);
+      return false;
+    },
+  });
+  const ended = await discover({ endpoint: polite.url, token: "session-token" });
+  const methods = polite.seen.map((r) => r.method);
+  check(ended.ok, "the handshake succeeds", JSON.stringify(ended).slice(0, 160));
+  check(!methods.includes("GET"), "no event stream is opened for messages discovery never reads", methods.join(","));
+  check(methods.filter((m) => m === "DELETE").length === 1 && methods[methods.length - 1] === "DELETE", "and the session is ended, once, when discovery is done", methods.join(","));
+  check(sessions.join() === "scripted", "naming the session the server gave it", sessions.join());
+  check(polite.seen.filter((r) => r.method === "DELETE").every((r) => r.auth === "Bearer session-token"), "with the credential the session was opened with");
+  await polite.close();
+
+  const refusing = await startScriptedServer({
+    hook: ({ method, res }) => {
+      if (method !== "DELETE") return false;
+      res.writeHead(405).end();
+      return true;
+    },
+  });
+  check((await discover({ endpoint: refusing.url })).ok, "a server that does not let a session be ended still connects");
+  await refusing.close();
+
+  const stalling = await startScriptedServer({ hook: ({ method }) => method === "DELETE" });
+  const startedEnd = Date.now();
+  const stalled = await discover({ endpoint: stalling.url });
+  const waited = Date.now() - startedEnd;
+  check(stalled.ok && waited < 4000, "and one that never answers the end of a session does not hold discovery up", `${waited} ms`);
+  await stalling.close();
+
+  const locked = await startScriptedServer({ token: "needed" });
+  await discover({ endpoint: locked.url });
+  check(!locked.seen.some((r) => r.method === "DELETE"), "a handshake that never got a session ends nothing", locked.seen.map((r) => r.method).join(","));
+  await locked.close();
+}
+
 console.log("\na bad list does not wipe the tools or a person's decisions");
 {
   const A = await workspace("wipe");

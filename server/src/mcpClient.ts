@@ -42,6 +42,7 @@ const DISCOVERY_DEADLINE_MS = Number(process.env["JAROKU_MCP_DISCOVERY_MS"] ?? 3
 /** Cursor loops are server-controlled. These are the guards on that. */
 const MAX_PAGES = 50;
 const MAX_TOOLS = 500;
+const SESSION_CLOSE_MS = 1_000;
 
 // --- bounds on what a server may say about itself ----------------------------
 //
@@ -381,9 +382,17 @@ export async function discover(opts: DiscoverOptions): Promise<DiscoveryResult> 
   const headers: Record<string, string> = {};
   if (opts.token) headers["Authorization"] = `Bearer ${opts.token}`;
 
+  const pinned = opts.pin ? { pin: opts.pin } : {};
+  const guarded = guardedFetchWith({ deadline: expiry, ...pinned });
   const transport = new StreamableHTTPClientTransport(url, {
     requestInit: { headers },
-    fetch: guardedFetchWith({ deadline: expiry, ...(opts.pin ? { pin: opts.pin } : {}) }),
+    fetch: (input, init) => {
+      if (init?.method === "GET") return Promise.resolve(new Response(null, { status: 405, statusText: "Method Not Allowed" }));
+      if (init?.method === "DELETE") {
+        return guardedFetchWith({ deadline: AbortSignal.timeout(SESSION_CLOSE_MS), ...pinned })(input, init);
+      }
+      return guarded(input, init);
+    },
   });
   const client = new Client(
     { name: "jaroku", version: "1.0.0" },
@@ -479,6 +488,13 @@ export async function discover(opts: DiscoverOptions): Promise<DiscoveryResult> 
     return { ok: false, ...classifyDiscoveryFailure(err, Boolean(opts.token)) };
   } finally {
     // Best effort: a server that refuses to close must not turn discovery into a hang.
-    await Promise.race([client.close().catch(() => {}), new Promise((done) => setTimeout(done, 1000))]);
+    const ending = transport
+      .terminateSession()
+      .catch(() => {})
+      .then(() => client.close())
+      .catch(() => {});
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    await Promise.race([ending, new Promise((done) => (timer = setTimeout(done, SESSION_CLOSE_MS * 2)))]);
+    clearTimeout(timer);
   }
 }
