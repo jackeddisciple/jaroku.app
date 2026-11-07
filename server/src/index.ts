@@ -6140,6 +6140,15 @@ async function handleMcpCommand(ctx: TenantContext, cmd: McpCommand): Promise<vo
           relay.sendMcpTo(ctx, ctx.requestId, { type: "error", message: "an endpoint is required", ...echoedRef(cmd) });
           return;
         }
+        const malformed = cmd.label !== undefined && cmd.label !== null && typeof cmd.label !== "string"
+          ? "a server's name must be text"
+          : cmd.token !== undefined && cmd.token !== null && typeof cmd.token !== "string"
+            ? "a credential must be text"
+            : null;
+        if (malformed) {
+          relay.sendMcpTo(ctx, ctx.requestId, { type: "error", message: malformed, ...echoedRef(cmd) });
+          return;
+        }
         // THE ID AND THE CREDENTIAL ARE DECIDED HERE, SYNCHRONOUSLY; THE HANDSHAKE IS NOT.
         //
         // Both halves have to be, and for different reasons. The id has to be allocated against
@@ -6154,8 +6163,8 @@ async function handleMcpCommand(ctx: TenantContext, cmd: McpCommand): Promise<vo
         const planLimit = entitlementsForPlan(workspace?.plan ?? "free", (await billing.balance(ctx)).limit_overrides).maxMcpServers;
         const prepared = await mcpRegistry.prepare(ctx, {
           endpoint: cmd.endpoint,
-          label: cmd.label,
-          token: cmd.token,
+          label: cmd.label ?? undefined,
+          token: cmd.token ?? undefined,
           reservedIds: new Set(grantedAnywhere),
           maxServers: planLimit === "unlimited" ? null : planLimit,
         });
@@ -6178,7 +6187,7 @@ async function handleMcpCommand(ctx: TenantContext, cmd: McpCommand): Promise<vo
           kind: "add",
           serverId: prepared.id,
           endpoint: cmd.endpoint,
-          label: cmd.label,
+          label: cmd.label ?? undefined,
           authEnvKey: prepared.authEnvKey,
           ...originOf(cmd),
         });
@@ -6301,6 +6310,10 @@ async function handleMcpCommand(ctx: TenantContext, cmd: McpCommand): Promise<vo
 
       case "setMcpServerAuth": {
         if (typeof cmd.serverId !== "string") return;
+        if (cmd.token !== null && typeof cmd.token !== "string") {
+          relay.sendMcpTo(ctx, ctx.requestId, { type: "error", message: "a credential must be text", serverId: cmd.serverId });
+          return;
+        }
         const token = typeof cmd.token === "string" && cmd.token.length ? cmd.token : null;
         const { result, warning } = await mcpRegistry.setCredential(ctx, cmd.serverId, token);
         if (!result.ok) {
@@ -6341,7 +6354,11 @@ async function handleMcpCommand(ctx: TenantContext, cmd: McpCommand): Promise<vo
   } catch (err) {
     const message = (err as Error)?.message ?? String(err);
     console.error(`[mcp] ${cmd.cmd} failed: ${message}`);
-    relay.sendMcpTo(ctx, ctx.requestId, { type: "error", message: `${cmd.cmd} failed: ${message}`, ...(cmd.cmd === "addMcpServer" ? echoedRef(cmd) : {}) });
+    relay.sendMcpTo(ctx, ctx.requestId, {
+      type: "error",
+      message: "that MCP command could not be completed. Nothing about it was changed that a refresh would not show.",
+      ...(cmd.cmd === "addMcpServer" ? echoedRef(cmd) : {}),
+    });
     if ((cmd.cmd === "rediscoverMcpServer" || cmd.cmd === "setMcpServerAuth" || cmd.cmd === "updateMcpServer") && typeof cmd.serverId === "string") {
       relay.broadcastMcp(ctx, { type: "discovered", serverId: cmd.serverId });
     }

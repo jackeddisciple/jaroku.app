@@ -30,7 +30,7 @@ import { ENDPOINT_CREDENTIAL_REFUSAL, McpUrlError, endpointCarriesCredential, va
 import { EgressPolicyError, realResolver, type Resolver } from "./sandbox/egressPolicy.ts";
 import type { TenantContext } from "./db/tenant.ts";
 import { classify } from "./mcpImpact.ts";
-import { cleanText } from "./mcpText.ts";
+import { cleanLabel } from "./mcpText.ts";
 import {
   McpStore,
   SERVER_ID_RE,
@@ -98,6 +98,11 @@ export function slugifyServerId(input: string): string {
     .slice(0, 32);
   if (!slug || !/^[a-z]/.test(slug)) return `mcp_${slug}`.slice(0, 32);
   return slug;
+}
+
+export function requestedServerId(label: string | undefined, endpoint: string): string {
+  const named = label ? slugifyServerId(label) : "";
+  return named && named !== "mcp_" ? named : slugifyServerId(endpoint);
 }
 
 async function uniqueServerId(
@@ -333,7 +338,8 @@ export class McpRegistry {
     const badToken = opts.token ? tokenRefusal(opts.token) : null;
     if (badToken) return { ok: false, id: "", authEnvKey: null, message: badToken };
 
-    const requested = opts.id?.trim() || slugifyServerId(opts.label?.trim() || endpoint);
+    const label = (typeof opts.label === "string" ? cleanLabel(opts.label) : "") || undefined;
+    const requested = opts.id?.trim() || requestedServerId(label, endpoint);
     if (!SERVER_ID_RE.test(requested)) {
       return {
         ok: false,
@@ -349,7 +355,7 @@ export class McpRegistry {
     for (let attempt = 0; attempt < 8 && !id; attempt++) {
       const candidate = opts.id ?? (await uniqueServerId(ctx, this.store, requested, opts.reservedIds));
       const reserved = await this.store.reserveServer(ctx, {
-        id: candidate, label: opts.label?.trim() || candidate, endpoint, transport: "http", auth_env_key: null,
+        id: candidate, label: label ?? candidate, endpoint, transport: "http", auth_env_key: null,
         server_name: null, server_version: null, protocol_version: null,
         status: "connecting", last_error: null, discovered_at: null,
       }, opts.maxServers ?? null);
@@ -392,7 +398,8 @@ export class McpRegistry {
     const badToken = opts.token ? tokenRefusal(opts.token) : null;
     if (badToken) return { ok: false, server: null, message: badToken };
 
-    const requested = opts.id?.trim() || slugifyServerId(opts.label?.trim() || endpoint);
+    const cleanedLabel = (typeof opts.label === "string" ? cleanLabel(opts.label) : "") || undefined;
+    const requested = opts.id?.trim() || requestedServerId(cleanedLabel, endpoint);
     if (!SERVER_ID_RE.test(requested)) {
       return {
         ok: false,
@@ -406,7 +413,7 @@ export class McpRegistry {
       return { ok: false, server: null, message: `a server called "${opts.id}" is already connected` };
     }
     const id = opts.id ?? (await uniqueServerId(ctx, this.store, requested));
-    const label = opts.label?.trim() || id;
+    const label = cleanedLabel ?? id;
     const settle = async (row: Omit<McpServer, "created_at">): Promise<boolean> => {
       if (!opts.reserved) {
         await this.store.upsertServer(ctx, row);
@@ -711,12 +718,6 @@ export class McpRegistry {
       };
     });
   }
-}
-
-export const MAX_LABEL_CHARS = 80;
-
-export function cleanLabel(raw: string): string {
-  return cleanText(raw, raw.length).replace(/\s+/g, " ").trim().slice(0, MAX_LABEL_CHARS).trim();
 }
 
 export const ENDPOINT_FIXED =

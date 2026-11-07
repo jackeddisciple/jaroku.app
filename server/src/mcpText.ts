@@ -14,3 +14,9 @@ export function boundedError(text: string): string {
     .replace(/\s+/g, " ")
     .trim();
 }
+
+export const MAX_LABEL_CHARS = 80;
+
+export function cleanLabel(raw: string): string {
+  return cleanText(raw, raw.length).replace(/\s+/g, " ").trim().slice(0, MAX_LABEL_CHARS).trim();
+}

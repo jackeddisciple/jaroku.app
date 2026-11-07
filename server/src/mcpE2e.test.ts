@@ -17,7 +17,8 @@ import { fileCredentialWriter } from "./envWriter.ts";
 import { Dispatcher } from "./queue/dispatcher.ts";
 import { InMemoryQueueBackend } from "./queue/inMemoryBackend.ts";
 import { WorkerLoop } from "./queue/workerLoop.ts";
-import { McpStore } from "./mcpStore.ts";
+import { McpStore, SERVER_ID_RE } from "./mcpStore.ts";
+import { MAX_LABEL_CHARS } from "./mcpText.ts";
 import { McpRegistry, type RegistrationResult } from "./mcpRegistry.ts";
 import { MCP_DISCOVER_CLASS, McpDiscoveryQueue, type McpDiscoveryPayload } from "./mcpDiscovery.ts";
 import { authEnvKeyFor } from "./envWriter.ts";
@@ -1175,6 +1176,37 @@ console.log("\nan edit that fails does not show where the server keeps its files
   check(publicEditError(network) === network.message, "a network failure is not mistaken for a file one, and its URL survives", publicEditError(network));
   const editor = readFileSync(join(fileURLToPath(new URL(".", import.meta.url)), "editor.ts"), "utf8");
   check((editor.match(/publicEditError\(err\)/g) ?? []).length === 3 && !/\(err as Error\)\.message/.test(editor), "every edit failure goes out through it");
+}
+
+console.log("\na malformed command or an oversized name cannot reach the registry");
+{
+  const A = await workspace("labels");
+  const fixture = await startScriptedServer();
+  const esc = String.fromCharCode(27);
+  const huge = await registry.prepare(A, { endpoint: fixture.url, label: `${esc}[31m${"x".repeat(50_000)}\nnext` });
+  const stored = (await store.getServer(A, huge.id))?.label ?? "";
+  check(stored.length <= MAX_LABEL_CHARS, "a 50,000 character name is cut to a name", String(stored.length));
+  check(!stored.includes(esc) && !stored.includes("\n"), "...with no terminal escapes and no line breaks", JSON.stringify(stored.slice(0, 20)));
+
+  const foreign = String.fromCodePoint(0x65e5, 0x672c, 0x8a9e);
+  const named = await registry.prepare(A, { endpoint: fixture.url, label: foreign });
+  check(named.ok && named.id !== "mcp_" && SERVER_ID_RE.test(named.id), "a name with no letters an id can use takes its id from the endpoint", named.id);
+  check(authEnvKeyFor(named.id) !== "JAROKU_MCP_MCP__TOKEN", "...so its credential is not filed under an empty name", authEnvKeyFor(named.id));
+  check((await store.getServer(A, named.id))?.label === foreign, "...while the name itself is kept as typed");
+  check(!(await registry.prepare(A, { endpoint: fixture.url, label: 123 as unknown as string })).message?.includes("is not a function"), "a name that is not text is ignored rather than crashing the add");
+
+  await db.run(`UPDATE mcp_servers SET label = ? WHERE id = ? AND workspace_id = ?`, [`${esc}[2Jold\nname`, named.id, A.workspaceId]);
+  check((await registry.get(A, named.id))?.label === "old name", "a name stored before this was fixed is cleaned when it is read", String((await registry.get(A, named.id))?.label));
+  await fixture.close();
+
+  const index = readFileSync(join(fileURLToPath(new URL(".", import.meta.url)), "index.ts"), "utf8");
+  const add = /case "addMcpServer": \{[\s\S]*?\n {6}\}\n/.exec(index)?.[0] ?? "";
+  check(/"a server's name must be text"/.test(add) && /"a credential must be text"/.test(add), "the add refuses a name or a credential that is not text, before anything is reserved");
+  check(add.indexOf("a credential must be text") < add.indexOf("mcpRegistry.prepare("), "...first");
+  const auth = /case "setMcpServerAuth": \{[\s\S]*?\n {6}\}\n/.exec(index)?.[0] ?? "";
+  check(/if \(cmd\.token !== null && typeof cmd\.token !== "string"\) \{[\s\S]{0,160}"a credential must be text"/.test(auth), "a credential that is not text is refused rather than read as a request to remove it");
+  const handler = /async function handleMcpCommand\([\s\S]*?\n\}\n/.exec(index)?.[0] ?? "";
+  check(!/message: `\$\{cmd\.cmd\} failed: \$\{message\}`/.test(handler), "and a failure inside a command no longer tells the client about the code that failed");
 }
 
 console.log("\nadds that derive one id each keep their own row");
