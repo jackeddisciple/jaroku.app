@@ -388,9 +388,11 @@ export function startMockServer(
   });
 }
 
+export const MOCK_MCP_PORT = 8931;
+
 // Run directly: `npm run mock:mcp`. Importing it from a test starts nothing.
 if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
-  const port = Number(process.env["MOCK_MCP_PORT"] ?? 8931);
+  const port = Number(process.env["MOCK_MCP_PORT"] ?? MOCK_MCP_PORT);
   const token = process.env["MOCK_MCP_TOKEN"] ?? null;
   startMockServer({ port, token }).then((h) => {
     console.log(`[mock-mcp] listening on ${h.url}`);

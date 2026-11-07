@@ -104,7 +104,7 @@ export const MCP_ALLOW_LOOPBACK_ENV = "JAROKU_MCP_ALLOW_LOOPBACK";
  * localhost is the whole vulnerability, and no environment variable gets to ask for it.
  *
  * THE DEFAULT IS ON IN DEVELOPMENT, and that direction is the decision. The README documents the
- * fixture path as "run `npm run mock:mcp`, paste `http://127.0.0.1:8765/mcp` into the panel", and
+ * fixture path as "run `npm run mock:mcp`, paste `http://127.0.0.1:8931/mcp` into the panel", and
  * a default that required a second environment variable first would make that documentation
  * wrong — which is a regression of the free-development path the standing rules protect, in
  * exchange for nothing, because production ignores the variable either way.

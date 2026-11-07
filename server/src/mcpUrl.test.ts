@@ -19,7 +19,7 @@
 //   npm run test:mcp-url
 
 import { randomUUID } from "node:crypto";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -35,6 +35,7 @@ import {
   validateMcpUrl,
 } from "./mcpUrl.ts";
 import { buildEgressPolicy, EgressPolicyError, admits, type Resolver } from "./sandbox/egressPolicy.ts";
+import { MOCK_MCP_PORT } from "../fixtures/mcp/mockServer.ts";
 
 let failures = 0;
 const check = (ok: boolean, msg: string, detail = ""): void => {
@@ -192,11 +193,21 @@ console.log("\nloopback: allowed for the mock server, never in production");
     "AND STILL OFF WHEN PRODUCTION ASKS FOR IT — no variable gets to open this",
   );
 
-  const mock = await validateMcpUrl("http://127.0.0.1:8765/mcp", publicAnswer, dev);
+  const mockUrl = `http://127.0.0.1:${MOCK_MCP_PORT}/mcp`;
+  const mock = await validateMcpUrl(mockUrl, publicAnswer, dev);
   check(mock.ips.join(",") === "127.0.0.1", "the mock server validates in development, pinned to itself");
   check(
-    (await refusedIn("http://127.0.0.1:8765/mcp", prodAsking)) !== null,
+    (await refusedIn(mockUrl, prodAsking)) !== null,
     "...and the identical URL is refused in production",
+  );
+  const documented = [
+    readFileSync(fileURLToPath(new URL("./mcpUrl.ts", import.meta.url)), "utf8"),
+    readFileSync(fileURLToPath(new URL("../../README.md", import.meta.url)), "utf8"),
+  ].flatMap((text) => [...text.matchAll(/127[.]0[.]0[.]1:([0-9]+)[/]mcp/g)].map((m) => Number(m[1])));
+  check(
+    documented.length >= 3 && documented.every((port) => port === MOCK_MCP_PORT),
+    "everything that tells somebody where the mock listens names the port it listens on",
+    documented.join(","),
   );
 
   const six = await validateMcpUrl("http://[::1]:8940/ok", publicAnswer, dev).catch((e: Error) => e);
