@@ -813,6 +813,7 @@ export interface McpServer {
   checked_at?: string | null;
   /** A credential is stored. Never the credential itself — that never crosses the wire. */
   configured: boolean;
+  credential_store?: "dotenv" | "kms" | null;
   tools: McpTool[];
 }
 

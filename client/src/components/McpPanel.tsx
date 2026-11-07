@@ -305,6 +305,25 @@ export function CredentialRemovalConfirm({ server, onKeep, onRemoved }: { server
   );
 }
 
+export function storedCredentialTitle(server: Pick<McpServer, "auth_env_key" | "credential_store">): string {
+  if (server.credential_store === "dotenv") return `Read from ${server.auth_env_key} in runtime/.env. Jaroku never displays it.`;
+  if (server.credential_store === "kms") return "Kept encrypted for this workspace alone. Jaroku never displays it.";
+  return "Kept for this workspace alone. Jaroku never displays it.";
+}
+
+export function CredentialHome({ server }: { server: Pick<McpServer, "auth_env_key" | "credential_store"> }) {
+  if (server.credential_store === "dotenv") {
+    return (
+      <>
+        Stored in <span className="font-mono">runtime/.env</span>
+        {server.auth_env_key ? <> as <span className="font-mono">{server.auth_env_key}</span></> : null}
+        , which is gitignored.
+      </>
+    );
+  }
+  return <>{server.credential_store === "kms" ? "Kept encrypted for this workspace alone." : "Kept for this workspace alone."}</>;
+}
+
 function ServerDetail({ server }: { server: McpServer }) {
   // The whole control row below is `mcp:manage`. See the row itself for why it is guarded as a
   // group rather than one button at a time.
@@ -348,7 +367,7 @@ function ServerDetail({ server }: { server: McpServer }) {
           </span>
           {server.configured && (
             <StatusBadge state="neutral" variant="outline" label="credential stored" icon={KeyIcon}
-              title={`Read from ${server.auth_env_key} in runtime/.env. Jaroku never displays it.`} />
+              title={storedCredentialTitle(server)} />
           )}
           <Truncate className="text-tiny text-faint" title={server.endpoint}>{server.endpoint}</Truncate>
         </div>
@@ -457,9 +476,7 @@ function ServerDetail({ server }: { server: McpServer }) {
             )}
             {/* Saying where it goes matters more than saying it is safe. */}
             <p className="mt-1.5 text-tiny leading-[1.5] text-faint">
-              Stored in <span className="font-mono">runtime/.env</span>
-              {server.auth_env_key ? <> as <span className="font-mono">{server.auth_env_key}</span></> : null}
-              , which is gitignored. It is never logged and never sent back to this page.
+              <CredentialHome server={server} /> It is never logged and never sent back to this page.
             </p>
           </form>
         )}

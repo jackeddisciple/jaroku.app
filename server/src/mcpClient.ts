@@ -374,7 +374,7 @@ export async function discover(opts: DiscoverOptions): Promise<DiscoveryResult> 
       error:
         "this endpoint has a username, password or key in the URL, which cannot be used and would " +
         "put a credential somewhere Jaroku does not store credentials. Give the plain URL and " +
-        "add the token separately — it is written to runtime/.env and sent as a bearer token.",
+        "add the token separately: it is kept as a secret and sent as a bearer token.",
     };
   }
 

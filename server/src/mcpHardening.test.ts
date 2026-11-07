@@ -293,7 +293,7 @@ except Exception as exc:
     id, label: id, endpoint: `http://${id}.invalid/mcp`, transport: "http", auth_env_key: null,
     server_name: null, server_version: null, protocol_version: null, status: "connected",
     last_error: null, discovered_at: null, created_at: "2026-01-01T00:00:00.000Z",
-    configured: false, tools: [],
+    configured: false, credential_store: null, tools: [],
   });
 
   const clash = buildManifest(

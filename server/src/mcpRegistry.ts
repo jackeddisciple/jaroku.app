@@ -24,7 +24,7 @@ import { createHash } from "node:crypto";
 import { discover, type DiscoveryResult } from "./mcpClient.ts";
 import type { AddressPin } from "./mcpFetch.ts";
 import { authEnvKeyFor } from "./envWriter.ts";
-import type { SecretStore } from "./secrets/secretStore.ts";
+import type { SecretStore, SecretStoreKind } from "./secrets/secretStore.ts";
 import type { SecretRefRepository } from "./db/repositories/secretRefs.ts";
 import { ENDPOINT_CREDENTIAL_REFUSAL, McpUrlError, endpointCarriesCredential, validateMcpUrl } from "./mcpUrl.ts";
 import { EgressPolicyError, realResolver, type Resolver } from "./sandbox/egressPolicy.ts";
@@ -70,6 +70,7 @@ export interface McpServerView extends McpServer {
    * perfectly fine; `status` is what says whether the server is usable.
    */
   configured: boolean;
+  credential_store: SecretStoreKind | null;
   tools: McpToolView[];
 }
 
@@ -274,6 +275,7 @@ export class McpRegistry {
     return {
       ...server,
       configured: await this.configured(ctx, server),
+      credential_store: this.secrets?.kind ?? null,
       tools: tools.map((t) => this.viewTool(t)),
     };
   }

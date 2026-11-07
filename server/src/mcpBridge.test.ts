@@ -316,6 +316,33 @@ print(json.dumps({"asked": asked}))
   check(JSON.stringify(fresh["asked"]) === JSON.stringify([["run-one", true], ["run-one", false], ["run-two", true]]), "a new run starts every tool's count again", JSON.stringify(fresh));
 }
 
+console.log("\na missing credential is sent to the panel, not to a file a hosted workspace does not have");
+{
+  const keyed = JSON.stringify({
+    servers: [{
+      id: "alpha", endpoint: "https://a.test/mcp", auth_env_key: "JAROKU_MCP_ALPHA_TOKEN",
+      tools: [{ name: "read_page", description: "r", input_schema: { type: "object", properties: {} }, impact: "low", impact_reason: "r" }],
+    }],
+  });
+  const missing = await python(`
+import os
+os.environ.pop("JAROKU_MCP_ALPHA_TOKEN", None)
+os.environ["JAROKU_MCP_CONFIRM"] = "skip"
+called = []
+B._run_call = lambda endpoint, token, tool, args: called.append(tool)
+tool = B.build_tools(json.loads(${JSON.stringify(keyed)}))[0]
+try:
+    tool.invoke({})
+    print(json.dumps({"raised": None, "called": called}))
+except Exception as exc:
+    print(json.dumps({"raised": str(exc), "called": called}))
+`);
+  const said = String(missing["raised"] ?? "");
+  check(said.includes("JAROKU_MCP_ALPHA_TOKEN is not set") && said.includes("Add its credential in the MCP panel."), "the run is told which credential is missing and where it is added", said || JSON.stringify(missing));
+  check(!said.includes("runtime/.env"), "...and is not pointed at runtime/.env", said);
+  check(JSON.stringify(missing["called"]) === "[]", "and nothing is called without it", JSON.stringify(missing["called"]));
+}
+
 rmSync(dir, { recursive: true, force: true });
 console.log(failures === 0 ? "\nALL CORRECT" : `\n${failures} FAILURES`);
 process.exit(failures === 0 ? 0 : 1);

@@ -1,7 +1,7 @@
 import React from "react";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { ConnectForm, CredentialRemovalConfirm, ENDPOINT_SETTLED, EditServerForm, MCP_EMPTY_ADMIN, MCP_EMPTY_MEMBER, McpPanel, RemovalConfirm, SCHEMA_DISPLAY_CHARS, SCHEMA_SHORTENED, TOKEN_DROPPED, controlBtn, schemaText, startAdd } from "./McpPanel.tsx";
+import { ConnectForm, CredentialHome, CredentialRemovalConfirm, ENDPOINT_SETTLED, EditServerForm, MCP_EMPTY_ADMIN, MCP_EMPTY_MEMBER, McpPanel, RemovalConfirm, SCHEMA_DISPLAY_CHARS, SCHEMA_SHORTENED, TOKEN_DROPPED, controlBtn, schemaText, startAdd, storedCredentialTitle } from "./McpPanel.tsx";
 import { useBuildStore } from "../store/buildStore.ts";
 import { ADD_INTERRUPTED, DISCOVERY_STALE_MS, agentsUsing, allMcpTools, isDiscovering, liveSelection, removalConsequences, useMcpStore } from "../store/mcpStore.ts";
 import { useSessionStore } from "../store/sessionStore.ts";
@@ -569,6 +569,30 @@ console.log("\nthe panel's own words match what actually grants a tool");
   check("an agent receives the tools selected for it, which may be more than its plan used", /an agent only receives the ones selected for it/.test(html) && !/the ones its plan asked for/.test(html));
   check("the connect form names both places a tool is granted", /until you select it while planning, or on an agent&#x27;s\s+Capabilities tab/.test(html) || /until you select it while planning, or on an agent's\s+Capabilities tab/.test(html));
   seed(useMcpStore, { formOpen: false });
+}
+
+console.log("\na credential is said to be kept where this server keeps it");
+{
+  const key = "JAROKU_MCP_ALPHA_TOKEN";
+  check("a desktop names its file and the key in it", storedCredentialTitle({ auth_env_key: key, credential_store: "dotenv" }) === `Read from ${key} in runtime/.env. Jaroku never displays it.`);
+  const hosted = storedCredentialTitle({ auth_env_key: key, credential_store: "kms" });
+  check("a hosted workspace is told it is encrypted, and about no file", hosted.includes("encrypted") && !hosted.includes("runtime/.env") && !hosted.includes(key), hosted);
+  const unsaid = storedCredentialTitle({ auth_env_key: key });
+  check("a server that does not say where claims neither", !unsaid.includes("runtime/.env") && !unsaid.includes("encrypted"), unsaid);
+  const note = (credential_store?: "dotenv" | "kms" | null): string =>
+    markup(React.createElement(CredentialHome, { server: { auth_env_key: key, credential_store } }));
+  check("the credential form names the file on a desktop", note("dotenv").includes("runtime/.env") && note("dotenv").includes(key) && note("dotenv").includes("gitignored"), note("dotenv"));
+  check("...and no file when hosted", !note("kms").includes("runtime/.env") && !note("kms").includes(key) && note("kms").includes("encrypted"), note("kms"));
+  check("...nor when the server does not say", !note(undefined).includes("runtime/.env") && !note(null).includes("runtime/.env"), note(undefined));
+
+  seed(useMcpStore, { selectedId: "alpha" });
+  const vaulted = render([server({ configured: true, auth_env_key: key, credential_store: "kms" })]);
+  check("a hosted panel showing a stored credential never mentions runtime/.env", vaulted.includes("credential stored") && !vaulted.includes("runtime/.env"), vaulted.slice(0, 200));
+  const local = render([server({ configured: true, auth_env_key: key, credential_store: "dotenv" })]);
+  check("a desktop one says where to find it", local.includes("runtime/.env"));
+  const source = readFileSync(fileURLToPath(new URL("./McpPanel.tsx", import.meta.url)), "utf8");
+  check("the credential form says it through the same rule", /<CredentialHome server=\{server\} \/> It is never logged and never sent back to this page\./.test(source));
+  seed(useMcpStore, { selectedId: null });
 }
 
 console.log(fail === 0 ? "\nALL CORRECT" : `\n${fail} FAILURES`);

@@ -372,7 +372,7 @@ console.log("\na manifest entry only runs against the endpoint it was granted fo
   };
   const row = (endpoint: string) => [{
     id: "linear", label: "L", endpoint, transport: "http" as const, auth_env_key: null, server_name: null, server_version: null,
-    protocol_version: null, status: "connected" as const, last_error: null, discovered_at: null, created_at: "", configured: false, tools: [],
+    protocol_version: null, status: "connected" as const, last_error: null, discovered_at: null, created_at: "", configured: false, credential_store: null, tools: [],
   }];
   check(Boolean(runScope(manifest, ["linear/read_page"], row("https://old.test/mcp")).servers["linear"]), "the same endpoint runs");
   check(!runScope(manifest, ["linear/read_page"], row("https://new.test/mcp")).servers["linear"], "a different server under the same id does not");
@@ -397,7 +397,7 @@ console.log("\nan override reaches an agent that already exists, and a server ca
   const servers = [{
     id: "alpha", label: "Alpha", endpoint: "https://a.test/mcp", transport: "http" as const, auth_env_key: null,
     server_name: null, server_version: null, protocol_version: null, status: "connected" as const,
-    last_error: null, discovered_at: null, created_at: "", configured: false,
+    last_error: null, discovered_at: null, created_at: "", configured: false, credential_store: null,
     tools: [live("read_page", "low", "high"), live("send_message", "high", "low"), live("was_destructive", "low", null), live("now_flagged", "high", null)],
   }];
   const everything = manifest.servers[0]!.tools.map((tool) => `alpha/${tool.name}`);
@@ -1373,6 +1373,23 @@ console.log("\non the local store two workspaces on one server name keep their o
   check((await local.get(A, "linear"))?.configured === true, "so A still reads configured");
   await local.removeServer(A, "linear");
   await local.removeServer(B, "linear");
+  await fixture.close();
+}
+
+console.log("\nthe panel is told which store keeps a server's credential");
+{
+  const ctx = await workspace("credential-home");
+  const fixture = await startScriptedServer();
+  await registry.addServer(ctx, { endpoint: fixture.url, label: "Vaulted", token: "kept-somewhere" });
+  const hosted = await registry.get(ctx, "vaulted");
+  check(hosted?.configured === true && hosted.credential_store === "kms", "a hosted store says the credential is in the workspace's vault", String(hosted?.credential_store));
+  check((await registry.list(ctx)).every((s) => s.credential_store === "kms"), "...in the listing every panel receives as well");
+  const envPath = join(dir, "credential-home.env");
+  const desktop = new McpRegistry(store, new DotEnvSecretStore({ envPath, writer: fileCredentialWriter(envPath) }));
+  check((await desktop.get(ctx, "vaulted"))?.credential_store === "dotenv", "a desktop store says it is in runtime/.env");
+  check((await new McpRegistry(store).get(ctx, "vaulted"))?.credential_store === null, "and a registry with no store claims neither");
+  check(!JSON.stringify(hosted).includes("kept-somewhere"), "none of which carries the credential");
+  await registry.removeServer(ctx, "vaulted");
   await fixture.close();
 }
 

@@ -775,7 +775,7 @@ def _make_tool(server: dict[str, Any], spec: dict[str, Any]) -> StructuredTool:
         if auth_env_key and not token:
             raise RuntimeError(
                 f"The {server_id} MCP server is not configured: {auth_env_key} is not set in "
-                f"the environment. Add its credential in the MCP panel, or to runtime/.env."
+                f"the environment. Add its credential in the MCP panel."
             )
 
         # 4. The call itself. Every failure below is a failure, not an answer.
