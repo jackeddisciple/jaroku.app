@@ -15,7 +15,7 @@ import { createServer } from "node:http";
 import { TraceStore } from "./store.ts";
 import { openTestSqlite, testContext } from "./db/testDb.ts";
 import { McpStore } from "./mcpStore.ts";
-import { McpRegistry, slugifyServerId } from "./mcpRegistry.ts";
+import { McpRegistry, admitServer, slugifyServerId, type AddServerOptions } from "./mcpRegistry.ts";
 import { startMockServer } from "../fixtures/mcp/mockServer.ts";
 
 let fail = 0;
@@ -173,6 +173,35 @@ const ctx = testContext();
   check("...and its tools go with it", (await registry.get(ctx, "shifty")) === null);
   check("removing something absent is not an error", (await registry.removeServer(ctx, "nope")) === false);
   check("the other server is untouched", (await registry.get(ctx, "flaky")) !== null);
+}
+
+{
+  const before = (await registry.list(ctx)).length;
+  const cases: [string, AddServerOptions][] = [
+    ["no endpoint", { endpoint: "   " }],
+    ["a credential in the URL", { endpoint: "https://user:secret@example.com/mcp" }],
+    ["a credential a header cannot carry", { endpoint: "https://example.com/mcp", token: "line\nbreak" }],
+    ["an id nothing can use", { endpoint: "https://example.com/mcp", id: "9 not an id" }],
+  ];
+  for (const [name, opts] of cases) {
+    const said = admitServer(opts);
+    const prepared = await registry.prepare(ctx, opts);
+    const added = await registry.addServer(ctx, opts);
+    check(
+      `${name} is refused by preparing and by adding, in the same words`,
+      "refusal" in said && !prepared.ok && !added.ok && prepared.message === said.refusal && added.message === said.refusal,
+      `${prepared.message} | ${added.message}`,
+    );
+  }
+  check("and none of them leaves a row behind", (await registry.list(ctx)).length === before);
+  const fine = admitServer({ endpoint: "  https://example.com/mcp  ", label: "  Docs  " });
+  check(
+    "an acceptable one is trimmed, its name cleaned and its id derived",
+    !("refusal" in fine) && fine.endpoint === "https://example.com/mcp" && fine.label === "Docs" && fine.requested === "docs",
+    JSON.stringify(fine),
+  );
+  const unnamed = admitServer({ endpoint: "https://mcp.example.com/mcp", label: "   " });
+  check("a blank name is no name, and the id comes from the endpoint", !("refusal" in unnamed) && unnamed.label === undefined && unnamed.requested === "mcp_example_com", JSON.stringify(unnamed));
 }
 
 trace.close();

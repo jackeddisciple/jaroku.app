@@ -142,6 +142,22 @@ export interface AddServerOptions {
   token?: string | null;
 }
 
+export function admitServer(
+  opts: Pick<AddServerOptions, "endpoint" | "label" | "id" | "token">,
+): { refusal: string } | { endpoint: string; label: string | undefined; requested: string } {
+  const endpoint = opts.endpoint.trim();
+  if (!endpoint) return { refusal: "an endpoint is required" };
+  if (endpointCarriesCredential(endpoint)) return { refusal: ENDPOINT_CREDENTIAL_REFUSAL };
+  const badToken = opts.token ? tokenRefusal(opts.token) : null;
+  if (badToken) return { refusal: badToken };
+  const label = (typeof opts.label === "string" ? cleanLabel(opts.label) : "") || undefined;
+  const requested = opts.id?.trim() || requestedServerId(label, endpoint);
+  if (!SERVER_ID_RE.test(requested)) {
+    return { refusal: `"${requested}" is not a usable server id — lowercase letters, digits and underscores, starting with a letter` };
+  }
+  return { endpoint, label, requested };
+}
+
 const ABANDONED_CONNECT_MS = 5 * 60_000;
 
 export class McpRegistry {
@@ -332,24 +348,9 @@ export class McpRegistry {
     ctx: TenantContext,
     opts: AddServerOptions,
   ): Promise<{ ok: boolean; id: string; authEnvKey: string | null; message: string | null; atLimit?: boolean }> {
-    const endpoint = opts.endpoint.trim();
-    if (!endpoint) return { ok: false, id: "", authEnvKey: null, message: "an endpoint is required" };
-    if (endpointCarriesCredential(endpoint)) {
-      return { ok: false, id: "", authEnvKey: null, message: ENDPOINT_CREDENTIAL_REFUSAL };
-    }
-    const badToken = opts.token ? tokenRefusal(opts.token) : null;
-    if (badToken) return { ok: false, id: "", authEnvKey: null, message: badToken };
-
-    const label = (typeof opts.label === "string" ? cleanLabel(opts.label) : "") || undefined;
-    const requested = opts.id?.trim() || requestedServerId(label, endpoint);
-    if (!SERVER_ID_RE.test(requested)) {
-      return {
-        ok: false,
-        id: "",
-        authEnvKey: null,
-        message: `"${requested}" is not a usable server id — lowercase letters, digits and underscores, starting with a letter`,
-      };
-    }
+    const admitted = admitServer(opts);
+    if ("refusal" in admitted) return { ok: false, id: "", authEnvKey: null, message: admitted.refusal };
+    const { endpoint, label, requested } = admitted;
     if (opts.id && (await this.store.getServer(ctx, opts.id))) {
       return { ok: false, id: "", authEnvKey: null, message: `a server called "${opts.id}" is already connected` };
     }
@@ -392,23 +393,9 @@ export class McpRegistry {
    * and making them type it again would be worse than an honest error row.
    */
   async addServer(ctx: TenantContext, opts: AddServerOptions): Promise<RegistrationResult> {
-    const endpoint = opts.endpoint.trim();
-    if (!endpoint) return { ok: false, server: null, message: "an endpoint is required" };
-    if (endpointCarriesCredential(endpoint)) {
-      return { ok: false, server: null, message: ENDPOINT_CREDENTIAL_REFUSAL };
-    }
-    const badToken = opts.token ? tokenRefusal(opts.token) : null;
-    if (badToken) return { ok: false, server: null, message: badToken };
-
-    const cleanedLabel = (typeof opts.label === "string" ? cleanLabel(opts.label) : "") || undefined;
-    const requested = opts.id?.trim() || requestedServerId(cleanedLabel, endpoint);
-    if (!SERVER_ID_RE.test(requested)) {
-      return {
-        ok: false,
-        server: null,
-        message: `"${requested}" is not a usable server id — lowercase letters, digits and underscores, starting with a letter`,
-      };
-    }
+    const admitted = admitServer(opts);
+    if ("refusal" in admitted) return { ok: false, server: null, message: admitted.refusal };
+    const { endpoint, label: cleanedLabel, requested } = admitted;
     const existing = opts.id ? await this.store.getServer(ctx, opts.id) : null;
     if (opts.reserved && !existing) return { ok: false, server: null, message: null };
     if (existing && !(opts.reserved && existing.status === "connecting")) {
