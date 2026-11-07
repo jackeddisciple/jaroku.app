@@ -3,6 +3,8 @@
 //   npm run test:grant-and-retry
 
 import { createElement } from "react";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 
 let failures = 0;
 const check = (ok: boolean, msg: string, detail = ""): void => {
@@ -42,6 +44,13 @@ console.log("\nthe way on from a change that needed a tool");
   seed(useBuildStore, { agents: [{ agent_id: "margot", name: "Margot", mcp_tools: ["deepwiki/ask_wiki_question"] }] as never });
   const after = markup(createElement(DiffCard, { turn } as never));
   check(after.includes("Try the change again") && !after.includes("Grant deepwiki"), "...and once it is granted, offers the change again");
+}
+
+console.log("\na grant that never left the tab says so");
+{
+  const source = readFileSync(fileURLToPath(new URL("./DiffCard.tsx", import.meta.url)), "utf8");
+  check(/onClick=\{\(\) => setUnsent\(!sendSetAgentTools\(agentId, \[\.\.\.granted, \.\.\.missing\]\)\)\}/.test(source), "the grant button keeps whether its send left the tab");
+  check(/\{unsent && missing\.length > 0 && <p role="alert"[^>]*>\{notSent\("Grant"\)\}<\/p>\}/.test(source), "...and says when it did not, naming the button to press again");
 }
 
 console.log(failures === 0 ? "\nALL CORRECT" : `\n${failures} FAILURES`);

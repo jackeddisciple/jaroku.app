@@ -27,6 +27,7 @@ import { ICON, TYPE } from "../lib/tokens.ts";
 import { codeTokenStyle, languageForPath } from "../lib/highlight.ts";
 import { useCodeTokens } from "../lib/useCodeTokens.ts";
 import { CheckIcon, FileIcon, PlusIcon, UndoIcon } from "./panelIcons.tsx";
+import { notSent } from "./McpPanel.tsx";
 
 /**
  * One hunk's lines: the sign and the line's tint say added or removed, as they always did, and the
@@ -439,6 +440,7 @@ function GrantAndRetry({ agentId, agentName, granted, wanted, instruction }: {
 }) {
   const missing = wanted.filter((ref) => !granted.includes(ref));
   const label = (ref: string): string => ref.replace("/", "'s ");
+  const [unsent, setUnsent] = useState(false);
   return (
     <div className="mt-2 flex flex-wrap items-center gap-2">
       {missing.length > 0 ? (
@@ -446,7 +448,7 @@ function GrantAndRetry({ agentId, agentName, granted, wanted, instruction }: {
           type="button"
           className={secondaryBtn}
           title="Grant it in this agent's MCP tools — the same as the Tools tab"
-          onClick={() => sendSetAgentTools(agentId, [...granted, ...missing])}
+          onClick={() => setUnsent(!sendSetAgentTools(agentId, [...granted, ...missing]))}
         >
           Grant {missing.map(label).join(", ")} to {agentName}
         </button>
@@ -455,6 +457,7 @@ function GrantAndRetry({ agentId, agentName, granted, wanted, instruction }: {
           Try the change again
         </button>
       ) : null}
+      {unsent && missing.length > 0 && <p role="alert" className="w-full text-tiny leading-[1.5] text-err">{notSent("Grant")}</p>}
     </div>
   );
 }

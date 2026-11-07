@@ -1553,8 +1553,8 @@ export function sendArchiveAgent(agentId: string): void {
  * and no others — two tabs each sending an add would produce a set neither of them chose. A caller
  * removing one sends the rest.
  */
-export function sendSetAgentTools(agentId: string, mcpTools: readonly string[]): void {
-  send({ cmd: "setAgentTools", agentId, mcpTools: [...mcpTools] });
+export function sendSetAgentTools(agentId: string, mcpTools: readonly string[]): boolean {
+  return send({ cmd: "setAgentTools", agentId, mcpTools: [...mcpTools] });
 }
 
 export function sendRevokeAgentTools(agentId: string, revoke: readonly string[]): boolean {

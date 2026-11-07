@@ -681,6 +681,17 @@ console.log("\nevery MCP panel action says when it was not sent, naming the butt
   check("and the socket reports whether an impact change was sent", /export function sendSetMcpToolImpact\([^)]*\): boolean \{\s*return send\(/.test(socket));
 }
 
+console.log("\na grant editor save that never left the tab keeps the ticks and says so");
+{
+  const tabs = readFileSync(fileURLToPath(new URL("./AgentTabs.tsx", import.meta.url)), "utf8");
+  const editor = /function McpGrantEditor\([\s\S]*?\n\}\n/.exec(tabs)?.[0] ?? "";
+  check("a save that was not sent leaves the editor open with its ticks", /if \(!sendSetAgentTools\(slug, chosen\)\) \{\s*setUnsent\(true\);\s*return;\s*\}\s*setUnsent\(false\);\s*setOpen\(false\);\s*setDraft\(null\);/.test(editor));
+  check("...and says so, naming Save", /\{unsent && <p role="alert"[^>]*>\{notSent\("Save"\)\}<\/p>\}/.test(editor));
+  check("...until the editor is opened or closed again", /setDraft\(granted\); setUnsent\(false\); setOpen\(\(v\) => !v\);/.test(editor));
+  const socket = readFileSync(fileURLToPath(new URL("../lib/socket.ts", import.meta.url)), "utf8");
+  check("the socket reports whether a grant was sent", /export function sendSetAgentTools\([^)]*\): boolean \{\s*return send\(/.test(socket));
+}
+
 console.log("\na server's name stops where the server would cut it");
 {
   const kept = /export const MAX_LABEL_CHARS = (\d+);/.exec(

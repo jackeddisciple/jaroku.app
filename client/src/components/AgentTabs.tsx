@@ -41,6 +41,7 @@ import { allMcpTools, useMcpStore } from "../store/mcpStore.ts";
 import { moreToolsLabel, useToolWindow } from "../lib/toolWindow.ts";
 import { useCanRun } from "../lib/useCapability.ts";
 import { sendSetAgentTools } from "../lib/socket.ts";
+import { notSent } from "./McpPanel.tsx";
 import { useThreadStore } from "../store/threadStore.ts";
 import { useAgentGridStore } from "../store/agentGridStore.ts";
 import type { AgentDetailView, McpServer } from "../types.ts";
@@ -125,6 +126,7 @@ function McpGrantEditor({ detail }: { detail: AgentDetailView }) {
   // THE DRAFT IS SEEDED FROM WHAT IS GRANTED and re-seeded when the panel opens, so a grant changed
   // in another tab is what a second edit starts from rather than a set this component remembered.
   const [draft, setDraft] = useState<string[] | null>(null);
+  const [unsent, setUnsent] = useState(false);
 
   const granted = detail.tools.map((t) => t.ref);
   // A REF WHOSE SERVER HAS GONE IS OFFERED AS A ROW THAT IS ON AND CANNOT BE TURNED BACK ON. It is
@@ -142,7 +144,7 @@ function McpGrantEditor({ detail }: { detail: AgentDetailView }) {
         type="button"
         className={`${iconBtn} w-auto gap-1.5 px-2 text-tiny text-muted`}
         aria-expanded={open}
-        onClick={() => { setDraft(granted); setOpen((v) => !v); }}
+        onClick={() => { setDraft(granted); setUnsent(false); setOpen((v) => !v); }}
       >
         <Icon.agentDetail.grantTool size={ICON.xs} />
         {open ? "Cancel" : granted.length > 0 ? "Change what it may call" : "Grant a tool"}
@@ -211,7 +213,15 @@ function McpGrantEditor({ detail }: { detail: AgentDetailView }) {
             <button
               type="button"
               className={`${iconBtn} w-auto px-2 text-tiny`}
-              onClick={() => { sendSetAgentTools(slug, chosen); setOpen(false); setDraft(null); }}
+              onClick={() => {
+                if (!sendSetAgentTools(slug, chosen)) {
+                  setUnsent(true);
+                  return;
+                }
+                setUnsent(false);
+                setOpen(false);
+                setDraft(null);
+              }}
             >
               Save
             </button>
@@ -219,6 +229,7 @@ function McpGrantEditor({ detail }: { detail: AgentDetailView }) {
               {chosen.length} of {rows.length} — the agent may call these and nothing else.
             </span>
           </div>
+          {unsent && <p role="alert" className="text-tiny leading-[1.5] text-err">{notSent("Save")}</p>}
         </div>
       )}
     </div>
