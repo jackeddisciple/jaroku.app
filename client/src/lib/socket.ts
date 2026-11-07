@@ -1881,8 +1881,8 @@ export function sendResolveMcpConfirm(runId: string, nonce: string, verdict: Mcp
 }
 
 /** Override the impact classification for one tool. `null` restores the classifier's call. */
-export function sendSetMcpToolImpact(serverId: string, toolName: string, impact: McpImpact | null): void {
-  send({ cmd: "setMcpToolImpact", serverId, toolName, impact });
+export function sendSetMcpToolImpact(serverId: string, toolName: string, impact: McpImpact | null): boolean {
+  return send({ cmd: "setMcpToolImpact", serverId, toolName, impact });
 }
 
 // --- model providers -------------------------------------------------------

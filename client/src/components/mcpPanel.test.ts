@@ -1,7 +1,7 @@
 import React from "react";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { ConnectForm, CredentialHome, CredentialRemovalConfirm, ENDPOINT_SETTLED, EditServerForm, MCP_EMPTY_ADMIN, MCP_EMPTY_MEMBER, McpPanel, RemovalConfirm, SCHEMA_DISPLAY_CHARS, SCHEMA_SHORTENED, TOKEN_DROPPED, controlBtn, sameToolRow, schemaText, startAdd, storedCredentialTitle } from "./McpPanel.tsx";
+import { ConnectForm, CredentialHome, CredentialRemovalConfirm, ENDPOINT_SETTLED, EditServerForm, MCP_EMPTY_ADMIN, MCP_EMPTY_MEMBER, McpPanel, NOT_SENT, RemovalConfirm, SCHEMA_DISPLAY_CHARS, SCHEMA_SHORTENED, TOKEN_DROPPED, controlBtn, notSent, sameToolRow, schemaText, startAdd, storedCredentialTitle } from "./McpPanel.tsx";
 import { FIRST_TOOL_PAGE, TOOL_PAGE, matchTools, moreToolsLabel, searchTools, showMoreTools, toolWindow } from "../lib/toolWindow.ts";
 import { useBuildStore } from "../store/buildStore.ts";
 import { ADD_INTERRUPTED, DISCOVERY_STALE_MS, agentsUsing, allMcpTools, isDiscovering, liveSelection, mcpToolSearchText, removalConsequences, useMcpStore } from "../store/mcpStore.ts";
@@ -222,7 +222,7 @@ console.log("\nEnter submits a form only as its button would");
   check("...and submitting it goes through the guarded start", /onSubmit=\{\(e\) => \{\s*e\.preventDefault\(\);\s*submit\(\);/.test(source) && /const started = startAdd\(/.test(source));
   check("the credential form is a form too", /onSubmit=\{\(e\) => \{\s*e\.preventDefault\(\);\s*saveCredential\(\);/.test(source));
   check("...whose Save submits and whose Remove does not", /<button type="submit" className=\{primaryBtn\} disabled=\{!token\.trim\(\)\}>\s*Save/.test(source) && /<button type="button" className=\{quietBtn\}[\s\S]{0,120}Remove/.test(source));
-  check("...and a credential the socket did not send is kept, with the reason", /if \(!sendSetMcpServerAuth\(server\.id, value\)\) \{\s*setCredentialError\(NOT_SENT\);\s*return;/.test(source));
+  check("...and a credential the socket did not send is kept, with the reason", /if \(!sendSetMcpServerAuth\(server\.id, value\)\) \{\s*setCredentialError\(notSent\("Save", true\)\);\s*return;/.test(source));
 }
 
 console.log("\nswitching workspace drops whatever was typed for the old one");
@@ -662,6 +662,23 @@ console.log("\nthe composer's MCP list and the grant editor draw a page at a tim
   const rows = grantRows([server({ tools: many })], ["gone/kept_grant"]);
   const gone = toolWindow(rows, matchTools(rows, "gone/", (r) => r.ref), FIRST_TOOL_PAGE);
   check("a grant whose server went can be found however long the list", gone.visible.length === 1 && gone.visible[0]?.gone === true);
+}
+
+console.log("\nevery MCP panel action says when it was not sent, naming the button to press again");
+{
+  check("the connect form's words are as they were", NOT_SENT === "Jaroku is not connected right now, so nothing was sent. What you typed is still here: press Connect again once it reconnects.");
+  check("an action with nothing typed names its own button", notSent("re-check") === "Jaroku is not connected right now, so nothing was sent. Press re-check again once it reconnects.", notSent("re-check"));
+  check("...and one with something typed says that is kept", notSent("Save", true).includes("What you typed is still here: press Save again once it reconnects."));
+  const source = readFileSync(fileURLToPath(new URL("./McpPanel.tsx", import.meta.url)), "utf8");
+  check("only the connect form sends somebody to Connect", (source.match(/\bNOT_SENT\b/g) ?? []).length === 2 && /if \(started === "offline"\) setFormError\(NOT_SENT\);/.test(source));
+  check("disconnecting names its own button", source.includes("{notSent(`Disconnect ${server.label}`)}"));
+  check("removing a credential names its own button", source.includes('{notSent("Remove the credential")}'));
+  check("an edit and a new credential keep what was typed and name Save", (source.match(/notSent\("Save", true\)/g) ?? []).length === 2);
+  check("a re-check that never left the tab says so", /onClick=\{\(\) => setCheckUnsent\(!sendRediscoverMcpServer\(server\.id\)\)\}/.test(source) && /\{checkUnsent && <p role="alert"[^>]*>\{notSent\("re-check"\)\}<\/p>\}/.test(source));
+  check("an impact change that never left the tab says so on its own tool", /setUnsent\(sendSetMcpToolImpact\(serverId, tool\.name, impact\) \? null : notSent\(control\)\)/.test(source) && /\{unsent && <p role="alert"[^>]*>\{unsent\}<\/p>\}/.test(source));
+  check("...naming the button that was pressed", /setImpact\(high \? "low" : "high", high \? "stop asking first" : "treat as high impact"\)/.test(source) && /setImpact\(null, tool\.override_voided \? "clear my old setting" : "use Jaroku's classification"\)/.test(source));
+  const socket = readFileSync(fileURLToPath(new URL("../lib/socket.ts", import.meta.url)), "utf8");
+  check("and the socket reports whether an impact change was sent", /export function sendSetMcpToolImpact\([^)]*\): boolean \{\s*return send\(/.test(socket));
 }
 
 console.log(fail === 0 ? "\nALL CORRECT" : `\n${fail} FAILURES`);

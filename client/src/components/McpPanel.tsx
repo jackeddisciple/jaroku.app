@@ -83,7 +83,10 @@ function ToolRowView({ tool, serverId }: { tool: McpTool; serverId: string }) {
   // workspace has to be asked before running it, and lowering one stops the asking entirely.
   const canManage = useCanRun("setMcpToolImpact");
   const [open, setOpen] = useState(false);
+  const [unsent, setUnsent] = useState<string | null>(null);
   const high = tool.impact === "high";
+  const setImpact = (impact: McpTool["impact"] | null, control: string) =>
+    setUnsent(sendSetMcpToolImpact(serverId, tool.name, impact) ? null : notSent(control));
   const Icon = high ? ShieldAlertIcon : EyeIcon;
 
   return (
@@ -156,7 +159,7 @@ function ToolRowView({ tool, serverId }: { tool: McpTool; serverId: string }) {
                 <span className="text-faint">·</span>
                 <button
                   className={quietBtn + " !px-0 !text-tiny"}
-                  onClick={() => sendSetMcpToolImpact(serverId, tool.name, high ? "low" : "high")}
+                  onClick={() => setImpact(high ? "low" : "high", high ? "stop asking first" : "treat as high impact")}
                   title={high
                     ? "Stop asking before this runs."
                     : "Ask before this runs, even though it was classified read-only."}
@@ -170,13 +173,15 @@ function ToolRowView({ tool, serverId }: { tool: McpTool; serverId: string }) {
                 <span className="text-faint">·</span>
                 <button
                   className={quietBtn + " !px-0 !text-tiny"}
-                  onClick={() => sendSetMcpToolImpact(serverId, tool.name, null)}
+                  onClick={() => setImpact(null, tool.override_voided ? "clear my old setting" : "use Jaroku's classification")}
                 >
                   {tool.override_voided ? "clear my old setting" : "use Jaroku's classification"}
                 </button>
               </>
             )}
           </div>
+
+          {unsent && <p role="alert" className="mt-1 text-tiny leading-[1.5] text-err">{unsent}</p>}
 
           {open && (
             <pre className="mt-1.5 max-h-80 overflow-auto rounded-control border border-hair bg-void p-2 font-mono text-tiny leading-[1.5] text-muted">
@@ -266,7 +271,7 @@ export function EditServerForm({ server, onDone }: { server: McpServer; onDone: 
       return;
     }
     if (!sendUpdateMcpServer(server.id, patch)) {
-      setFailed(NOT_SENT);
+      setFailed(notSent("Save", true));
       return;
     }
     onDone();
@@ -326,7 +331,7 @@ export function RemovalConfirm({ server, onKeep }: { server: McpServer; onKeep: 
   return (
     <div role="group" aria-label={`Disconnect ${server.label}?`} className="mt-2 rounded-card border border-err/40 bg-panel p-2">
       <p className="text-tiny leading-[1.5] text-ink">{removalConsequences(server, agents)}</p>
-      {failed && <p role="alert" className="mt-1 text-tiny leading-[1.5] text-err">{NOT_SENT}</p>}
+      {failed && <p role="alert" className="mt-1 text-tiny leading-[1.5] text-err">{notSent(`Disconnect ${server.label}`)}</p>}
       <div className="mt-2 flex items-center gap-2">
         <button type="button" className={controlBtn + " hover:!text-err"}
           onClick={() => (sendRemoveMcpServer(server.id) ? onKeep() : setFailed(true))}>
@@ -349,7 +354,7 @@ export function CredentialRemovalConfirm({ server, onKeep, onRemoved }: { server
         Removing the credential stored for {server.label} deletes it. Jaroku checks the server again without it, and an agent
         calling it will be refused if the server needs one.
       </p>
-      {failed && <p role="alert" className="mt-1 text-tiny leading-[1.5] text-err">{NOT_SENT}</p>}
+      {failed && <p role="alert" className="mt-1 text-tiny leading-[1.5] text-err">{notSent("Remove the credential")}</p>}
       <div className="mt-2 flex items-center gap-2">
         <button type="button" className={controlBtn + " hover:!text-err"}
           onClick={() => (sendSetMcpServerAuth(server.id, null) ? onRemoved() : setFailed(true))}>
@@ -391,12 +396,13 @@ function ServerDetail({ server }: { server: McpServer }) {
   const [showToken, setShowToken] = useState(false);
   const [credentialError, setCredentialError] = useState<string | null>(null);
   const [confirming, setConfirming] = useState<null | "disconnect" | "credential">(null);
+  const [checkUnsent, setCheckUnsent] = useState(false);
   const [editing, setEditing] = useState(false);
   const saveCredential = () => {
     const value = token.trim();
     if (!value) return;
     if (!sendSetMcpServerAuth(server.id, value)) {
-      setCredentialError(NOT_SENT);
+      setCredentialError(notSent("Save", true));
       return;
     }
     setToken("");
@@ -458,7 +464,7 @@ function ServerDetail({ server }: { server: McpServer }) {
         {canManage && (
           <div className="mt-2 flex items-center gap-2 flex-wrap">
             <button className={controlBtn} disabled={discovering || server.status === "connecting"}
-              onClick={() => sendRediscoverMcpServer(server.id)}
+              onClick={() => setCheckUnsent(!sendRediscoverMcpServer(server.id))}
               title="Ask the server what it can do, again. A failure keeps the tools already discovered.">
               <RefreshIcon size={ICON.xs} />
               {discovering ? "checking…" : "re-check"}
@@ -478,6 +484,7 @@ function ServerDetail({ server }: { server: McpServer }) {
             </button>
           </div>
         )}
+        {checkUnsent && <p role="alert" className="mt-1.5 text-tiny leading-[1.5] text-err">{notSent("re-check")}</p>}
 
         {editing && <EditServerForm server={server} onDone={() => setEditing(false)} />}
         {confirming === "disconnect" && <RemovalConfirm server={server} onKeep={() => setConfirming(null)} />}
@@ -577,8 +584,13 @@ function ServerDetail({ server }: { server: McpServer }) {
   );
 }
 
-export const NOT_SENT =
-  "Jaroku is not connected right now, so nothing was sent. What you typed is still here: press Connect again once it reconnects.";
+export function notSent(control: string, typed = false): string {
+  return typed
+    ? `Jaroku is not connected right now, so nothing was sent. What you typed is still here: press ${control} again once it reconnects.`
+    : `Jaroku is not connected right now, so nothing was sent. Press ${control} again once it reconnects.`;
+}
+
+export const NOT_SENT = notSent("Connect", true);
 
 export interface AddDraft {
   endpoint: string;
