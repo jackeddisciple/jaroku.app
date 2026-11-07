@@ -12,7 +12,7 @@
 // is exactly the state a confirmation prompt must never be rendered from.
 
 import { create } from "zustand";
-import type { AgentSummary, McpConfirmRequest, McpImpact, McpServer, McpTool } from "../types.ts";
+import type { AgentSummary, McpConfirmRequest, McpServer, McpTool } from "../types.ts";
 
 /** A tool plus the server it came from, for the flat lists the selection UI needs. */
 export interface McpToolRef extends McpTool {
@@ -256,25 +256,6 @@ export function planMcpTool(
   );
 }
 
-/** Resolve `"server/tool"` refs to tools, dropping any that no longer exist. */
-export function resolveMcpRefs(servers: McpServer[], refs: string[]): McpToolRef[] {
-  const byRef = new Map(allMcpTools(servers).map((t) => [t.ref, t]));
-  return refs.map((r) => byRef.get(r)).filter((t): t is McpToolRef => t !== undefined);
-}
-
-/**
- * The tool names an agent could be calling through MCP, for the trace and graph badges.
- *
- * Keyed by NAME rather than ref because that is all a trace step carries: the frozen Step
- * schema has no provenance field and must not grow one, so MCP-ness is derived from agent
- * metadata joined on the tool name. Collisions across servers are possible in principle and
- * would only ever over-mark, never under-mark, which is the safe direction for a badge that
- * says "this came from unreviewed code".
- */
-export function mcpToolNames(servers: McpServer[]): Set<string> {
-  return new Set(allMcpTools(servers).map((t) => t.name));
-}
-
 /**
  * The MCP tool names an AGENT was granted, from its own manifest refs.
  *
@@ -294,8 +275,3 @@ export function agentMcpToolNames(refs: string[] | undefined): Set<string> {
   }
   return names;
 }
-
-export const IMPACT_LABEL: Record<McpImpact, string> = {
-  high: "high impact",
-  low: "read-only",
-};
