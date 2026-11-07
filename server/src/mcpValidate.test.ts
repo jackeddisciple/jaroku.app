@@ -14,7 +14,8 @@ import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
-import { validateProject } from "./validator.ts";
+import { IMPORT_CHECK_MS_ENV, importCheck, importCheckMs, importTimedOut, validateProject } from "./validator.ts";
+import type { CodeCheckResult, CodeCheckSpec } from "./sandbox/codeCheck.ts";
 import type { Manifest } from "./mcpManifest.ts";
 
 let fail = 0;
@@ -345,6 +346,40 @@ TOOLS = [hello]
     "tools/extra.py": `import os\nos.environ["MY_FLAG"] = "1"\nos.environ.setdefault("OTHER", "1")\nv = os.environ.get("MY_FLAG")\nw = os.environ["MY_FLAG"]\nh = "X" in os.environ\ndigest = os.getenv("Y")\n`,
   });
   check("ordinary environment use is not", !fine.some((p) => /rule 13/.test(p)), fine.join(" | ").slice(0, 200));
+}
+
+console.log("\na slow import gets a second, longer try before a project is thrown away");
+{
+  const result = (patch: Partial<CodeCheckResult>): CodeCheckResult => ({
+    stdout: "[]", stderr: "", timedOut: false, exitCode: 0, spawnError: null, truncated: false, ...patch,
+  });
+  const scripted = (answers: Partial<CodeCheckResult>[]) => {
+    const asked: number[] = [];
+    return {
+      asked,
+      sandbox: { run: async (spec: CodeCheckSpec) => (asked.push(spec.timeoutMs ?? 0), result(answers[Math.min(asked.length - 1, answers.length - 1)] ?? {})) },
+    };
+  };
+  const slow = scripted([{ timedOut: true, stdout: "" }, {}]);
+  const kept = await importCheck("runtime", "project", slow.sandbox, 1_000);
+  check("an import that finishes on the second try leaves a valid project valid", kept.length === 0, JSON.stringify(kept));
+  check("...and that try is given twice as long", slow.asked.join() === "1000,2000", slow.asked.join());
+
+  const stuck = scripted([{ timedOut: true, stdout: "" }]);
+  const refused = await importCheck("runtime", "project", stuck.sandbox, 1_000);
+  check("an import that never finishes is still refused", refused.length === 1 && refused[0] === importTimedOut(1_000), JSON.stringify(refused));
+  check("...saying it was tried twice, that top-level code must not block, and that a busy machine can cause it", /within 1s, nor within 2s on a second try/.test(refused[0] ?? "") && /must not block/.test(refused[0] ?? "") && /busy/.test(refused[0] ?? ""));
+
+  const broken = scripted([{ timedOut: true, spawnError: "no python" }]);
+  await importCheck("runtime", "project", broken.sandbox, 1_000);
+  check("a check that could not start is not tried again", broken.asked.length === 1);
+  const fine = scripted([{}]);
+  await importCheck("runtime", "project", fine.sandbox, 1_000);
+  check("a quick import is checked once", fine.asked.length === 1);
+
+  check("the limit defaults to twenty seconds", importCheckMs({}) === 20_000);
+  check("...and can be raised for a slow machine", importCheckMs({ [IMPORT_CHECK_MS_ENV]: "45000" }) === 45_000);
+  check("...but not set to nothing", importCheckMs({ [IMPORT_CHECK_MS_ENV]: "0" }) === 20_000 && importCheckMs({ [IMPORT_CHECK_MS_ENV]: "soon" }) === 20_000);
 }
 
 for (const d of dirs) rmSync(d, { recursive: true, force: true });

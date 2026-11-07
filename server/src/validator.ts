@@ -475,10 +475,26 @@ print(json.dumps({"problems": problems, "warnings": warnings}))
  * execute seconds later — inside the same uv venv, with stdout captured so a violation
  * of rule 3 at import time surfaces here instead of corrupting the event stream.
  */
-function importCheck(
+export const IMPORT_CHECK_MS_ENV = "JAROKU_IMPORT_CHECK_MS";
+
+export function importCheckMs(env: NodeJS.ProcessEnv = process.env): number {
+  const n = Number(env[IMPORT_CHECK_MS_ENV]);
+  return Number.isFinite(n) && n > 0 ? n : 20_000;
+}
+
+export function importTimedOut(firstMs: number): string {
+  const seconds = (ms: number) => `${Math.round(ms / 1000)}s`;
+  return (
+    `the project's import did not finish within ${seconds(firstMs)}, nor within ${seconds(firstMs * 2)} on a ` +
+    `second try — top-level code must not block. If this machine was busy, generating again may succeed.`
+  );
+}
+
+export function importCheck(
   runtimeDir: string,
   projectDir: string,
   sandbox: CodeCheckSandbox = defaultCodeCheckSandbox,
+  limitMs: number = importCheckMs(),
 ): Promise<string[]> {
   const script = `
 import contextlib, importlib, io, json, os, sys, traceback
@@ -513,17 +529,19 @@ if out:
 print(json.dumps(problems))
 `.trim();
 
-  return sandbox
-    .run({
+  const attempt = (timeoutMs: number) =>
+    sandbox.run({
       runtimeDir,
       args: ["-c", script, PROJECT_PARENT_TOKEN, basename(projectDir)],
       project: projectDir,
       // Top-level code can loop forever; a hung import must reject, not hang validation.
-      timeoutMs: 20_000,
-    })
+      timeoutMs,
+    });
+  return attempt(limitMs)
+    .then((first) => (first.timedOut && !first.spawnError ? attempt(limitMs * 2) : first))
     .then(({ stdout, stderr, spawnError, timedOut }) => {
       if (spawnError) return [`could not run the import check: ${spawnError}`];
-      if (timedOut) return ["the project's import timed out after 20s — top-level code must not block"];
+      if (timedOut) return [importTimedOut(limitMs)];
       try {
         return JSON.parse(stdout.trim() || "[]") as string[];
       } catch {
