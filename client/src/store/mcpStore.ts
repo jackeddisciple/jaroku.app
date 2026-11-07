@@ -233,6 +233,10 @@ export function allMcpTools(servers: McpServer[]): McpToolRef[] {
   );
 }
 
+export function mcpToolSearchText(tool: McpToolRef): string {
+  return `${tool.name} ${tool.serverLabel} ${tool.description ?? ""}`;
+}
+
 export function liveSelection(selected: readonly string[], servers: McpServer[]): string[] {
   const live = new Set(allMcpTools(servers).map((tool) => tool.ref));
   return selected.filter((ref) => live.has(ref));

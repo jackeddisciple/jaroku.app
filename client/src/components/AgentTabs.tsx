@@ -38,6 +38,7 @@ import { absTime, fmtCost, fmtLatency, relTime } from "../lib/format.ts";
 import { ACCENT, ICON, STATUS, TEXT, TYPE } from "../lib/tokens.ts";
 import { useUiStore } from "../store/uiStore.ts";
 import { allMcpTools, useMcpStore } from "../store/mcpStore.ts";
+import { moreToolsLabel, useToolWindow } from "../lib/toolWindow.ts";
 import { useCanRun } from "../lib/useCapability.ts";
 import { sendSetAgentTools } from "../lib/socket.ts";
 import { useThreadStore } from "../store/threadStore.ts";
@@ -107,6 +108,8 @@ export interface GrantRow {
   high: boolean;
 }
 
+const grantRowText = (row: GrantRow): string => row.ref;
+
 export function grantRows(servers: McpServer[], granted: readonly string[]): GrantRow[] {
   const tools = new Map(allMcpTools(servers).map((tool) => [tool.ref, tool]));
   return [...new Set([...tools.keys(), ...granted])]
@@ -123,14 +126,15 @@ function McpGrantEditor({ detail }: { detail: AgentDetailView }) {
   // in another tab is what a second edit starts from rather than a set this component remembered.
   const [draft, setDraft] = useState<string[] | null>(null);
 
-  if (!mayWrite) return null;
-
   const granted = detail.tools.map((t) => t.ref);
   // A REF WHOSE SERVER HAS GONE IS OFFERED AS A ROW THAT IS ON AND CANNOT BE TURNED BACK ON. It is
   // what the `unresolved` chip is about, and unticking it is the repair — so it belongs in the list
   // rather than being filtered out of the one place it can be removed from.
   const rows = grantRows(servers, granted);
+  const choices = useToolWindow(rows, grantRowText);
   const chosen = draft ?? granted;
+
+  if (!mayWrite) return null;
 
   return (
     <div className="mb-2">
@@ -146,12 +150,28 @@ function McpGrantEditor({ detail }: { detail: AgentDetailView }) {
 
       {open && (
         <div className="mt-1.5 space-y-1 rounded-control border border-hair p-2">
+          {choices.filterable && (
+            <input
+              type="search"
+              name="mcp-grant-filter"
+              value={choices.query}
+              onChange={(e) => choices.search(e.target.value)}
+              placeholder="Find a tool by server or name"
+              aria-label="Find a tool to grant"
+              autoComplete="off"
+              spellCheck={false}
+              className="h-6 w-full rounded-input border border-hair bg-elevated px-2 text-tiny text-ink outline-none placeholder:text-faint focus-visible:shadow-focusring"
+            />
+          )}
+          {choices.query.trim() !== "" && choices.matched === 0 && (
+            <div className="text-tiny text-faint">No tool matches that.</div>
+          )}
           {rows.length === 0 ? (
             <div className="text-tiny text-faint">
               No MCP server is connected to this workspace, so there is nothing to grant.
             </div>
           ) : (
-            rows.map(({ ref, gone, high }) => {
+            choices.visible.map(({ ref, gone, high }) => {
               return (
                 <label key={ref} className="flex min-w-0 cursor-pointer items-center gap-2 text-tiny text-ink">
                   <input
@@ -181,6 +201,11 @@ function McpGrantEditor({ detail }: { detail: AgentDetailView }) {
                 </label>
               );
             })
+          )}
+          {choices.remaining > 0 && (
+            <button type="button" className={`${iconBtn} w-auto px-2 text-tiny`} onClick={choices.more}>
+              {moreToolsLabel(choices.remaining)}
+            </button>
           )}
           <div className="flex items-center gap-1.5 pt-1">
             <button

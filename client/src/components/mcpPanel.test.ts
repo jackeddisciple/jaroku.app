@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { ConnectForm, CredentialHome, CredentialRemovalConfirm, ENDPOINT_SETTLED, EditServerForm, MCP_EMPTY_ADMIN, MCP_EMPTY_MEMBER, McpPanel, RemovalConfirm, SCHEMA_DISPLAY_CHARS, SCHEMA_SHORTENED, TOKEN_DROPPED, controlBtn, sameToolRow, schemaText, startAdd, storedCredentialTitle } from "./McpPanel.tsx";
 import { FIRST_TOOL_PAGE, TOOL_PAGE, matchTools, moreToolsLabel, searchTools, showMoreTools, toolWindow } from "../lib/toolWindow.ts";
 import { useBuildStore } from "../store/buildStore.ts";
-import { ADD_INTERRUPTED, DISCOVERY_STALE_MS, agentsUsing, allMcpTools, isDiscovering, liveSelection, removalConsequences, useMcpStore } from "../store/mcpStore.ts";
+import { ADD_INTERRUPTED, DISCOVERY_STALE_MS, agentsUsing, allMcpTools, isDiscovering, liveSelection, mcpToolSearchText, removalConsequences, useMcpStore } from "../store/mcpStore.ts";
 import { useSessionStore } from "../store/sessionStore.ts";
 import { markup, seed, sessionAs } from "../lib/testRender.ts";
 import { resetWorkspaceStores } from "../store/reset.ts";
@@ -637,6 +637,31 @@ console.log("\na server with hundreds of tools renders a page of them, not all o
   check("...or whose schema changed", !sameToolRow(row, { tool: { ...many[1]!, schema_hash: "changed" }, serverId: "alpha" }));
   check("...or whose override was voided", !sameToolRow(row, { tool: { ...many[1]!, override_voided: true }, serverId: "alpha" }));
   check("...or that now belongs to another server", !sameToolRow(row, { tool: many[1]!, serverId: "beta" }));
+}
+
+console.log("\nthe composer's MCP list and the grant editor draw a page at a time too");
+{
+  const many = Array.from({ length: 300 }, (_, i) => tool(`op_${i}`, { schema_hash: `s${i}` }));
+  const refs = allMcpTools([server({ tools: many }), server({ id: "beta", label: "Billing", tools: [tool("charge_card", { description: "takes money" })] })]);
+  const byServer = matchTools(refs, "billing", mcpToolSearchText);
+  check("the composer finds a tool by the server it comes from", byServer.length === 1 && byServer[0]?.ref === "beta/charge_card", byServer.map((t) => t.ref).join());
+  check("...or by what it says it does", matchTools(refs, "MONEY", mcpToolSearchText)[0]?.ref === "beta/charge_card");
+  const build = readFileSync(fileURLToPath(new URL("./BuildPane.tsx", import.meta.url)), "utf8");
+  check("the composer draws only the window of its tools", /mcpWindow\.visible\.map\(\(t\) => \{/.test(build) && !/\{mcpTools\.map\(/.test(build));
+  check("...searchable once the list is long", /\{mcpOpen && mcpWindow\.filterable && \(\s*<input\s+type="search"\s+name="mcp-composer-filter"/.test(build));
+  check("...with the rest one press away", /\{mcpWindow\.remaining > 0 && \([\s\S]{0,300}onClick=\{mcpWindow\.more\}[\s\S]{0,300}moreToolsLabel\(mcpWindow\.remaining\)/.test(build));
+
+  const tabs = readFileSync(fileURLToPath(new URL("./AgentTabs.tsx", import.meta.url)), "utf8");
+  const editor = /function McpGrantEditor\([\s\S]*?\n\}\n/.exec(tabs)?.[0] ?? "";
+  check("the grant editor draws only its window", /choices\.visible\.map\(\(\{ ref, gone, high \}\) => \{/.test(editor) && !/\brows\.map\(/.test(editor));
+  check("...searchable once the list is long", /\{choices\.filterable && \(\s*<input\s+type="search"\s+name="mcp-grant-filter"/.test(editor));
+  check("...with the rest one press away", /\{choices\.remaining > 0 && \([\s\S]{0,200}onClick=\{choices\.more\}[\s\S]{0,100}moreToolsLabel\(choices\.remaining\)/.test(editor));
+  const hook = editor.indexOf("useToolWindow(rows, grantRowText)");
+  check("...and its hooks run before it decides a member sees nothing", hook > 0 && hook < editor.indexOf("if (!mayWrite) return null;"));
+  check("the count beside Save is still every row, not the page", /\{chosen\.length\} of \{rows\.length\}/.test(editor));
+  const rows = grantRows([server({ tools: many })], ["gone/kept_grant"]);
+  const gone = toolWindow(rows, matchTools(rows, "gone/", (r) => r.ref), FIRST_TOOL_PAGE);
+  check("a grant whose server went can be found however long the list", gone.visible.length === 1 && gone.visible[0]?.gone === true);
 }
 
 console.log(fail === 0 ? "\nALL CORRECT" : `\n${fail} FAILURES`);

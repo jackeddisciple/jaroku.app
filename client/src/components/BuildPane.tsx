@@ -96,7 +96,8 @@ import {
   LightbulbIcon, LoaderIcon, PencilIcon, PlugIcon, SparklesIcon,
   WrenchIcon, XIcon, ZapIcon,
 } from "./panelIcons.tsx";
-import { useMcpStore, allMcpTools, liveSelection } from "../store/mcpStore.ts";
+import { useMcpStore, allMcpTools, liveSelection, mcpToolSearchText } from "../store/mcpStore.ts";
+import { moreToolsLabel, useToolWindow } from "../lib/toolWindow.ts";
 import { STATUS_LABEL as MCP_STATUS_LABEL } from "./McpPanel.tsx";
 import { StatusGlyph } from "./StatusGlyph.tsx";
 import { MCP_PHASE } from "../lib/domainPhase.ts";
@@ -2193,6 +2194,7 @@ export function BuildPane({
   const toggle = (id: string) =>
     setSelected((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
   const mcpTools = useMemo(() => allMcpTools(mcpServers), [mcpServers]);
+  const mcpWindow = useToolWindow(mcpTools, mcpToolSearchText);
   useEffect(() => {
     setSelectedMcp((current) => {
       const kept = liveSelection(current, mcpServers);
@@ -3334,9 +3336,25 @@ export function BuildPane({
               </span>
             </button>
 
+            {mcpOpen && mcpWindow.filterable && (
+              <input
+                type="search"
+                name="mcp-composer-filter"
+                value={mcpWindow.query}
+                onChange={(e) => mcpWindow.search(e.target.value)}
+                placeholder="Find a tool by name, server or description"
+                aria-label="Find an MCP tool"
+                autoComplete="off"
+                spellCheck={false}
+                className="mt-1.5 h-6 w-full rounded-input border border-hair bg-elevated px-2 text-tiny text-ink outline-none placeholder:text-faint focus-visible:shadow-focusring"
+              />
+            )}
             {mcpOpen && (
               <div className="mt-1.5 max-h-40 overflow-y-auto rounded-card bg-panel p-1.5">
-                {mcpTools.map((t) => {
+                {mcpWindow.query.trim() !== "" && mcpWindow.matched === 0 && (
+                  <div className="px-1.5 py-1 text-tiny text-muted">No MCP tool matches that.</div>
+                )}
+                {mcpWindow.visible.map((t) => {
                   const on = selectedMcp.includes(t.ref);
                   const high = t.impact === "high";
                   return (
@@ -3381,6 +3399,16 @@ export function BuildPane({
                     </button>
                   );
                 })}
+                {mcpWindow.remaining > 0 && (
+                  <button
+                    type="button"
+                    onClick={mcpWindow.more}
+                    disabled={busy}
+                    className="mt-0.5 w-full rounded-control px-1.5 py-1 text-left text-tiny text-muted transition-colors hover:text-ink disabled:opacity-50"
+                  >
+                    {moreToolsLabel(mcpWindow.remaining)}
+                  </button>
+                )}
               </div>
             )}
           </div>
