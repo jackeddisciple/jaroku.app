@@ -12,7 +12,7 @@
 // Every mutation goes over the mcp channel and comes back as a full snapshot, so there is no
 // optimistic local state here — the only local state is the add form and which row is open.
 
-import { memo, useCallback, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useId, useRef, useState } from "react";
 import { awaitedServer, hasDeparted, isDiscovering, removalConsequences, useMcpStore } from "../store/mcpStore.ts";
 import { useBuildStore } from "../store/buildStore.ts";
 import { useSessionStore } from "../store/sessionStore.ts";
@@ -258,11 +258,20 @@ export function ToolList({ server }: { server: McpServer }) {
 export const ENDPOINT_SETTLED =
   "This server has connected, so its endpoint stays as it is: agents were granted its tools at that address. Disconnect it and connect a new one to move.";
 
+function FieldLabel({ htmlFor, first = false, children }: { htmlFor: string; first?: boolean; children: React.ReactNode }) {
+  return (
+    <label htmlFor={htmlFor} className={`${first ? "" : "mt-1.5 "}mb-1 block text-tiny text-muted`}>
+      {children}
+    </label>
+  );
+}
+
 export function EditServerForm({ server, onDone }: { server: McpServer; onDone: () => void }) {
   const fixed = server.discovered_at !== null || server.status === "connecting";
   const [label, setLabel] = useState(server.label);
   const [endpoint, setEndpoint] = useState(server.endpoint);
   const [failed, setFailed] = useState<string | null>(null);
+  const fieldId = useId();
   const save = () => {
     const patch = {
       ...(label.trim() && label.trim() !== server.label ? { label: label.trim() } : {}),
@@ -294,22 +303,25 @@ export function EditServerForm({ server, onDone }: { server: McpServer; onDone: 
       }}
       className="mt-2 rounded-card border border-edge bg-panel p-2"
     >
+      <FieldLabel htmlFor={`${fieldId}-label`} first>Name</FieldLabel>
       <input
+        id={`${fieldId}-label`}
         name="mcp-server-edit-label"
         aria-label="Name"
         autoComplete="off"
         maxLength={MCP_LABEL_MAX}
         className="w-full rounded-input border border-edge bg-elevated px-2 py-1 text-tiny text-ink outline-none focus-visible:shadow-focusring placeholder:text-faint"
-        placeholder="name"
         value={label}
         onChange={(e) => setLabel(e.target.value)}
       />
+      <FieldLabel htmlFor={`${fieldId}-endpoint`}>Server URL</FieldLabel>
       <input
+        id={`${fieldId}-endpoint`}
         name="mcp-server-edit-endpoint"
         aria-label="Server URL"
         autoComplete="off"
         readOnly={fixed}
-        className="mt-1.5 w-full rounded-input border border-edge bg-elevated px-2 py-1 text-tiny text-ink outline-none focus-visible:shadow-focusring placeholder:text-faint read-only:text-muted"
+        className="w-full rounded-input border border-edge bg-elevated px-2 py-1 text-tiny text-ink outline-none focus-visible:shadow-focusring placeholder:text-faint read-only:text-muted"
         placeholder="https://example.com/mcp"
         value={endpoint}
         onChange={(e) => setEndpoint(e.target.value)}
@@ -412,6 +424,7 @@ function ServerDetail({ server }: { server: McpServer }) {
   const [open, setOpen] = useState<DetailForm | null>(null);
   const toggle = (form: DetailForm) => setOpen((current) => toggledForm(current, form));
   const handingFocus = useRef(false);
+  const fieldId = useId();
   const openFromMenu = (form: DetailForm) => {
     handingFocus.current = open !== form;
     toggle(form);
@@ -571,8 +584,10 @@ function ServerDetail({ server }: { server: McpServer }) {
             }}
             className="mt-2 rounded-card border border-edge bg-panel p-2"
           >
+            <FieldLabel htmlFor={`${fieldId}-credential`} first>Credential</FieldLabel>
             <div className="flex items-center gap-2">
               <SecretField
+                id={`${fieldId}-credential`}
                 name="mcp-server-credential"
                 aria-label={`Credential for ${server.label}`}
                 className="min-w-0 flex-1 rounded-input border border-edge bg-elevated px-2 py-1 text-tiny text-ink outline-none focus-visible:shadow-focusring placeholder:text-faint"
@@ -689,6 +704,7 @@ export function ConnectForm() {
   const [token, setToken] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
   const [attempted, setAttempted] = useState(false);
+  const fieldId = useId();
   const problem = attempted ? endpointProblem(endpoint) : endpointHint(endpoint);
   const typed = useRef("");
   typed.current = token;
@@ -742,8 +758,10 @@ export function ConnectForm() {
         }}
         className="rounded-card border border-edge bg-panel p-2"
       >
+        <FieldLabel htmlFor={`${fieldId}-endpoint`} first>Server URL</FieldLabel>
         <input
           autoFocus
+          id={`${fieldId}-endpoint`}
           name="mcp-server-endpoint"
           aria-label="Server URL"
           autoComplete="off"
@@ -774,22 +792,24 @@ export function ConnectForm() {
             )}
           </p>
         )}
+        <FieldLabel htmlFor={`${fieldId}-label`}>Name (optional)</FieldLabel>
         <input
+          id={`${fieldId}-label`}
           name="mcp-server-label"
           aria-label="Name (optional)"
           autoComplete="off"
           maxLength={MCP_LABEL_MAX}
-          className="mt-1.5 h-8 w-full rounded-input border border-edge bg-elevated px-2 py-1 text-tiny text-ink outline-none focus-visible:shadow-focusring placeholder:text-faint"
-          placeholder="name (optional)"
+          className="h-8 w-full rounded-input border border-edge bg-elevated px-2 py-1 text-tiny text-ink outline-none focus-visible:shadow-focusring placeholder:text-faint"
           value={label}
           readOnly={sending}
           onChange={(e) => setLabel(e.target.value)}
         />
+        <FieldLabel htmlFor={`${fieldId}-token`}>Token, if the server needs one</FieldLabel>
         <SecretField
+          id={`${fieldId}-token`}
           name="mcp-server-token"
           aria-label="Token (if the server needs one)"
-          className="mt-1.5 h-8 w-full rounded-input border border-edge bg-elevated px-2 py-1 text-tiny text-ink outline-none focus-visible:shadow-focusring placeholder:text-faint"
-          placeholder="token (if it needs one)"
+          className="h-8 w-full rounded-input border border-edge bg-elevated px-2 py-1 text-tiny text-ink outline-none focus-visible:shadow-focusring placeholder:text-faint"
           value={token}
           readOnly={sending}
           onChange={(e) => {

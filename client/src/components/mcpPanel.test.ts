@@ -1049,5 +1049,30 @@ console.log("\nthe connect form gives each field the panel's width");
   seed(useMcpStore, { formOpen: false });
 }
 
+console.log("\nevery field keeps a label that stays once something is typed");
+{
+  const labelled = (html: string, name: string): string | null => {
+    const id = new RegExp(`<input[^>]* id="([^"]+)"[^>]*name="${name}"|<input[^>]*name="${name}"[^>]* id="([^"]+)"`).exec(html);
+    const key = id?.[1] ?? id?.[2];
+    if (!key) return null;
+    return new RegExp(`<label[^>]*for="${key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}"[^>]*>(.*?)</label>`, "s").exec(html)?.[1] ?? null;
+  };
+  seed(useMcpStore, { formOpen: true, draft: { endpoint: "https://typed.example/mcp", label: "Typed" }, pendingAdd: null, tokenDropped: false });
+  const connect = markup(React.createElement(ConnectForm));
+  check("the address field is labelled Server URL", labelled(connect, "mcp-server-endpoint") === "Server URL", String(labelled(connect, "mcp-server-endpoint")));
+  check("the name field says it is optional", labelled(connect, "mcp-server-label") === "Name (optional)");
+  check("the token field says when it is needed", labelled(connect, "mcp-server-token") === "Token, if the server needs one");
+  check("a hint that only repeated the label is gone", !/placeholder="name \(optional\)"/.test(connect) && !/placeholder="token/.test(connect));
+  check("...and the address keeps its example", /placeholder="https:\/\/example\.com\/mcp"/.test(connect));
+  seed(useMcpStore, { formOpen: false, draft: { endpoint: "", label: "" } });
+
+  const edit = markup(React.createElement(EditServerForm, { server: server(), onDone: () => {} }));
+  check("renaming labels its name field", labelled(edit, "mcp-server-edit-label") === "Name");
+  check("...and its address field", labelled(edit, "mcp-server-edit-endpoint") === "Server URL");
+  const source = readFileSync(fileURLToPath(new URL("./McpPanel.tsx", import.meta.url)), "utf8");
+  check("the credential field is labelled too", /<FieldLabel htmlFor=\{`\$\{fieldId\}-credential`\} first>Credential<\/FieldLabel>/.test(source) && /id=\{`\$\{fieldId\}-credential`\}\s*name="mcp-server-credential"/.test(source));
+  check("each form makes its own ids, so two servers' forms never share one", (source.match(/const fieldId = useId\(\);/g) ?? []).length === 3);
+}
+
 console.log(fail === 0 ? "\nALL CORRECT" : `\n${fail} FAILURES`);
 (globalThis as { process?: { exit(code: number): void } }).process?.exit(fail === 0 ? 0 : 1);
