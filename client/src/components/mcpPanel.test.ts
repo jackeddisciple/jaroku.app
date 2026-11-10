@@ -302,6 +302,7 @@ console.log("\nthe panel can be used without a mouse or a screen");
   check("...and says it opens a menu", /aria-haspopup="menu"/.test(picker) && /aria-expanded="false"/.test(picker));
   const connectButton = (html: string): string => /<button[^>]*data-mcp-connect[^>]*>/.exec(html)?.[0] ?? "";
   check("Connect a server is named, and says the form is closed", /aria-label="Connect a server"/.test(connectButton(closed)) && /aria-expanded="false"/.test(connectButton(closed)), connectButton(closed));
+  check("...named for a pointer too, since it is a mark with no words", /title="Connect a server"/.test(connectButton(closed)));
   seed(useMcpStore, { formOpen: true });
   const open = markup(React.createElement(McpPanel));
   check("...and open once it is", /aria-expanded="true"/.test(connectButton(open)));

@@ -43,7 +43,6 @@ import { useCanRun } from "../lib/useCapability.ts";
 import { moreToolsLabel, useToolWindow } from "../lib/toolWindow.ts";
 import { STATUS_LABEL, endpointHint, endpointHost, endpointProblem } from "../lib/mcpView.ts";
 import { McpServerPicker } from "./McpServerPicker.tsx";
-import { Tip, TooltipProvider } from "./ui/tooltip.tsx";
 import type { McpServer, McpTool } from "../types.ts";
 import { Icon } from "../lib/icons/registry.ts";
 
@@ -795,7 +794,6 @@ export function McpPanel() {
   const picking = servers.length > 0 || pending !== null;
 
   return (
-    <TooltipProvider>
     <div className="flex h-full flex-col overflow-hidden">
       {/* The standing reminder. It is worth the two lines it costs: everything below this
           came from code that was never reviewed, and that is easy to forget once a tool list
@@ -830,18 +828,17 @@ export function McpPanel() {
             in this workspace at code nobody here has reviewed, which is the definition of
             committing the workspace to something outside itself. */}
         {canManage && picking && (
-          <Tip label="Connect a server">
-            <button
-              type="button"
-              data-mcp-connect
-              aria-label="Connect a server"
-              aria-expanded={adding}
-              onClick={toggleForm}
-              className={buttonVariants({ variant: "soft", size: "icon-sm" })}
-            >
-              <Icon.mcp.connectServer size={ICON.sm} />
-            </button>
-          </Tip>
+          <button
+            type="button"
+            data-mcp-connect
+            aria-label="Connect a server"
+            title="Connect a server"
+            aria-expanded={adding}
+            onClick={toggleForm}
+            className={buttonVariants({ variant: "soft", size: "icon-sm" })}
+          >
+            <Icon.mcp.connectServer size={ICON.sm} />
+          </button>
         )}
         {canManage && !picking && (
           <button type="button" data-mcp-connect className={quietBtn + " ml-auto shrink-0"} aria-expanded={adding} onClick={toggleForm}>
@@ -871,6 +868,5 @@ export function McpPanel() {
         <ServerDetail key={`${workspaceId}:${selected.id}`} server={selected} />
       ) : null}
     </div>
-    </TooltipProvider>
   );
 }
