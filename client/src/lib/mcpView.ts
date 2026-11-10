@@ -1,3 +1,13 @@
+import type { McpServer } from "../types.ts";
+
+export const STATUS_LABEL: Record<McpServer["status"], string> = {
+  connecting: "connecting…",
+  connected: "connected",
+  unreachable: "unreachable",
+  auth_required: "needs a credential",
+  error: "error",
+};
+
 const SCHEME = /^[a-z][a-z0-9+.-]*:\/\//i;
 const LOCAL_HOST = /^(localhost|127(?:\.\d{1,3}){3}|\[::1\])(?::\d+)?(?:[/?#]|$)/i;
 

@@ -8,7 +8,7 @@
 // something anyone can meaningfully disagree with, and disagreeing is the whole point of the
 // override control beside it.
 //
-// Structure follows DatasetBuilder: a chip strip of entities, an action row, a detail list.
+// Structure follows DatasetBuilder: a picker of entities, an action row, a detail list.
 // Every mutation goes over the mcp channel and comes back as a full snapshot, so there is no
 // optimistic local state here — the only local state is the add form and which row is open.
 
@@ -29,11 +29,11 @@ import {
   sendUpdateMcpServer,
 } from "../lib/socket.ts";
 import { ACCENT, ICON, STATUS, TEXT } from "../lib/tokens.ts";
-import { Chip } from "./Chip.tsx";
 import { Truncate } from "./Truncate.tsx";
 import { SecretField } from "./SecretField.tsx";
 import { EmptyState, LoadingLine } from "./EmptyState.tsx";
 import { primaryBtn, quietBtn, secondaryBtn } from "./buttons.ts";
+import { buttonVariants } from "./ui/button.tsx";
 import { StatusBadge } from "./StatusBadge.tsx";
 import { StatusGlyph } from "./StatusGlyph.tsx";
 import { SectionHeader } from "./SectionHeader.tsx";
@@ -41,7 +41,9 @@ import { MCP_PHASE } from "../lib/domainPhase.ts";
 import { AlertTriangleIcon, EyeIcon, KeyIcon, PlugIcon, RefreshIcon, ShieldAlertIcon, ChevronDownIcon, UserCircleIcon, XIcon } from "./panelIcons.tsx";
 import { useCanRun } from "../lib/useCapability.ts";
 import { moreToolsLabel, useToolWindow } from "../lib/toolWindow.ts";
-import { endpointHint, endpointHost, endpointProblem } from "../lib/mcpView.ts";
+import { STATUS_LABEL, endpointHint, endpointHost, endpointProblem } from "../lib/mcpView.ts";
+import { McpServerPicker } from "./McpServerPicker.tsx";
+import { Tip, TooltipProvider } from "./ui/tooltip.tsx";
 import type { McpServer, McpTool } from "../types.ts";
 import { Icon } from "../lib/icons/registry.ts";
 
@@ -68,13 +70,7 @@ export function schemaText(schema: unknown): string {
   return `${compact.slice(0, SCHEMA_DISPLAY_CHARS)}\n${SCHEMA_SHORTENED}`;
 }
 
-export const STATUS_LABEL: Record<McpServer["status"], string> = {
-  connecting: "connecting…",
-  connected: "connected",
-  unreachable: "unreachable",
-  auth_required: "needs a credential",
-  error: "error",
-};
+export { STATUS_LABEL };
 
 // --- one discovered tool -----------------------------------------------------
 
@@ -782,8 +778,8 @@ export function McpPanel() {
   const setSelectedId = useMcpStore((s) => s.select);
   const adding = useMcpStore((s) => s.formOpen);
   const toggleForm = useCallback(() => useMcpStore.getState().setFormOpen(!useMcpStore.getState().formOpen), []);
+  const openForm = useCallback(() => useMcpStore.getState().setFormOpen(true), []);
   const workspaceId = useSessionStore((s) => s.workspaceId) ?? "";
-  const strip = useRef<HTMLDivElement>(null);
   const atLimit = useEntitlementStore((s) => s.channel === "mcp" && s.refusal !== null);
   const openBilling = useUiStore((s) => s.openWorkspacePanel);
 
@@ -796,12 +792,10 @@ export function McpPanel() {
   useEffect(() => {
     if (selected && selected.id !== selectedId) setSelectedId(selected.id);
   }, [selected, selectedId, setSelectedId]);
-  useEffect(() => {
-    if (!selected) return;
-    strip.current?.querySelector(`[data-mcp-server="${selected.id}"]`)?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
-  }, [selected?.id]);
+  const picking = servers.length > 0 || pending !== null;
 
   return (
+    <TooltipProvider>
     <div className="flex h-full flex-col overflow-hidden">
       {/* The standing reminder. It is worth the two lines it costs: everything below this
           came from code that was never reviewed, and that is easy to forget once a tool list
@@ -820,56 +814,37 @@ export function McpPanel() {
         </div>
       </div>
 
-      {/* Server chips */}
-      <div className="flex shrink-0 items-center gap-1 border-b border-hair px-4 py-2">
-        {/* IN THE STRIP RATHER THAN OVER IT, because the strip scrolls sideways and a header above
-            it would be a second row of chrome on a panel whose whole shape is one dense bar. The
-            list is never paginated — `listMcpServers` answers with all of them — so the length is
-            a total. */}
-        <SectionHeader name="Servers" count={servers.length} className="mr-1 shrink-0" />
-        <div ref={strip} className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
-          {servers.map((s) => (
-            <span key={s.id} data-mcp-server={s.id} className="shrink-0">
-              <Chip
-                size="lg"
-                onClick={() => setSelectedId(s.id)}
-                selected={selected?.id === s.id}
-                current={selected?.id === s.id}
-                className="max-w-[220px] shrink-0"
-                figure={s.tools.length}
-                icon={
-                  <StatusGlyph phase={MCP_PHASE[s.status]} size={ICON.xs} title={STATUS_LABEL[s.status]} />
-                }
-              >
-                <Truncate title={s.label}>{s.label}</Truncate>
-              </Chip>
-            </span>
-          ))}
-          {pending && (
-            <span
-              data-mcp-server={pending.id}
-              className="shrink-0"
-              ref={(el) => el?.scrollIntoView?.({ block: "nearest", inline: "nearest" })}
-            >
-              <Chip
-                size="lg"
-                selected
-                className="max-w-[220px] shrink-0"
-                icon={<StatusGlyph phase={MCP_PHASE.connecting} size={ICON.xs} title={STATUS_LABEL.connecting} />}
-              >
-                <Truncate title={pending.endpoint}>{endpointHost(pending.endpoint)}</Truncate>
-              </Chip>
-            </span>
-          )}
-        </div>
+      <div className="flex shrink-0 items-center gap-2 border-b border-hair px-4 py-2">
+        <SectionHeader name="Servers" count={servers.length} className="shrink-0" />
+        {picking && (
+          <McpServerPicker
+            servers={servers}
+            selected={selected}
+            pending={pending}
+            onSelect={setSelectedId}
+            onConnect={canManage ? openForm : undefined}
+          />
+        )}
         {/* §8.2 — "MCP panel / Connect server / connector:manage". The command is `addMcpServer`
             and its capability is `mcp:manage`: connecting a third-party server points every agent
             in this workspace at code nobody here has reviewed, which is the definition of
             committing the workspace to something outside itself. */}
-        {canManage && (
-          <button className={quietBtn + " shrink-0 inline-flex items-center gap-1"}
-            aria-expanded={adding}
-            onClick={toggleForm}>
+        {canManage && picking && (
+          <Tip label="Connect a server">
+            <button
+              type="button"
+              data-mcp-connect
+              aria-label="Connect a server"
+              aria-expanded={adding}
+              onClick={toggleForm}
+              className={buttonVariants({ variant: "soft", size: "icon-sm" })}
+            >
+              <Icon.mcp.connectServer size={ICON.sm} />
+            </button>
+          </Tip>
+        )}
+        {canManage && !picking && (
+          <button type="button" data-mcp-connect className={quietBtn + " ml-auto shrink-0"} aria-expanded={adding} onClick={toggleForm}>
             <Icon.mcp.connectServer size={ICON.xs} />
             Connect a server
           </button>
@@ -896,5 +871,6 @@ export function McpPanel() {
         <ServerDetail key={`${workspaceId}:${selected.id}`} server={selected} />
       ) : null}
     </div>
+    </TooltipProvider>
   );
 }
