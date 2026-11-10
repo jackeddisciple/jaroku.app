@@ -1108,5 +1108,19 @@ console.log("\nthe credential field has the form's width to itself");
   check("its hint is whole, with room to be", /placeholder="bearer token or API key"/.test(field));
 }
 
+console.log("\nevery form on a server says what it is");
+{
+  const source = readFileSync(fileURLToPath(new URL("./McpPanel.tsx", import.meta.url)), "utf8");
+  const credential = /\{open === "credential" && \(\s*<form[\s\S]*?>/.exec(source)?.[0] ?? "";
+  check("the credential form is named for its server", /aria-label=\{`Credential for \$\{server\.label\}`\}/.test(credential), credential);
+  const edit = markup(React.createElement(EditServerForm, { server: server(), onDone: () => {} }));
+  check("as the edit form is", /<form[^>]*aria-label="Edit Alpha"/.test(edit));
+  seed(useBuildStore, { agents: [] });
+  const removal = markup(React.createElement(RemovalConfirm, { server: server(), onKeep: () => {} }));
+  check("...and the disconnect question", /role="group" aria-label="Disconnect Alpha\?"/.test(removal));
+  const forms = [...source.matchAll(/<form\b[\s\S]*?>/g)].map((m) => m[0]);
+  check("no form in the panel is left without a name", forms.length === 3 && forms.every((f) => /aria-label=/.test(f)), String(forms.length));
+}
+
 console.log(fail === 0 ? "\nALL CORRECT" : `\n${fail} FAILURES`);
 (globalThis as { process?: { exit(code: number): void } }).process?.exit(fail === 0 ? 0 : 1);

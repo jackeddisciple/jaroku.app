@@ -577,6 +577,7 @@ function ServerDetail({ server }: { server: McpServer }) {
         {open === "credential" && (
           <form
             autoComplete="off"
+            aria-label={`Credential for ${server.label}`}
             onSubmit={(e) => {
               e.preventDefault();
               saveCredential();
