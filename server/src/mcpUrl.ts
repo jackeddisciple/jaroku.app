@@ -183,6 +183,38 @@ export interface ValidatedMcpUrl {
   ips: string[];
 }
 
+function portOf(url: URL): number {
+  return url.port ? Number(url.port) : url.protocol === "https:" ? 443 : 80;
+}
+
+export function mcpUrlShapeRefusal(raw: string): string | null {
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    return "not a valid URL: it must start with http:// or https://";
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    if (url.protocol === "stdio:") {
+      return "stdio is deliberately unsupported: it would mean running a third-party program on this machine. Give the server's http(s) URL";
+    }
+    if (/^[^:/?#]+:\d+(?:[/?#]|$)/.test(raw.trim())) {
+      return "this endpoint has no scheme: it must start with http:// or https://";
+    }
+    return `an MCP endpoint must be http(s), not ${JSON.stringify(url.protocol)}`;
+  }
+  if (!url.hostname) return "that endpoint has no host";
+  const port = portOf(url);
+  if (!Number.isInteger(port) || port < 1 || port > 65535) return `${url.port} is not a port`;
+  if (DENIED_PORTS.has(port)) {
+    return (
+      `port ${port} is not something an MCP server listens on — it is refused so that a URL ` +
+      `cannot be used to reach infrastructure through this server`
+    );
+  }
+  return null;
+}
+
 /**
  * Parse, constrain and resolve a workspace-supplied MCP endpoint.
  *
@@ -200,36 +232,10 @@ export async function validateMcpUrl(
   resolver: Resolver = realResolver,
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<ValidatedMcpUrl> {
-  let url: URL;
-  try {
-    url = new URL(raw);
-  } catch {
-    throw new McpUrlError("not a valid URL: it must start with http:// or https://");
-  }
-
-  if (url.protocol !== "http:" && url.protocol !== "https:") {
-    if (url.protocol === "stdio:") {
-      throw new McpUrlError(
-        "stdio is deliberately unsupported: it would mean running a third-party program on this machine. Give the server's http(s) URL",
-      );
-    }
-    if (/^[^:/?#]+:\d+(?:[/?#]|$)/.test(raw.trim())) {
-      throw new McpUrlError("this endpoint has no scheme: it must start with http:// or https://");
-    }
-    throw new McpUrlError(`an MCP endpoint must be http(s), not ${JSON.stringify(url.protocol)}`);
-  }
-  if (!url.hostname) throw new McpUrlError("that endpoint has no host");
-
-  const port = url.port ? Number(url.port) : url.protocol === "https:" ? 443 : 80;
-  if (!Number.isInteger(port) || port < 1 || port > 65535) {
-    throw new McpUrlError(`${url.port} is not a port`);
-  }
-  if (DENIED_PORTS.has(port)) {
-    throw new McpUrlError(
-      `port ${port} is not something an MCP server listens on — it is refused so that a URL ` +
-        `cannot be used to reach infrastructure through this server`,
-    );
-  }
+  const shape = mcpUrlShapeRefusal(raw);
+  if (shape) throw new McpUrlError(shape);
+  const url = new URL(raw);
+  const port = portOf(url);
 
   // THE DEVELOPMENT SEAM, and it is deliberately narrow: a LITERAL loopback host, only when the
   // variable is set, and never under NODE_ENV=production. A hostname that RESOLVES to loopback

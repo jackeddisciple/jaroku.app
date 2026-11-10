@@ -26,7 +26,7 @@ import type { AddressPin } from "./mcpFetch.ts";
 import { authEnvKeyFor } from "./envWriter.ts";
 import type { SecretStore, SecretStoreKind } from "./secrets/secretStore.ts";
 import type { SecretRefRepository } from "./db/repositories/secretRefs.ts";
-import { ENDPOINT_CREDENTIAL_REFUSAL, McpUrlError, endpointCarriesCredential, validateMcpUrl } from "./mcpUrl.ts";
+import { ENDPOINT_CREDENTIAL_REFUSAL, McpUrlError, endpointCarriesCredential, mcpUrlShapeRefusal, validateMcpUrl } from "./mcpUrl.ts";
 import { EgressPolicyError, realResolver, type Resolver } from "./sandbox/egressPolicy.ts";
 import type { TenantContext } from "./db/tenant.ts";
 import { classify } from "./mcpImpact.ts";
@@ -148,6 +148,8 @@ export function admitServer(
   const endpoint = opts.endpoint.trim();
   if (!endpoint) return { refusal: "an endpoint is required" };
   if (endpointCarriesCredential(endpoint)) return { refusal: ENDPOINT_CREDENTIAL_REFUSAL };
+  const shape = mcpUrlShapeRefusal(endpoint);
+  if (shape) return { refusal: shape };
   const badToken = opts.token ? tokenRefusal(opts.token) : null;
   if (badToken) return { refusal: badToken };
   const label = (typeof opts.label === "string" ? cleanLabel(opts.label) : "") || undefined;

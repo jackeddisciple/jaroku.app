@@ -32,7 +32,7 @@ import { McpStore } from "./mcpStore.ts";
 import { McpRegistry } from "./mcpRegistry.ts";
 import {
   admissibleMcpAddress, loopbackAllowed, MCP_ALLOW_LOOPBACK_ENV, McpUrlError, mcpEgressRules,
-  validateMcpUrl,
+  mcpUrlShapeRefusal, validateMcpUrl,
 } from "./mcpUrl.ts";
 import { buildEgressPolicy, EgressPolicyError, admits, type Resolver } from "./sandbox/egressPolicy.ts";
 import { MOCK_MCP_PORT } from "../fixtures/mcp/mockServer.ts";
@@ -120,6 +120,18 @@ console.log("\na refusal says what was wrong with the endpoint");
   check(/stdio is deliberately unsupported/.test(stdio?.message ?? ""), "stdio is still named when it is what was asked for", stdio?.message);
   const ftp = await refused("ftp://example.com/mcp");
   check(/"ftp:"/.test(ftp?.message ?? "") && !/stdio/.test(ftp?.message ?? ""), "another scheme is named without mentioning stdio", ftp?.message);
+
+  for (const [url, said] of [
+    ["127.0.0.1:8931/mcp", /not a valid URL/],
+    ["localhost:8940/ok", /no scheme/],
+    ["ftp://example.com/mcp", /"ftp:"/],
+    ["https://", /not a valid URL|no host/],
+    ["https://example.com:5432/mcp", /port 5432/],
+  ] as const) {
+    const shape = mcpUrlShapeRefusal(url);
+    check(shape !== null && said.test(shape) && shape === (await refused(url))?.message, `the shape of ${url} is refused before anything is looked up, in the same words`, String(shape));
+  }
+  check(mcpUrlShapeRefusal("https://mcp.example.com/mcp") === null && mcpUrlShapeRefusal("http://10.0.0.5/mcp") === null, "an address of the right shape is left for the lookup to judge");
 
   const literal = await refused("http://10.0.0.5/mcp");
   check(literal instanceof EgressPolicyError, "a private address is still the shared refusal");

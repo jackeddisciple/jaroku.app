@@ -182,6 +182,10 @@ const ctx = testContext();
     ["a credential in the URL", { endpoint: "https://user:secret@example.com/mcp" }],
     ["a credential a header cannot carry", { endpoint: "https://example.com/mcp", token: "line\nbreak" }],
     ["an id nothing can use", { endpoint: "https://example.com/mcp", id: "9 not an id" }],
+    ["an address with no scheme", { endpoint: "127.0.0.1:8931/mcp" }],
+    ["a host and port with no scheme", { endpoint: "localhost:8931/mcp" }],
+    ["a scheme that is not http", { endpoint: "ftp://example.com/mcp" }],
+    ["a port nothing serves MCP on", { endpoint: "https://example.com:5432/mcp" }],
   ];
   for (const [name, opts] of cases) {
     const said = admitServer(opts);
