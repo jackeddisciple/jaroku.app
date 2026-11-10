@@ -391,17 +391,27 @@ export function CredentialHome({ server }: { server: Pick<McpServer, "auth_env_k
   return <>{server.credential_store === "kms" ? "Kept encrypted for this workspace alone." : "Kept for this workspace alone."}</>;
 }
 
+export type DetailForm = "credential" | "edit" | "disconnect" | "credential-removal";
+
+export function toggledForm(current: DetailForm | null, pressed: DetailForm): DetailForm | null {
+  return current === pressed ? null : pressed;
+}
+
 function ServerDetail({ server }: { server: McpServer }) {
   // The whole control row below is `mcp:manage`. See the row itself for why it is guarded as a
   // group rather than one button at a time.
   const canManage = useCanRun("addMcpServer");
   const discovering = useMcpStore((s) => isDiscovering(s.discovering, server.id));
   const [token, setToken] = useState("");
-  const [showToken, setShowToken] = useState(false);
+  const [open, setOpen] = useState<DetailForm | null>(null);
+  const toggle = (form: DetailForm) => setOpen((current) => toggledForm(current, form));
   const [credentialError, setCredentialError] = useState<string | null>(null);
-  const [confirming, setConfirming] = useState<null | "disconnect" | "credential">(null);
   const [checkUnsent, setCheckUnsent] = useState(false);
-  const [editing, setEditing] = useState(false);
+  useEffect(() => {
+    if (open === "credential" || open === "credential-removal") return;
+    setToken("");
+    setCredentialError(null);
+  }, [open]);
   const saveCredential = () => {
     const value = token.trim();
     if (!value) return;
@@ -411,12 +421,12 @@ function ServerDetail({ server }: { server: McpServer }) {
     }
     setToken("");
     setCredentialError(null);
-    setShowToken(false);
+    setOpen(null);
   };
   const cancelCredential = () => {
     setToken("");
     setCredentialError(null);
-    setShowToken(false);
+    setOpen(null);
   };
   const highCount = server.tools.filter((t) => t.impact === "high").length;
   const lastChecked = server.checked_at ?? server.discovered_at;
@@ -476,16 +486,16 @@ function ServerDetail({ server }: { server: McpServer }) {
               <RefreshIcon size={ICON.xs} />
               {discovering ? "checking…" : "re-check"}
             </button>
-            <button className={controlBtn} aria-expanded={showToken} onClick={() => setShowToken((v) => !v)}>
+            <button className={controlBtn} aria-expanded={open === "credential"} onClick={() => toggle("credential")}>
               <KeyIcon size={ICON.xs} />
               {server.configured ? "replace credential" : "add a credential"}
             </button>
-            <button className={controlBtn} aria-expanded={editing} onClick={() => setEditing((v) => !v)}>
+            <button className={controlBtn} aria-expanded={open === "edit"} onClick={() => toggle("edit")}>
               edit
             </button>
             <button className={controlBtn + " ml-auto hover:!text-err"}
-              aria-expanded={confirming === "disconnect"}
-              onClick={() => setConfirming((v) => (v === "disconnect" ? null : "disconnect"))}>
+              aria-expanded={open === "disconnect"}
+              onClick={() => toggle("disconnect")}>
               <XIcon size={ICON.xs} />
               disconnect
             </button>
@@ -493,20 +503,13 @@ function ServerDetail({ server }: { server: McpServer }) {
         )}
         {checkUnsent && <p role="alert" className="mt-1.5 text-tiny leading-[1.5] text-err">{notSent("re-check")}</p>}
 
-        {editing && <EditServerForm server={server} onDone={() => setEditing(false)} />}
-        {confirming === "disconnect" && <RemovalConfirm server={server} onKeep={() => setConfirming(null)} />}
-        {confirming === "credential" && (
-          <CredentialRemovalConfirm
-            server={server}
-            onKeep={() => setConfirming(null)}
-            onRemoved={() => {
-              setConfirming(null);
-              setShowToken(false);
-            }}
-          />
+        {open === "edit" && <EditServerForm server={server} onDone={() => setOpen(null)} />}
+        {open === "disconnect" && <RemovalConfirm server={server} onKeep={() => setOpen(null)} />}
+        {open === "credential-removal" && (
+          <CredentialRemovalConfirm server={server} onKeep={() => setOpen("credential")} onRemoved={() => setOpen(null)} />
         )}
 
-        {showToken && (
+        {open === "credential" && (
           <form
             autoComplete="off"
             onSubmit={(e) => {
@@ -535,7 +538,7 @@ function ServerDetail({ server }: { server: McpServer }) {
               </button>
               {server.configured && (
                 <button type="button" className={quietBtn}
-                  onClick={() => setConfirming("credential")}>
+                  onClick={() => setOpen("credential-removal")}>
                   Remove
                 </button>
               )}

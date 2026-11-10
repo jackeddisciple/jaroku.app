@@ -1,7 +1,7 @@
 import React from "react";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { ConnectForm, CredentialHome, CredentialRemovalConfirm, ENDPOINT_SETTLED, EditServerForm, MCP_EMPTY_ADMIN, MCP_EMPTY_MEMBER, MCP_LABEL_MAX, McpPanel, NOT_SENT, RemovalConfirm, SCHEMA_DISPLAY_CHARS, SCHEMA_SHORTENED, TOKEN_DROPPED, TrustBanner, controlBtn, notSent, sameToolRow, schemaText, startAdd, storedCredentialTitle } from "./McpPanel.tsx";
+import { ConnectForm, CredentialHome, CredentialRemovalConfirm, ENDPOINT_SETTLED, EditServerForm, MCP_EMPTY_ADMIN, MCP_EMPTY_MEMBER, MCP_LABEL_MAX, McpPanel, NOT_SENT, RemovalConfirm, SCHEMA_DISPLAY_CHARS, SCHEMA_SHORTENED, TOKEN_DROPPED, TrustBanner, controlBtn, notSent, sameToolRow, schemaText, startAdd, storedCredentialTitle, toggledForm } from "./McpPanel.tsx";
 import { FIRST_TOOL_PAGE, TOOL_PAGE, matchTools, moreToolsLabel, searchTools, showMoreTools, toolWindow } from "../lib/toolWindow.ts";
 import { useBuildStore } from "../store/buildStore.ts";
 import { ADD_INTERRUPTED, DEPARTURE_FOCUS_MS, DISCOVERY_STALE_MS, agentsUsing, allMcpTools, awaitedServer, hasDeparted, isDiscovering, liveSelection, mcpToolSearchText, removalConsequences, useMcpStore } from "../store/mcpStore.ts";
@@ -330,7 +330,7 @@ console.log("\nthe panel can be used without a mouse or a screen");
   check("Escape cancels the credential form too", /if \(e\.key === "Escape"\) \{\s*e\.preventDefault\(\);\s*cancelCredential\(\);/.test(source));
   check("...which has a Cancel of its own", /<button type="button" className=\{quietBtn\} onClick=\{cancelCredential\}>\s*Cancel/.test(source));
   check("the credential field is labelled with its server", /name="mcp-server-credential"\s*aria-label=\{`Credential for \$\{server\.label\}`\}/.test(source));
-  check("and the button that shows it says whether it is shown", /aria-expanded=\{showToken\}/.test(source));
+  check("and the button that shows it says whether it is shown", /aria-expanded=\{open === "credential"\}/.test(source));
 
   const ask = (nonce: string, tool: string, agentName: string | null) => ({
     runId: `run-${nonce}`, nonce, server: "alpha", tool, impactReason: null, args: "{}", timeoutS: 60,
@@ -418,8 +418,8 @@ console.log("\ndisconnecting and removing a credential ask first, and say what i
 
   const source = readFileSync(fileURLToPath(new URL("./McpPanel.tsx", import.meta.url)), "utf8");
   const detail = /function ServerDetail\([\s\S]*?\n\}\n/.exec(source)?.[0] ?? "";
-  check("disconnect opens the question rather than disconnecting", /onClick=\{\(\) => setConfirming\(\(v\) => \(v === "disconnect" \? null : "disconnect"\)\)\}/.test(detail) && !/sendRemoveMcpServer/.test(detail));
-  check("...and Remove does the same for the credential", /onClick=\{\(\) => setConfirming\("credential"\)\}/.test(detail) && !/sendSetMcpServerAuth\(server\.id, null\)/.test(detail));
+  check("disconnect opens the question rather than disconnecting", /onClick=\{\(\) => toggle\("disconnect"\)\}/.test(detail) && !/sendRemoveMcpServer/.test(detail));
+  check("...and Remove does the same for the credential", /onClick=\{\(\) => setOpen\("credential-removal"\)\}/.test(detail) && !/sendSetMcpServerAuth\(server\.id, null\)/.test(detail));
 }
 
 console.log("\na server can be renamed, and a mistyped endpoint fixed before it ever connects");
@@ -950,6 +950,21 @@ console.log("\nthe standing reminder costs one sentence, with the rest a press a
   check("a member reads the same sentence", markup(React.createElement(McpPanel)).includes(headline));
   seed(useSessionStore, sessionAs("admin"));
   seed(useMcpStore, { servers: [], selectedId: null });
+}
+
+console.log("\na server shows one form at a time");
+{
+  check("pressing a closed form's button opens it", toggledForm(null, "edit") === "edit");
+  check("...pressing it again closes it", toggledForm("edit", "edit") === null);
+  check("...and pressing another's swaps one for the other", toggledForm("edit", "credential") === "credential" && toggledForm("credential", "disconnect") === "disconnect");
+  const source = readFileSync(fileURLToPath(new URL("./McpPanel.tsx", import.meta.url)), "utf8");
+  const detail = /function ServerDetail\([\s\S]*?\n\}\n/.exec(source)?.[0] ?? "";
+  check("the detail holds a single open form", (detail.match(/useState<DetailForm \| null>\(null\)/g) ?? []).length === 1 && !/setShowToken|setEditing|setConfirming/.test(detail));
+  for (const form of ["edit", "disconnect", "credential-removal", "credential"]) {
+    check(`the ${form} form is drawn only while it is the open one`, detail.includes(`{open === "${form}" && `));
+  }
+  check("keeping a credential goes back to the form it was asked from", /onKeep=\{\(\) => setOpen\("credential"\)\}/.test(detail));
+  check("a credential typed and then left for another form is not kept", /if \(open === "credential" \|\| open === "credential-removal"\) return;\s*setToken\(""\);\s*setCredentialError\(null\);/.test(detail));
 }
 
 console.log(fail === 0 ? "\nALL CORRECT" : `\n${fail} FAILURES`);
