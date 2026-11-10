@@ -1,7 +1,7 @@
 import React from "react";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { ConnectForm, CredentialHome, CredentialRemovalConfirm, ENDPOINT_SETTLED, EditServerForm, MCP_EMPTY_ADMIN, MCP_EMPTY_MEMBER, MCP_LABEL_MAX, McpPanel, NOT_SENT, RemovalConfirm, SCHEMA_DISPLAY_CHARS, SCHEMA_SHORTENED, TOKEN_DROPPED, controlBtn, notSent, sameToolRow, schemaText, startAdd, storedCredentialTitle } from "./McpPanel.tsx";
+import { ConnectForm, CredentialHome, CredentialRemovalConfirm, ENDPOINT_SETTLED, EditServerForm, MCP_EMPTY_ADMIN, MCP_EMPTY_MEMBER, MCP_LABEL_MAX, McpPanel, NOT_SENT, RemovalConfirm, SCHEMA_DISPLAY_CHARS, SCHEMA_SHORTENED, TOKEN_DROPPED, TrustBanner, controlBtn, notSent, sameToolRow, schemaText, startAdd, storedCredentialTitle } from "./McpPanel.tsx";
 import { FIRST_TOOL_PAGE, TOOL_PAGE, matchTools, moreToolsLabel, searchTools, showMoreTools, toolWindow } from "../lib/toolWindow.ts";
 import { useBuildStore } from "../store/buildStore.ts";
 import { ADD_INTERRUPTED, DEPARTURE_FOCUS_MS, DISCOVERY_STALE_MS, agentsUsing, allMcpTools, awaitedServer, hasDeparted, isDiscovering, liveSelection, mcpToolSearchText, removalConsequences, useMcpStore } from "../store/mcpStore.ts";
@@ -925,6 +925,30 @@ console.log("\na server's address can be read");
   check("...in the grey that meets contrast, not the faint one", /text-muted/.test(line) && !/text-faint/.test(line));
   check("...and breaks where it has to rather than running off the panel", /\[overflow-wrap:anywhere\]/.test(line));
   check("the stored credential badge no longer shares its line", html.indexOf("data-mcp-endpoint") < html.indexOf("credential stored") && !/data-mcp-endpoint[^<]*<[^>]*>credential stored/.test(html));
+  seed(useMcpStore, { servers: [], selectedId: null });
+}
+
+console.log("\nthe standing reminder costs one sentence, with the rest a press away");
+{
+  const headline = "MCP servers are third-party code Jaroku has not reviewed.";
+  const rest = "What a server says it can do is its own claim.";
+  seed(useSessionStore, sessionAs("admin"));
+  seed(useMcpStore, { servers: [server({ tools: [tool("read_page")] })], selectedId: null, awaited: null, formOpen: false });
+  const working = markup(React.createElement(McpPanel));
+  check("with a server on screen the first sentence is still there", working.includes(headline));
+  check("...and the rest is folded away", !working.includes(rest));
+  check("...behind a control that says it is closed", /<button[^>]*aria-expanded="false"[^>]*>Why this matters<\/button>/.test(working), working.slice(0, 400));
+  seed(useMcpStore, { formOpen: true });
+  const connecting = markup(React.createElement(McpPanel));
+  check("the whole of it is shown while a server is being connected", connecting.includes(headline) && connecting.includes(rest) && !/Why this matters/.test(connecting));
+  seed(useMcpStore, { servers: [], formOpen: false });
+  const empty = markup(React.createElement(McpPanel));
+  check("...and while there is no server yet", empty.includes(rest) && !/Why this matters/.test(empty));
+  check("a banner told to show everything offers nothing to unfold", !/<button/.test(markup(React.createElement(TrustBanner, { full: true }))));
+  seed(useSessionStore, sessionAs("member"));
+  seed(useMcpStore, { servers: [server()] });
+  check("a member reads the same sentence", markup(React.createElement(McpPanel)).includes(headline));
+  seed(useSessionStore, sessionAs("admin"));
   seed(useMcpStore, { servers: [], selectedId: null });
 }
 

@@ -42,6 +42,7 @@ import { useCanRun } from "../lib/useCapability.ts";
 import { moreToolsLabel, useToolWindow } from "../lib/toolWindow.ts";
 import { STATUS_LABEL, attentionSummary, endpointHint, endpointHost, endpointProblem, orderServers } from "../lib/mcpView.ts";
 import { McpServerPicker } from "./McpServerPicker.tsx";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collapsible.tsx";
 import type { McpServer, McpTool } from "../types.ts";
 import { Icon } from "../lib/icons/registry.ts";
 
@@ -778,6 +779,39 @@ export const MCP_EMPTY_ADMIN =
 export const MCP_EMPTY_MEMBER =
   "Connecting a server is up to an admin of this workspace, so ask one to connect the server you need. Its tools then appear here, and can be given to an agent while planning.";
 
+export function TrustBanner({ full }: { full: boolean }) {
+  const [why, setWhy] = useState(false);
+  return (
+    <Collapsible open={full || why} onOpenChange={setWhy} className="shrink-0 px-4 pt-2">
+      <div className="flex items-start gap-2">
+        <span className="mt-0.5 shrink-0" style={{ color: ACCENT.mcp }}>
+          <PlugIcon size={ICON.sm} />
+        </span>
+        <div className="min-w-0 flex-1 text-tiny leading-[1.5] text-muted">
+          <p>
+            <span className="text-ink">MCP servers are third-party code Jaroku has not reviewed.</span>
+            {!full && (
+              <>
+                {" "}
+                <CollapsibleTrigger className="rounded-control text-muted underline underline-offset-2 transition-colors hover:text-ink focus-visible:outline-none focus-visible:shadow-focusring">
+                  {why ? "Show less" : "Why this matters"}
+                </CollapsibleTrigger>
+              </>
+            )}
+          </p>
+          <CollapsibleContent>
+            <p className="mt-0.5">
+              What a server says it can do is its own claim. Tools from here are marked
+              everywhere they appear, an agent only receives the ones selected for it, and a
+              high-impact one stops for your confirmation before it runs.
+            </p>
+          </CollapsibleContent>
+        </div>
+      </div>
+    </Collapsible>
+  );
+}
+
 export function McpPanel() {
   const canManage = useCanRun("addMcpServer");
   const servers = useMcpStore((s) => s.servers);
@@ -816,19 +850,7 @@ export function McpPanel() {
       {/* The standing reminder. It is worth the two lines it costs: everything below this
           came from code that was never reviewed, and that is easy to forget once a tool list
           looks as tidy as a connector list. */}
-      <div className="shrink-0 px-4 pt-2">
-        <div className="flex items-start gap-2">
-          <span className="mt-0.5 shrink-0" style={{ color: ACCENT.mcp }}>
-            <PlugIcon size={ICON.sm} />
-          </span>
-          <p className="text-tiny leading-[1.5] text-muted">
-            <span className="text-ink">MCP servers are third-party code Jaroku has not reviewed.</span>{" "}
-            What a server says it can do is its own claim. Tools from here are marked
-            everywhere they appear, an agent only receives the ones selected for it, and a
-            high-impact one stops for your confirmation before it runs.
-          </p>
-        </div>
-      </div>
+      <TrustBanner full={servers.length === 0 || adding} />
 
       <div className="flex shrink-0 items-center gap-2 border-b border-hair px-4 py-2">
         <SectionHeader name="Servers" count={servers.length} className="shrink-0">
