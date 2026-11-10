@@ -41,6 +41,7 @@ import { MCP_PHASE } from "../lib/domainPhase.ts";
 import { AlertTriangleIcon, EyeIcon, KeyIcon, PlugIcon, RefreshIcon, ShieldAlertIcon, ChevronDownIcon, UserCircleIcon, XIcon } from "./panelIcons.tsx";
 import { useCanRun } from "../lib/useCapability.ts";
 import { moreToolsLabel, useToolWindow } from "../lib/toolWindow.ts";
+import { endpointHint, endpointProblem } from "../lib/mcpView.ts";
 import type { McpServer, McpTool } from "../types.ts";
 import { Icon } from "../lib/icons/registry.ts";
 
@@ -599,7 +600,7 @@ export interface AddDraft {
   token: string;
 }
 
-export type AddStart = "sent" | "busy" | "empty" | "offline";
+export type AddStart = "sent" | "busy" | "empty" | "invalid" | "offline";
 
 function newAddRef(): string {
   return typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
@@ -612,6 +613,7 @@ export function startAdd(draft: AddDraft, send: typeof sendAddMcpServer = sendAd
   if (store.pendingAdd?.state === "sending") return "busy";
   const endpoint = draft.endpoint.trim();
   if (!endpoint) return "empty";
+  if (endpointProblem(endpoint)) return "invalid";
   const ref = newAddRef();
   if (!send(endpoint, draft.label.trim() || undefined, draft.token.trim() || undefined, ref)) return "offline";
   store.beginAdd(ref, endpoint);
@@ -631,6 +633,8 @@ export function ConnectForm() {
   const tokenDropped = useMcpStore((s) => s.tokenDropped);
   const [token, setToken] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
+  const [attempted, setAttempted] = useState(false);
+  const problem = attempted ? endpointProblem(endpoint) : endpointHint(endpoint);
   const typed = useRef("");
   typed.current = token;
 
@@ -660,8 +664,9 @@ export function ConnectForm() {
 
   const submit = () => {
     const started = startAdd({ endpoint, label, token });
+    setAttempted(started === "invalid");
     if (started === "offline") setFormError(NOT_SENT);
-    else if (started === "sent") setFormError(null);
+    else if (started === "sent" || started === "invalid") setFormError(null);
     if (started === "sent" && tokenDropped) useMcpStore.getState().setTokenDropped(false);
   };
 
@@ -691,8 +696,29 @@ export function ConnectForm() {
           placeholder="https://example.com/mcp"
           value={endpoint}
           readOnly={sending}
+          aria-invalid={problem !== null}
           onChange={(e) => setEndpoint(e.target.value)}
         />
+        {problem && (
+          <p role={attempted ? "alert" : "status"} data-mcp-endpoint-problem className="mt-1.5 break-words text-tiny leading-[1.5] text-err">
+            {problem.message}
+            {problem.suggestion && (
+              <>
+                {" "}
+                <button
+                  type="button"
+                  className="rounded-control text-ink underline underline-offset-2 focus-visible:outline-none focus-visible:shadow-focusring"
+                  onClick={() => {
+                    setEndpoint(problem.suggestion ?? endpoint);
+                    setAttempted(false);
+                  }}
+                >
+                  Use {problem.suggestion}
+                </button>
+              </>
+            )}
+          </p>
+        )}
         <div className="mt-1.5 flex items-center gap-2">
           <input
             name="mcp-server-label"

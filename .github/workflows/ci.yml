@@ -1834,6 +1834,7 @@ jobs:
           npm run test:inbox-remove-grant
           npm run test:mcp-tray
           npm run test:mcp-panel
+          npm run test:mcp-view
           npm run test:plan-card-mcp
           # AND THE GRAPH TAB'S FAILURE COPY. It rendered the server's raw string as its hint under
           # a title saying the state was not ready "yet" — two claims at once, since a hard import

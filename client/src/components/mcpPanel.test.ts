@@ -706,5 +706,31 @@ console.log("\na server's name stops where the server would cut it");
   check("...and neither does renaming", new RegExp(`name="mcp-server-edit-label"[^>]*maxLength="${MCP_LABEL_MAX}"|maxLength="${MCP_LABEL_MAX}"[^>]*name="mcp-server-edit-label"`, "i").test(editing), editing.match(/<input[^>]*mcp-server-edit-label[^>]*>/)?.[0] ?? "");
 }
 
+console.log("\nan address that could never connect is caught in the form, before anything is sent");
+{
+  const store = useMcpStore.getState();
+  store.clearAdd();
+  const sent: unknown[][] = [];
+  const bare = startAdd({ endpoint: "127.0.0.1:8931/mcp", label: "", token: "" }, (...args) => (sent.push(args), true));
+  check("an address with no scheme is not sent", bare === "invalid" && sent.length === 0);
+  check("...and nothing is left waiting on an answer", useMcpStore.getState().pendingAdd === null);
+  check("nor is one with a scheme that is not http", startAdd({ endpoint: "ftp://example.com/mcp", label: "", token: "" }, (...args) => (sent.push(args), true)) === "invalid" && sent.length === 0);
+
+  seed(useMcpStore, { formOpen: true, draft: { endpoint: "mcp.example.com/mcp", label: "" }, pendingAdd: null, tokenDropped: false });
+  const hinted = markup(React.createElement(ConnectForm));
+  check("the form says what is wrong while it is still being typed", /data-mcp-endpoint-problem[^>]*>This address has no scheme/.test(hinted), hinted.slice(0, 300));
+  check("...offers the address it probably meant", />Use https:\/\/mcp\.example\.com\/mcp<\/button>/.test(hinted));
+  check("...and marks the field", /<input[^>]*aria-invalid="true"[^>]*name="mcp-server-endpoint"|name="mcp-server-endpoint"[^>]*aria-invalid="true"/.test(hinted));
+  seed(useMcpStore, { draft: { endpoint: "https://mcp.example.com/mcp", label: "" } });
+  const fine = markup(React.createElement(ConnectForm));
+  check("a good address is left alone", !/data-mcp-endpoint-problem/.test(fine) && /aria-invalid="false"/.test(fine));
+  seed(useMcpStore, { draft: { endpoint: "htt", label: "" } });
+  check("and so is one still being started", !/data-mcp-endpoint-problem/.test(markup(React.createElement(ConnectForm))));
+  seed(useMcpStore, { formOpen: false, draft: { endpoint: "", label: "" } });
+
+  const source = readFileSync(fileURLToPath(new URL("./McpPanel.tsx", import.meta.url)), "utf8");
+  check("pressing Connect on a bad address shows the reason as an alert", /setAttempted\(started === "invalid"\);/.test(source) && /role=\{attempted \? "alert" : "status"\}/.test(source));
+}
+
 console.log(fail === 0 ? "\nALL CORRECT" : `\n${fail} FAILURES`);
 (globalThis as { process?: { exit(code: number): void } }).process?.exit(fail === 0 ? 0 : 1);
