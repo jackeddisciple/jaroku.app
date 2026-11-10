@@ -14,6 +14,11 @@ function parsed(text: string): URL | null {
   }
 }
 
+export function endpointHost(endpoint: string): string {
+  const text = endpoint.trim();
+  return parsed(text)?.host || text;
+}
+
 export function endpointProblem(raw: string): EndpointProblem | null {
   const text = raw.trim();
   if (!text) return null;

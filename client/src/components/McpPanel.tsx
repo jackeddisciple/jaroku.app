@@ -13,7 +13,7 @@
 // optimistic local state here — the only local state is the add form and which row is open.
 
 import { memo, useCallback, useEffect, useRef, useState } from "react";
-import { isDiscovering, removalConsequences, useMcpStore } from "../store/mcpStore.ts";
+import { awaitedServer, isDiscovering, removalConsequences, useMcpStore } from "../store/mcpStore.ts";
 import { useBuildStore } from "../store/buildStore.ts";
 import { useSessionStore } from "../store/sessionStore.ts";
 import { useEntitlementStore } from "../store/entitlementStore.ts";
@@ -32,7 +32,7 @@ import { ACCENT, ICON, STATUS, TEXT } from "../lib/tokens.ts";
 import { Chip } from "./Chip.tsx";
 import { Truncate } from "./Truncate.tsx";
 import { SecretField } from "./SecretField.tsx";
-import { EmptyState } from "./EmptyState.tsx";
+import { EmptyState, LoadingLine } from "./EmptyState.tsx";
 import { primaryBtn, quietBtn, secondaryBtn } from "./buttons.ts";
 import { StatusBadge } from "./StatusBadge.tsx";
 import { StatusGlyph } from "./StatusGlyph.tsx";
@@ -41,7 +41,7 @@ import { MCP_PHASE } from "../lib/domainPhase.ts";
 import { AlertTriangleIcon, EyeIcon, KeyIcon, PlugIcon, RefreshIcon, ShieldAlertIcon, ChevronDownIcon, UserCircleIcon, XIcon } from "./panelIcons.tsx";
 import { useCanRun } from "../lib/useCapability.ts";
 import { moreToolsLabel, useToolWindow } from "../lib/toolWindow.ts";
-import { endpointHint, endpointProblem } from "../lib/mcpView.ts";
+import { endpointHint, endpointHost, endpointProblem } from "../lib/mcpView.ts";
 import type { McpServer, McpTool } from "../types.ts";
 import { Icon } from "../lib/icons/registry.ts";
 
@@ -791,7 +791,8 @@ export function McpPanel() {
 
   // Keep the selection if it still exists, else fall back to the first — the same idiom as
   // evalStore's dataset selection and buildStore's agent selection.
-  const selected = servers.find((s) => s.id === selectedId) ?? servers[0] ?? null;
+  const pending = useMcpStore(awaitedServer);
+  const selected = pending ? null : (servers.find((s) => s.id === selectedId) ?? servers[0] ?? null);
   useEffect(() => {
     if (selected && selected.id !== selectedId) setSelectedId(selected.id);
   }, [selected, selectedId, setSelectedId]);
@@ -844,6 +845,22 @@ export function McpPanel() {
               </Chip>
             </span>
           ))}
+          {pending && (
+            <span
+              data-mcp-server={pending.id}
+              className="shrink-0"
+              ref={(el) => el?.scrollIntoView?.({ block: "nearest", inline: "nearest" })}
+            >
+              <Chip
+                size="lg"
+                selected
+                className="max-w-[220px] shrink-0"
+                icon={<StatusGlyph phase={MCP_PHASE.connecting} size={ICON.xs} title={STATUS_LABEL.connecting} />}
+              >
+                <Truncate title={pending.endpoint}>{endpointHost(pending.endpoint)}</Truncate>
+              </Chip>
+            </span>
+          )}
         </div>
         {/* §8.2 — "MCP panel / Connect server / connector:manage". The command is `addMcpServer`
             and its capability is `mcp:manage`: connecting a third-party server points every agent
@@ -867,7 +884,9 @@ export function McpPanel() {
 
       {canManage && adding && <ConnectForm key={workspaceId} />}
 
-      {servers.length === 0 ? (
+      {pending ? (
+        <LoadingLine label={`Connecting to ${endpointHost(pending.endpoint)}…`} />
+      ) : servers.length === 0 ? (
         <EmptyState
           icon={PlugIcon}
           title="No MCP servers connected"

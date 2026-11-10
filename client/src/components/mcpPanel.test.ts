@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { ConnectForm, CredentialHome, CredentialRemovalConfirm, ENDPOINT_SETTLED, EditServerForm, MCP_EMPTY_ADMIN, MCP_EMPTY_MEMBER, MCP_LABEL_MAX, McpPanel, NOT_SENT, RemovalConfirm, SCHEMA_DISPLAY_CHARS, SCHEMA_SHORTENED, TOKEN_DROPPED, controlBtn, notSent, sameToolRow, schemaText, startAdd, storedCredentialTitle } from "./McpPanel.tsx";
 import { FIRST_TOOL_PAGE, TOOL_PAGE, matchTools, moreToolsLabel, searchTools, showMoreTools, toolWindow } from "../lib/toolWindow.ts";
 import { useBuildStore } from "../store/buildStore.ts";
-import { ADD_INTERRUPTED, DISCOVERY_STALE_MS, agentsUsing, allMcpTools, isDiscovering, liveSelection, mcpToolSearchText, removalConsequences, useMcpStore } from "../store/mcpStore.ts";
+import { ADD_INTERRUPTED, DISCOVERY_STALE_MS, agentsUsing, allMcpTools, awaitedServer, isDiscovering, liveSelection, mcpToolSearchText, removalConsequences, useMcpStore } from "../store/mcpStore.ts";
 import { useSessionStore } from "../store/sessionStore.ts";
 import { markup, seed, sessionAs } from "../lib/testRender.ts";
 import { resetWorkspaceStores } from "../store/reset.ts";
@@ -730,6 +730,48 @@ console.log("\nan address that could never connect is caught in the form, before
 
   const source = readFileSync(fileURLToPath(new URL("./McpPanel.tsx", import.meta.url)), "utf8");
   check("pressing Connect on a bad address shows the reason as an alert", /setAttempted\(started === "invalid"\);/.test(source) && /role=\{attempted \? "alert" : "status"\}/.test(source));
+}
+
+console.log("\na server just added stays selected until the list names it");
+{
+  const store = useMcpStore.getState();
+  const alpha = server();
+  const beta = server({ id: "beta", label: "Beta", tools: [tool("send_message")] });
+  const gamma = server({ id: "gamma_example", label: "gamma_example", status: "connecting", discovered_at: null });
+  const adding = (endpoint = "https://gamma.example/mcp", serverId = "gamma_example"): void => {
+    store.clearAdd();
+    startAdd({ endpoint, label: "", token: "" }, () => true);
+    store.settleAdd(useMcpStore.getState().pendingAdd?.ref ?? "", { serverId });
+  };
+  seed(useSessionStore, sessionAs("admin"));
+  seed(useMcpStore, { servers: [alpha, beta], selectedId: "beta", awaited: null, formOpen: false, draft: { endpoint: "", label: "" }, pendingAdd: null, tokenDropped: false });
+  adding();
+  const waiting = useMcpStore.getState();
+  check("the new server is selected before the list has it", waiting.selectedId === "gamma_example" && awaitedServer(waiting)?.endpoint === "https://gamma.example/mcp");
+  seed(useMcpStore, { selectedId: waiting.selectedId, awaited: waiting.awaited });
+  const html = markup(React.createElement(McpPanel));
+  check("the panel does not fall back to another server", !/>send_message</.test(html) && !/aria-current="true"/.test(html));
+  check("...it shows the new one as connecting", html.includes("Connecting to gamma.example") && /<span data-mcp-server="gamma_example"/.test(html), html.slice(0, 200));
+
+  store.setServers([alpha, beta, gamma]);
+  const listed = useMcpStore.getState();
+  check("once the list has it nothing is awaited, and it is still the one selected", listed.awaited === null && listed.selectedId === "gamma_example");
+  seed(useMcpStore, { servers: listed.servers, awaited: null });
+  check("...and the panel shows it as any other server", /<span data-mcp-server="gamma_example"[^>]*><button[^>]*aria-current="true"/.test(markup(React.createElement(McpPanel))));
+
+  seed(useMcpStore, { servers: [alpha, beta], selectedId: "beta", awaited: null });
+  adding();
+  store.select("alpha");
+  check("choosing another server stops the wait", useMcpStore.getState().awaited === null && useMcpStore.getState().selectedId === "alpha");
+  adding();
+  store.setDiscovered("gamma_example");
+  check("a check that ends without the server ever being listed stops it too", useMcpStore.getState().awaited === null);
+  adding();
+  store.forgetDiscovering();
+  check("and so does a reconnect", useMcpStore.getState().awaited === null);
+  adding("https://alpha.example/mcp", "alpha");
+  check("a server the list already has is not waited for", useMcpStore.getState().awaited === null && useMcpStore.getState().selectedId === "alpha");
+  seed(useMcpStore, { servers: [], selectedId: null, awaited: null, formOpen: false, pendingAdd: null });
 }
 
 console.log(fail === 0 ? "\nALL CORRECT" : `\n${fail} FAILURES`);

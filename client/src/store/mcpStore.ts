@@ -39,6 +39,11 @@ export interface AddFormDraft {
   label: string;
 }
 
+export interface AwaitedServer {
+  id: string;
+  endpoint: string;
+}
+
 const EMPTY_DRAFT: AddFormDraft = { endpoint: "", label: "" };
 
 interface McpState {
@@ -56,6 +61,7 @@ interface McpState {
   settleAdd: (ref: string, outcome: { serverId: string | null } | { message: string }) => void;
   interruptAdd: () => void;
   clearAdd: () => void;
+  awaited: AwaitedServer | null;
   /** Server ids with a handshake in flight, plus null for an add that has no id yet. */
   discovering: Record<string, number>;
 
@@ -95,7 +101,7 @@ function without(discovering: Record<string, number>, serverId: string): Record<
 export const useMcpStore = create<McpState>((set, get) => ({
   servers: [],
   selectedId: null,
-  select: (selectedId) => set({ selectedId }),
+  select: (selectedId) => set((s) => ({ selectedId, awaited: s.awaited?.id === selectedId ? s.awaited : null })),
   formOpen: false,
   setFormOpen: (formOpen) => set({ formOpen }),
   draft: EMPTY_DRAFT,
@@ -114,6 +120,10 @@ export const useMcpStore = create<McpState>((set, get) => ({
               : {
                   pendingAdd: null,
                   selectedId: outcome.serverId ?? s.selectedId,
+                  awaited:
+                    outcome.serverId && !s.servers.some((server) => server.id === outcome.serverId)
+                      ? { id: outcome.serverId, endpoint: s.pendingAdd.endpoint }
+                      : null,
                   formOpen: false,
                   draft: EMPTY_DRAFT,
                   tokenDropped: false,
@@ -125,6 +135,7 @@ export const useMcpStore = create<McpState>((set, get) => ({
       s.pendingAdd?.state === "sending" ? { pendingAdd: { ...s.pendingAdd, state: "refused", message: ADD_INTERRUPTED } } : s,
     ),
   clearAdd: () => set({ pendingAdd: null }),
+  awaited: null,
   confirms: [],
   revealNonce: null,
   discovering: {},
@@ -135,6 +146,7 @@ export const useMcpStore = create<McpState>((set, get) => ({
       return {
         servers,
         discovering: Object.fromEntries(Object.entries(s.discovering).filter(([id]) => live.has(id))),
+        awaited: s.awaited && live.has(s.awaited.id) ? null : s.awaited,
       };
     }),
 
@@ -151,9 +163,14 @@ export const useMcpStore = create<McpState>((set, get) => ({
   },
 
   setDiscovered: (serverId) =>
-    set((s) => (isDiscovering(s.discovering, serverId) ? { discovering: without(s.discovering, serverId) } : s)),
+    set((s) => {
+      const awaited = s.awaited?.id === serverId ? null : s.awaited;
+      if (isDiscovering(s.discovering, serverId)) return { discovering: without(s.discovering, serverId), awaited };
+      return awaited === s.awaited ? s : { awaited };
+    }),
 
-  forgetDiscovering: () => set((s) => (Object.keys(s.discovering).length === 0 ? s : { discovering: {} })),
+  forgetDiscovering: () =>
+    set((s) => (Object.keys(s.discovering).length === 0 && s.awaited === null ? s : { discovering: {}, awaited: null })),
 
   addConfirm: (req) =>
     set((s) =>
@@ -220,6 +237,12 @@ export function removalConsequences(server: McpServer, agents: readonly AgentSum
       ? ` ${plural(using.length, "agent")} granted its tools (${named}) will no longer be able to call them.`
       : " No agent is granted its tools.")
   );
+}
+
+export function awaitedServer(state: Pick<McpState, "awaited" | "selectedId" | "servers">): AwaitedServer | null {
+  const { awaited } = state;
+  if (!awaited || awaited.id !== state.selectedId) return null;
+  return state.servers.some((server) => server.id === awaited.id) ? null : awaited;
 }
 
 export function isDiscovering(discovering: Record<string, number>, serverId: string): boolean {
