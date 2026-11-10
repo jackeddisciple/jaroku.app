@@ -84,6 +84,9 @@ export { STATUS_LABEL };
 
 // --- one discovered tool -----------------------------------------------------
 
+export const RUNS_FREELY_TITLE =
+  "Jaroku runs this without stopping to ask. That is its reading of the tool's name and description, not a fact about what the tool does.";
+
 function ToolRowView({ tool, serverId }: { tool: McpTool; serverId: string }) {
   // §8.2 — "MCP panel / Grant-revoke tools". The command is `setMcpToolImpact` and its capability
   // is `mcp:manage`, the admin's: raising a tool to high impact decides whether every agent in the
@@ -109,14 +112,11 @@ function ToolRowView({ tool, serverId }: { tool: McpTool; serverId: string }) {
               <StatusBadge state="pending" label="high impact" icon={ShieldAlertIcon}
                 title="A generated agent must ask before running this for the first time." />
             ) : (
-              // The badge's default neutral icon is an ✕, which next to the word "read-only"
-              // reads as a negation rather than a description. Both of these are properties
-              // of the tool, so both say what they are.
               <StatusBadge state="neutral" variant="outline"
-                label={tool.overridden ? "no confirmation" : "read-only"} icon={EyeIcon}
+                label="runs freely" icon={EyeIcon}
                 title={tool.overridden
                   ? "You lowered this. It still does whatever it does; Jaroku just stops asking first."
-                  : "Classified as information retrieval — it runs without stopping to ask."} />
+                  : RUNS_FREELY_TITLE} />
             )}
             {tool.overridden && (
               <StatusBadge state="neutral" variant="outline" label="you set this"
@@ -169,7 +169,7 @@ function ToolRowView({ tool, serverId }: { tool: McpTool; serverId: string }) {
                   onClick={() => setImpact(high ? "low" : "high", high ? "stop asking first" : "treat as high impact")}
                   title={high
                     ? "Stop asking before this runs."
-                    : "Ask before this runs, even though it was classified read-only."}
+                    : "Ask before this runs, even though Jaroku judged it could run freely."}
                 >
                   {high ? "stop asking first" : "treat as high impact"}
                 </button>

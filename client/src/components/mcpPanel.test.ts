@@ -1,7 +1,7 @@
 import React from "react";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { ConnectForm, CredentialHome, CredentialRemovalConfirm, ENDPOINT_SETTLED, EditServerForm, FIELD, FIELD_MONO, MCP_EMPTY_ADMIN, MCP_EMPTY_MEMBER, MCP_LABEL_MAX, McpPanel, NOT_SENT, PRESSED_OPEN, RemovalConfirm, SCHEMA_DISPLAY_CHARS, SCHEMA_SHORTENED, TOKEN_DROPPED, TrustBanner, controlBtn, nextBtn, notSent, sameToolRow, schemaText, startAdd, storedCredentialTitle, toggledForm } from "./McpPanel.tsx";
+import { ConnectForm, CredentialHome, CredentialRemovalConfirm, ENDPOINT_SETTLED, EditServerForm, FIELD, FIELD_MONO, MCP_EMPTY_ADMIN, MCP_EMPTY_MEMBER, MCP_LABEL_MAX, McpPanel, NOT_SENT, PRESSED_OPEN, RUNS_FREELY_TITLE, RemovalConfirm, SCHEMA_DISPLAY_CHARS, SCHEMA_SHORTENED, TOKEN_DROPPED, TrustBanner, controlBtn, nextBtn, notSent, sameToolRow, schemaText, startAdd, storedCredentialTitle, toggledForm } from "./McpPanel.tsx";
 import { FIRST_TOOL_PAGE, TOOL_PAGE, matchTools, moreToolsLabel, searchTools, showMoreTools, toolWindow } from "../lib/toolWindow.ts";
 import { useBuildStore } from "../store/buildStore.ts";
 import { ADD_INTERRUPTED, DEPARTURE_FOCUS_MS, DISCOVERY_STALE_MS, agentsUsing, allMcpTools, awaitedServer, hasDeparted, isDiscovering, liveSelection, mcpToolSearchText, removalConsequences, useMcpStore } from "../store/mcpStore.ts";
@@ -1142,6 +1142,22 @@ console.log("\nopening a form puts the cursor in it, and a stored credential lea
   seed(useSessionStore, sessionAs("admin"));
   seed(useMcpStore, { servers: [server()] });
   check("a server with no stored credential has no badge", !/data-mcp-credential-badge/.test(markup(React.createElement(McpPanel))));
+  seed(useMcpStore, { servers: [], selectedId: null });
+}
+
+console.log("\na tool that runs without asking is said to, not said to be harmless");
+{
+  seed(useSessionStore, sessionAs("admin"));
+  const purge = tool("purge_cache", { description: "Read-only cache maintenance.", annotations: { readOnlyHint: true } });
+  const lowered = tool("send_message", { impact: "low", computed_impact: "high", overridden: true });
+  seed(useMcpStore, { servers: [server({ tools: [tool("get_page"), purge, lowered] })], selectedId: null, awaited: null, formOpen: false });
+  const html = markup(React.createElement(McpPanel));
+  const badges = [...html.matchAll(/<span title="([^"]*)"[^>]*>(?:(?!<\/span>).)*?(runs freely|read-only|no confirmation)<\/span>/gs)].map((m) => [m[2], m[1]] as const);
+  check("no tool is labelled read-only, which Jaroku cannot know", !/>read-only</i.test(html.replace(/Read-only cache maintenance\./g, "")) && !badges.some(([label]) => label === "read-only"));
+  check("each says what Jaroku will do instead", (html.match(/runs freely/g) ?? []).length === 3, String((html.match(/runs freely/g) ?? []).length));
+  check("...and one lowered by hand reads the same, not as a second kind of thing", !/no confirmation/.test(html));
+  check("the explanation owns up to being a reading of the name", /not a fact about what the tool does/.test(RUNS_FREELY_TITLE) && html.includes(RUNS_FREELY_TITLE.replace(/'/g, "&#x27;")));
+  check("...while a lowered tool still says who lowered it", /You lowered this\. It still does whatever it does/.test(html));
   seed(useMcpStore, { servers: [], selectedId: null });
 }
 
