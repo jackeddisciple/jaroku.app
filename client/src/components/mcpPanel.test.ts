@@ -1,7 +1,7 @@
 import React from "react";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { ConnectForm, CredentialHome, CredentialRemovalConfirm, ENDPOINT_SETTLED, EditServerForm, MCP_EMPTY_ADMIN, MCP_EMPTY_MEMBER, MCP_LABEL_MAX, McpPanel, NOT_SENT, RemovalConfirm, SCHEMA_DISPLAY_CHARS, SCHEMA_SHORTENED, TOKEN_DROPPED, TrustBanner, controlBtn, notSent, sameToolRow, schemaText, startAdd, storedCredentialTitle, toggledForm } from "./McpPanel.tsx";
+import { ConnectForm, CredentialHome, CredentialRemovalConfirm, ENDPOINT_SETTLED, EditServerForm, MCP_EMPTY_ADMIN, MCP_EMPTY_MEMBER, MCP_LABEL_MAX, McpPanel, NOT_SENT, PRESSED_OPEN, RemovalConfirm, SCHEMA_DISPLAY_CHARS, SCHEMA_SHORTENED, TOKEN_DROPPED, TrustBanner, controlBtn, notSent, sameToolRow, schemaText, startAdd, storedCredentialTitle, toggledForm } from "./McpPanel.tsx";
 import { FIRST_TOOL_PAGE, TOOL_PAGE, matchTools, moreToolsLabel, searchTools, showMoreTools, toolWindow } from "../lib/toolWindow.ts";
 import { useBuildStore } from "../store/buildStore.ts";
 import { ADD_INTERRUPTED, DEPARTURE_FOCUS_MS, DISCOVERY_STALE_MS, agentsUsing, allMcpTools, awaitedServer, hasDeparted, isDiscovering, liveSelection, mcpToolSearchText, removalConsequences, useMcpStore } from "../store/mcpStore.ts";
@@ -965,6 +965,20 @@ console.log("\na server shows one form at a time");
   }
   check("keeping a credential goes back to the form it was asked from", /onKeep=\{\(\) => setOpen\("credential"\)\}/.test(detail));
   check("a credential typed and then left for another form is not kept", /if \(open === "credential" \|\| open === "credential-removal"\) return;\s*setToken\(""\);\s*setCredentialError\(null\);/.test(detail));
+}
+
+console.log("\na button that has opened something looks pressed");
+{
+  check("the pressed look is keyed on the state a screen reader is told", PRESSED_OPEN.split(" ").every((cls) => cls.startsWith("aria-expanded:")) && /aria-expanded:bg-active/.test(PRESSED_OPEN) && /aria-expanded:text-ink/.test(PRESSED_OPEN));
+  check("every control in a server's row carries it", controlBtn.includes(PRESSED_OPEN));
+  seed(useSessionStore, sessionAs("admin"));
+  seed(useMcpStore, { servers: [server()], selectedId: null, awaited: null, formOpen: true, draft: { endpoint: "", label: "" }, pendingAdd: null, tokenDropped: false });
+  const html = markup(React.createElement(McpPanel));
+  const toggles = [...html.matchAll(/<button[^>]*aria-expanded="(?:true|false)"[^>]*>/g)].map((m) => m[0]).filter((b) => !/data-mcp-picker/.test(b) && !/Why this matters/.test(b));
+  check("the panel has buttons that open things", toggles.length >= 4, String(toggles.length));
+  check("...and each of them has a pressed look for when it has", toggles.every((b) => /aria-expanded:bg-(active|chrome)/.test(b) && /aria-expanded:text-ink/.test(b)), toggles.find((b) => !/aria-expanded:bg-/.test(b)) ?? "");
+  check("Connect a server reads as pressed while its form is open", /<button[^>]*data-mcp-connect[^>]*aria-expanded="true"[^>]*class="[^"]*aria-expanded:bg-chrome/.test(html) || /<button[^>]*class="[^"]*aria-expanded:bg-chrome[^"]*"[^>]*data-mcp-connect[^>]*aria-expanded="true"/.test(html) || /<button[^>]*data-mcp-connect[^>]*>/.exec(html)?.[0].includes('aria-expanded="true"') === true);
+  seed(useMcpStore, { servers: [], selectedId: null, formOpen: false });
 }
 
 console.log(fail === 0 ? "\nALL CORRECT" : `\n${fail} FAILURES`);

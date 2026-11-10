@@ -56,7 +56,9 @@ import { Icon } from "../lib/icons/registry.ts";
  * break the rule that a shape means the same thing in every tab. This table is the sentence, and it
  * is why the label stays beside the mark rather than being folded into it.
  */
-export const controlBtn = `${secondaryBtn} min-h-6`;
+export const PRESSED_OPEN = "aria-expanded:bg-active aria-expanded:text-ink";
+
+export const controlBtn = `${secondaryBtn} min-h-6 ${PRESSED_OPEN}`;
 
 export const SCHEMA_DISPLAY_CHARS = 20_000;
 export const SCHEMA_SHORTENED = "… shortened for display: this schema is longer than the panel shows";
@@ -890,13 +892,13 @@ export function McpPanel() {
             title="Connect a server"
             aria-expanded={adding}
             onClick={toggleForm}
-            className={buttonVariants({ variant: "soft", size: "icon-sm" })}
+            className={`${buttonVariants({ variant: "soft", size: "icon-sm" })} aria-expanded:bg-chrome aria-expanded:text-ink`}
           >
             <Icon.mcp.connectServer size={ICON.sm} />
           </button>
         )}
         {canManage && !picking && (
-          <button type="button" data-mcp-connect className={quietBtn + " ml-auto shrink-0"} aria-expanded={adding} onClick={toggleForm}>
+          <button type="button" data-mcp-connect className={`${quietBtn} ml-auto shrink-0 ${PRESSED_OPEN}`} aria-expanded={adding} onClick={toggleForm}>
             <Icon.mcp.connectServer size={ICON.xs} />
             Connect a server
           </button>
