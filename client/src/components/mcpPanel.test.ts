@@ -819,5 +819,20 @@ console.log("\na plan limit is said once, on its card");
   check("...and holds the toast back only while that card is on screen", /const cardShown = carded && useUiStore\.getState\(\)\.rightPanelOpen && useUiStore\.getState\(\)\.rightTab === "mcp";/.test(mcp));
 }
 
+console.log("\nremoving a server that never connected says so plainly");
+{
+  const never = server({ status: "error", discovered_at: null, last_error: "not a valid URL" });
+  const said = removalConsequences(never, []);
+  check("it does not count tools it never had", !/0 discovered tools/.test(said) && !/Nothing brings them back/.test(said), said);
+  check("...it says it never connected", said === "Remove Alpha? It never connected, so it has no tools to lose.", said);
+  const keyed = removalConsequences({ ...never, configured: true }, []);
+  check("a credential stored for it is still named", /no tools to lose, and its stored credential is deleted with it\.$/.test(keyed), keyed);
+  const emptied = removalConsequences(server({ tools: [] }), []);
+  check("a server that connected and offers nothing keeps the full wording", /removes 0 discovered tools\. Nothing brings them back/.test(emptied), emptied);
+  seed(useBuildStore, { agents: [] });
+  const ask = markup(React.createElement(RemovalConfirm, { server: never, onKeep: () => {} }));
+  check("the question shows that wording, with the same two answers", ask.includes("It never connected") && /Disconnect Alpha/.test(ask) && /Keep it/.test(ask));
+}
+
 console.log(fail === 0 ? "\nALL CORRECT" : `\n${fail} FAILURES`);
 (globalThis as { process?: { exit(code: number): void } }).process?.exit(fail === 0 ? 0 : 1);

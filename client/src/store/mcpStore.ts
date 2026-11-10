@@ -231,6 +231,13 @@ export function removalConsequences(server: McpServer, agents: readonly AgentSum
   const lost = losing.length === 1 ? losing[0] : `${losing.slice(0, -1).join(", ")} and ${losing[losing.length - 1]}`;
   const using = agentsUsing(server.id, agents);
   const named = using.slice(0, 3).map((agent) => agent.name).join(", ") + (using.length > 3 ? ` and ${using.length - 3} more` : "");
+  if (server.discovered_at === null && server.tools.length === 0) {
+    return (
+      `Remove ${server.label}? It never connected, so it has no tools to lose` +
+      (server.configured ? ", and its stored credential is deleted with it." : ".") +
+      (using.length > 0 ? ` ${plural(using.length, "agent")} granted its tools (${named}) will no longer be able to call them.` : "")
+    );
+  }
   return (
     `Disconnecting ${server.label} removes ${lost}. Nothing brings them back except connecting it again.` +
     (using.length > 0
