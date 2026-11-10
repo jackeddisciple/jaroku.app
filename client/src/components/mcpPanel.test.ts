@@ -208,7 +208,7 @@ console.log("\nconnecting keeps what was typed until the server answers");
   const socket = readFileSync(fileURLToPath(new URL("../lib/socket.ts", import.meta.url)), "utf8");
   check("the add reports whether it left the tab", /export function sendAddMcpServer\([^)]*\): boolean \{\s*return send\(/.test(socket));
   check("an accepted add is matched to the form that sent it", /type === "discovering"\) \{[\s\S]{0,160}settleAdd\(msg\.clientRef, \{ serverId: msg\.serverId \}\)/.test(socket));
-  check("...and so is a refusal", /type === "error"\) \{\s*if \(msg\.clientRef\) m\.settleAdd\(msg\.clientRef, \{ message: msg\.message \}\)/.test(socket));
+  check("...and so is a refusal", /type === "error"\) \{[\s\S]{0,260}if \(msg\.clientRef\) m\.settleAdd\(msg\.clientRef, \{ message: carded \? null : msg\.message \}\)/.test(socket));
   check("a reconnect settles an add left waiting", /forgetDiscovering\(\);\s*useMcpStore\.getState\(\)\.interruptAdd\(\);/.test(socket));
 }
 
@@ -356,7 +356,7 @@ console.log("\nwhat MCP has to say reaches the person who asked, wherever they a
 
   const socket = readFileSync(fileURLToPath(new URL("../lib/socket.ts", import.meta.url)), "utf8");
   const mcp = /case "mcp": \{[\s\S]*?\n {4}\}\n/.exec(socket)?.[0] ?? "";
-  check("an MCP error is said in the corner toast, whichever panel is open", /type === "error"\) \{[\s\S]{0,240}if \(isOurs\(msg\.origin\)\) useUiStore\.getState\(\)\.showToast\(msg\.message, "err"\)/.test(mcp));
+  check("an MCP error is said in the corner toast, whichever panel is open", /type === "error"\) \{[\s\S]{0,520}if \(isOurs\(msg\.origin\) && !cardShown\) useUiStore\.getState\(\)\.showToast\(msg\.message, "err"\)/.test(mcp));
   check("...and so is a notice", /type === "notice"\) \{ if \(isOurs\(msg\.origin\)\) useUiStore\.getState\(\)\.showToast\(msg\.message\); \}/.test(mcp));
   check("...only in the tab whose action it is about", /cmd: "rediscoverMcpServer", serverId, origin: EVAL_ORIGIN/.test(socket) && /cmd: "setMcpServerAuth", serverId, token, origin: EVAL_ORIGIN/.test(socket) && /cmd: "addMcpServer", endpoint, label, token, clientRef, origin: EVAL_ORIGIN/.test(socket));
   const source = readFileSync(fileURLToPath(new URL("./McpPanel.tsx", import.meta.url)), "utf8");
@@ -798,6 +798,25 @@ console.log("\nthe limit card goes once the workspace is under its limit again")
   useEntitlementStore.getState().clear();
   useMcpStore.getState().setServers([]);
   seed(useMcpStore, { servers: [], selectedId: null });
+}
+
+console.log("\na plan limit is said once, on its card");
+{
+  const store = useMcpStore.getState();
+  store.clearAdd();
+  seed(useMcpStore, { formOpen: true, draft: { endpoint: "https://fourth.example/mcp", label: "" }, pendingAdd: null, tokenDropped: false });
+  startAdd({ endpoint: "https://fourth.example/mcp", label: "", token: "" }, () => true);
+  store.settleAdd(useMcpStore.getState().pendingAdd?.ref ?? "", { message: null });
+  const refused = useMcpStore.getState();
+  check("a refusal the card carries keeps the form open", refused.pendingAdd?.state === "refused" && refused.formOpen && refused.draft.endpoint === "https://fourth.example/mcp");
+  check("...with no line of its own to repeat it", refused.pendingAdd?.message === null);
+  store.clearAdd();
+  seed(useMcpStore, { formOpen: false, draft: { endpoint: "", label: "" } });
+
+  const socket = readFileSync(fileURLToPath(new URL("../lib/socket.ts", import.meta.url)), "utf8");
+  const mcp = /case "mcp": \{[\s\S]*?\n {4}\}\n/.exec(socket)?.[0] ?? "";
+  check("the socket knows a refusal that arrived with a card", /const carded = carried !== undefined && isRefusal\(carried\);/.test(mcp));
+  check("...and holds the toast back only while that card is on screen", /const cardShown = carded && useUiStore\.getState\(\)\.rightPanelOpen && useUiStore\.getState\(\)\.rightTab === "mcp";/.test(mcp));
 }
 
 console.log(fail === 0 ? "\nALL CORRECT" : `\n${fail} FAILURES`);

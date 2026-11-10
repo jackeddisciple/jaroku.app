@@ -444,9 +444,11 @@ function dispatch(msg: ServerMessage): void {
       }
       else if (msg.type === "discovered") m.setDiscovered(msg.serverId);
       else if (msg.type === "error") {
-        if (msg.clientRef) m.settleAdd(msg.clientRef, { message: msg.message });
+        const carded = carried !== undefined && isRefusal(carried);
+        const cardShown = carded && useUiStore.getState().rightPanelOpen && useUiStore.getState().rightTab === "mcp";
+        if (msg.clientRef) m.settleAdd(msg.clientRef, { message: carded ? null : msg.message });
         if (msg.runId && msg.nonce) m.resolveConfirm(msg.runId, msg.nonce);
-        if (isOurs(msg.origin)) useUiStore.getState().showToast(msg.message, "err");
+        if (isOurs(msg.origin) && !cardShown) useUiStore.getState().showToast(msg.message, "err");
       }
       else if (msg.type === "notice") { if (isOurs(msg.origin)) useUiStore.getState().showToast(msg.message); }
       else if (msg.type === "confirmRequest") m.addConfirm(msg);

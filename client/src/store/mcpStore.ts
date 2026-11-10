@@ -58,7 +58,7 @@ interface McpState {
   setTokenDropped: (dropped: boolean) => void;
   pendingAdd: PendingAdd | null;
   beginAdd: (ref: string, endpoint: string) => void;
-  settleAdd: (ref: string, outcome: { serverId: string | null } | { message: string }) => void;
+  settleAdd: (ref: string, outcome: { serverId: string | null } | { message: string | null }) => void;
   interruptAdd: () => void;
   clearAdd: () => void;
   awaited: AwaitedServer | null;
