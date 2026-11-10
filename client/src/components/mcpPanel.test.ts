@@ -913,5 +913,20 @@ console.log("\nthe server on screen says which server it is");
   seed(useMcpStore, { servers: [], selectedId: null });
 }
 
+console.log("\na server's address can be read");
+{
+  const address = `https://mcp.example.com/${"segment/".repeat(20)}mcp`;
+  seed(useSessionStore, sessionAs("admin"));
+  seed(useMcpStore, { servers: [server({ endpoint: address, configured: true, credential_store: "kms" })], selectedId: null, awaited: null, formOpen: false });
+  const html = markup(React.createElement(McpPanel));
+  const line = /<p[^>]*data-mcp-endpoint[^>]*>.*?<\/p>/s.exec(html)?.[0] ?? "";
+  check("it has a line of its own, whole", line.includes(`>${address}<`), line.slice(0, 200));
+  check("...set as the identifier it is", /font-mono/.test(line));
+  check("...in the grey that meets contrast, not the faint one", /text-muted/.test(line) && !/text-faint/.test(line));
+  check("...and breaks where it has to rather than running off the panel", /\[overflow-wrap:anywhere\]/.test(line));
+  check("the stored credential badge no longer shares its line", html.indexOf("data-mcp-endpoint") < html.indexOf("credential stored") && !/data-mcp-endpoint[^<]*<[^>]*>credential stored/.test(html));
+  seed(useMcpStore, { servers: [], selectedId: null });
+}
+
 console.log(fail === 0 ? "\nALL CORRECT" : `\n${fail} FAILURES`);
 (globalThis as { process?: { exit(code: number): void } }).process?.exit(fail === 0 ? 0 : 1);

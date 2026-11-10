@@ -29,7 +29,6 @@ import {
   sendUpdateMcpServer,
 } from "../lib/socket.ts";
 import { ACCENT, ICON, STATUS, TEXT } from "../lib/tokens.ts";
-import { Truncate } from "./Truncate.tsx";
 import { SecretField } from "./SecretField.tsx";
 import { EmptyState, LoadingLine } from "./EmptyState.tsx";
 import { primaryBtn, quietBtn, secondaryBtn } from "./buttons.ts";
@@ -435,13 +434,13 @@ function ServerDetail({ server }: { server: McpServer }) {
             <span className="text-tiny text-muted">{STATUS_LABEL[server.status]}</span>
           </span>
         </div>
-        <div className="mt-1 flex items-center gap-2 flex-wrap">
-          {server.configured && (
+        <p data-mcp-endpoint className="mt-0.5 font-mono text-tiny leading-[1.5] text-muted [overflow-wrap:anywhere]">{server.endpoint}</p>
+        {server.configured && (
+          <div className="mt-1 flex items-center gap-2 flex-wrap">
             <StatusBadge state="neutral" variant="outline" label="credential stored" icon={KeyIcon}
               title={storedCredentialTitle(server)} />
-          )}
-          <Truncate className="text-tiny text-faint" title={server.endpoint}>{server.endpoint}</Truncate>
-        </div>
+          </div>
+        )}
 
         {server.server_name && (
           <p className="mt-1 text-tiny text-muted [overflow-wrap:anywhere]">
