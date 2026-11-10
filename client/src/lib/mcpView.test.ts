@@ -1,4 +1,5 @@
-import { endpointHint, endpointProblem, typingScheme } from "./mcpView.ts";
+import { asksFirstCount, attentionSummary, endpointHint, endpointProblem, needsAttention, needsReviewCount, orderServers, typingScheme } from "./mcpView.ts";
+import type { McpServer, McpTool } from "../types.ts";
 
 let fail = 0;
 const check = (name: string, ok: boolean, detail = ""): void => {
@@ -8,6 +9,61 @@ const check = (name: string, ok: boolean, detail = ""): void => {
     console.log(`  FAIL ${name}${detail ? ` | ${detail}` : ""}`);
   }
 };
+
+const tool = (name: string, patch: Partial<McpTool> = {}): McpTool => ({
+  server_id: "alpha",
+  name,
+  description: null,
+  input_schema: { type: "object", properties: {} },
+  schema_hash: "h",
+  impact: "low",
+  computed_impact: "low",
+  impact_reason: "its name begins with a read verb",
+  overridden: false,
+  override_voided: false,
+  annotations: null,
+  ...patch,
+});
+
+const server = (id: string, patch: Partial<McpServer> = {}): McpServer => ({
+  id,
+  label: id,
+  endpoint: `https://${id}.example/mcp`,
+  transport: "http",
+  auth_env_key: null,
+  server_name: null,
+  server_version: null,
+  protocol_version: null,
+  status: "connected",
+  last_error: null,
+  discovered_at: "2026-11-07T10:00:00.000Z",
+  created_at: "2026-11-07T09:00:00.000Z",
+  configured: false,
+  tools: [],
+  ...patch,
+});
+
+console.log("\nservers that need somebody are listed first");
+{
+  const healthy = server("alpha", { tools: [tool("read_page"), tool("send_message", { impact: "high", computed_impact: "high" })] });
+  const down = server("beta", { status: "unreachable" });
+  const locked = server("gamma", { status: "auth_required" });
+  const broken = server("delta", { status: "error" });
+  const stale = server("epsilon", { tools: [tool("search", { override_voided: true }), tool("read_page")] });
+  const joining = server("zeta", { status: "connecting" });
+  check("a connected server with nothing wrong needs nobody", !needsAttention(healthy));
+  check("...nor does one still connecting", !needsAttention(joining));
+  for (const s of [down, locked, broken]) check(`a server that is ${s.status} does`, needsAttention(s));
+  check("...and so does one whose override no longer applies", needsAttention(stale));
+  const ordered = orderServers([healthy, down, joining, stale, locked, broken]).map((s) => s.id);
+  check("those come first, each group in the order it was given", ordered.join() === "beta,epsilon,gamma,delta,alpha,zeta", ordered.join());
+  check("the list it was given is left as it was", orderServers([healthy, down]).length === 2 && [healthy, down][0] === healthy);
+  check("one server needing attention is said in the singular", attentionSummary([healthy, down]) === "1 server needs attention");
+  check("...several in the plural", attentionSummary([down, locked, healthy]) === "2 servers need attention");
+  check("...and none is said as nothing", attentionSummary([healthy, joining]) === null);
+  check("the tools that ask first are counted by the impact that governs", asksFirstCount(healthy) === 1 && asksFirstCount(down) === 0);
+  check("...and the ones needing review by their voided overrides", needsReviewCount(stale) === 1 && needsReviewCount(healthy) === 0);
+}
 
 console.log("\nan address is checked before it is sent");
 {

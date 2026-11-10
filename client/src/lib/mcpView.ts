@@ -68,3 +68,30 @@ export function endpointHint(raw: string): EndpointProblem | null {
   if (typingScheme(text)) return null;
   return /[.:/\s]/.test(text) ? problem : null;
 }
+
+export function needsAttention(server: McpServer): boolean {
+  return (
+    server.status === "auth_required" ||
+    server.status === "unreachable" ||
+    server.status === "error" ||
+    server.tools.some((tool) => tool.override_voided)
+  );
+}
+
+export function orderServers(servers: readonly McpServer[]): McpServer[] {
+  return [...servers.filter(needsAttention), ...servers.filter((server) => !needsAttention(server))];
+}
+
+export function asksFirstCount(server: McpServer): number {
+  return server.tools.filter((tool) => tool.impact === "high").length;
+}
+
+export function needsReviewCount(server: McpServer): number {
+  return server.tools.filter((tool) => tool.override_voided).length;
+}
+
+export function attentionSummary(servers: readonly McpServer[]): string | null {
+  const count = servers.filter(needsAttention).length;
+  if (count === 0) return null;
+  return count === 1 ? "1 server needs attention" : `${count} servers need attention`;
+}

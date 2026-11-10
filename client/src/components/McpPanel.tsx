@@ -41,7 +41,7 @@ import { MCP_PHASE } from "../lib/domainPhase.ts";
 import { AlertTriangleIcon, EyeIcon, KeyIcon, PlugIcon, RefreshIcon, ShieldAlertIcon, ChevronDownIcon, UserCircleIcon, XIcon } from "./panelIcons.tsx";
 import { useCanRun } from "../lib/useCapability.ts";
 import { moreToolsLabel, useToolWindow } from "../lib/toolWindow.ts";
-import { STATUS_LABEL, endpointHint, endpointHost, endpointProblem } from "../lib/mcpView.ts";
+import { STATUS_LABEL, attentionSummary, endpointHint, endpointHost, endpointProblem, orderServers } from "../lib/mcpView.ts";
 import { McpServerPicker } from "./McpServerPicker.tsx";
 import type { McpServer, McpTool } from "../types.ts";
 import { Icon } from "../lib/icons/registry.ts";
@@ -787,11 +787,12 @@ export function McpPanel() {
   // Keep the selection if it still exists, else fall back to the first — the same idiom as
   // evalStore's dataset selection and buildStore's agent selection.
   const pending = useMcpStore(awaitedServer);
-  const selected = pending ? null : (servers.find((s) => s.id === selectedId) ?? servers[0] ?? null);
+  const selected = pending ? null : (servers.find((s) => s.id === selectedId) ?? orderServers(servers)[0] ?? null);
   useEffect(() => {
     if (selected && selected.id !== selectedId) setSelectedId(selected.id);
   }, [selected, selectedId, setSelectedId]);
   const picking = servers.length > 0 || pending !== null;
+  const attention = attentionSummary(servers);
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
@@ -813,7 +814,19 @@ export function McpPanel() {
       </div>
 
       <div className="flex shrink-0 items-center gap-2 border-b border-hair px-4 py-2">
-        <SectionHeader name="Servers" count={servers.length} className="shrink-0" />
+        <SectionHeader name="Servers" count={servers.length} className="shrink-0">
+          {attention && (
+            <span
+              role="img"
+              aria-label={attention}
+              title={attention}
+              data-mcp-attention
+              className="inline-flex shrink-0 items-center text-err"
+            >
+              <AlertTriangleIcon size={ICON.xs} />
+            </span>
+          )}
+        </SectionHeader>
         {picking && (
           <McpServerPicker
             servers={servers}

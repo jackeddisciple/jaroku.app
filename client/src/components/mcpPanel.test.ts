@@ -11,6 +11,7 @@ import { resetWorkspaceStores } from "../store/reset.ts";
 import { grantRows } from "./AgentTabs.tsx";
 import { useEntitlementStore } from "../store/entitlementStore.ts";
 import { announceAsks } from "./McpConfirmModal.tsx";
+import { McpServerFacts } from "./McpServerPicker.tsx";
 import { TOAST_MAX_MS, TOAST_MS, toastDuration, useUiStore } from "../store/uiStore.ts";
 import type { AgentSummary, McpServer, McpTool } from "../types.ts";
 
@@ -841,6 +842,33 @@ console.log("\nremoving a server that never connected says so plainly");
   seed(useBuildStore, { agents: [] });
   const ask = markup(React.createElement(RemovalConfirm, { server: never, onKeep: () => {} }));
   check("the question shows that wording, with the same two answers", ask.includes("It never connected") && /Disconnect Alpha/.test(ask) && /Keep it/.test(ask));
+}
+
+console.log("\na server in trouble can be seen without opening it");
+{
+  const healthy = server({ tools: [tool("read_page"), tool("delete_record", { impact: "high", computed_impact: "high" }), tool("send_message", { impact: "high", computed_impact: "high" })] });
+  const down = server({ id: "beta", label: "Beta", status: "unreachable", tools: [tool("search", { override_voided: true })] });
+  seed(useSessionStore, sessionAs("admin"));
+  seed(useMcpStore, { servers: [healthy, down], selectedId: null, awaited: null, formOpen: false });
+  const html = markup(React.createElement(McpPanel));
+  check("the header says a server needs attention, in words a screen reader gets", /<span role="img" aria-label="1 server needs attention" title="1 server needs attention" data-mcp-attention/.test(html));
+  check("with nothing chosen yet the panel opens on the one in trouble", /data-mcp-picker="beta"/.test(html));
+  seed(useMcpStore, { selectedId: "alpha" });
+  check("a server somebody chose stays chosen", /data-mcp-picker="alpha"/.test(markup(React.createElement(McpPanel))));
+  seed(useMcpStore, { servers: [healthy], selectedId: null });
+  check("a healthy workspace carries no mark", !/data-mcp-attention/.test(markup(React.createElement(McpPanel))));
+
+  const row = markup(React.createElement(McpServerFacts, { server: healthy }));
+  check("a row in the picker names the server and its status", />Alpha<\/span>/.test(row) && />connected<\/span>/.test(row), row);
+  check("...how many of its tools ask first", /title="2 tools ask first"/.test(row));
+  check("...and how many tools it has", /title="3 tools"[^>]*>3<\/span>/.test(row));
+  check("...with no review mark when nothing needs review", !/need(s)? review/.test(row));
+  const troubled = markup(React.createElement(McpServerFacts, { server: down }));
+  check("a server with a voided override says a tool needs review", /title="1 tool needs review"/.test(troubled) && />unreachable<\/span>/.test(troubled), troubled);
+  check("...and carries no asks first mark it has not earned", !/ask(s)? first/.test(troubled));
+  const picker = readFileSync(fileURLToPath(new URL("./McpServerPicker.tsx", import.meta.url)), "utf8");
+  check("the menu lists servers needing attention first", /orderServers\(servers\)\.map\(\(server\) => \(/.test(picker));
+  seed(useMcpStore, { servers: [], selectedId: null });
 }
 
 console.log(fail === 0 ? "\nALL CORRECT" : `\n${fail} FAILURES`);
