@@ -896,5 +896,22 @@ console.log("\nfocus lands somewhere useful after a disconnect");
   seed(useMcpStore, { servers: [], selectedId: null });
 }
 
+console.log("\nthe server on screen says which server it is");
+{
+  const long = `Internal ${"Tools ".repeat(12)}Gateway`;
+  seed(useSessionStore, sessionAs("admin"));
+  seed(useMcpStore, { servers: [server({ label: long, status: "unreachable", tools: [tool("read_page")] })], selectedId: null, awaited: null, formOpen: false });
+  const html = markup(React.createElement(McpPanel));
+  const title = /<h2[^>]*data-mcp-server-title[^>]*>(.*?)<\/h2>/s.exec(html);
+  check("its name heads its own detail, as a heading", title?.[1] === long, title?.[0]?.slice(0, 200));
+  check("...in full, wrapping rather than cut off", /\[overflow-wrap:anywhere\]/.test(title?.[0] ?? "") && !/truncate/.test(title?.[0] ?? ""));
+  check("...with its status beside it, as a word", /<\/h2>.*?title="unreachable".*?>unreachable<\/span>/s.test(html));
+  check("the heading comes before the address", html.indexOf("data-mcp-server-title") < html.indexOf("https://alpha.example/mcp"));
+  seed(useSessionStore, sessionAs("member"));
+  check("a member reads the same heading", /<h2[^>]*data-mcp-server-title/.test(markup(React.createElement(McpPanel))));
+  seed(useSessionStore, sessionAs("admin"));
+  seed(useMcpStore, { servers: [], selectedId: null });
+}
+
 console.log(fail === 0 ? "\nALL CORRECT" : `\n${fail} FAILURES`);
 (globalThis as { process?: { exit(code: number): void } }).process?.exit(fail === 0 ? 0 : 1);

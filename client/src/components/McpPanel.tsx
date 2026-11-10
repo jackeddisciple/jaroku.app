@@ -424,15 +424,18 @@ function ServerDetail({ server }: { server: McpServer }) {
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
       <div className="shrink-0 px-4 py-2">
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex items-start gap-2">
+          <h2 data-mcp-server-title className="min-w-0 flex-1 text-label font-medium text-ink [overflow-wrap:anywhere]">{server.label}</h2>
           {/* GLYPH THEN WORD, which is I8: a card whose only "this is unreachable" signal is a rose
               mark is unreadable to a colour-blind user and invisible in a greyscale screenshot —
               and here the word is doing more than reinforcing, because two of the four states draw
               the same shape on purpose. */}
-          <span className="inline-flex items-center gap-1.5">
+          <span className="mt-0.5 inline-flex shrink-0 items-center gap-1.5">
             <StatusGlyph phase={MCP_PHASE[server.status]} size={ICON.xs} title={STATUS_LABEL[server.status]} />
             <span className="text-tiny text-muted">{STATUS_LABEL[server.status]}</span>
           </span>
+        </div>
+        <div className="mt-1 flex items-center gap-2 flex-wrap">
           {server.configured && (
             <StatusBadge state="neutral" variant="outline" label="credential stored" icon={KeyIcon}
               title={storedCredentialTitle(server)} />
