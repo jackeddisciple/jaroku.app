@@ -1122,5 +1122,28 @@ console.log("\nevery form on a server says what it is");
   check("no form in the panel is left without a name", forms.length === 3 && forms.every((f) => /aria-label=/.test(f)), String(forms.length));
 }
 
+console.log("\nopening a form puts the cursor in it, and a stored credential leads to Secrets");
+{
+  const edit = markup(React.createElement(EditServerForm, { server: server(), onDone: () => {} }));
+  check("the edit form opens with its name field focused", /<input[^>]*autofocus=""[^>]*name="mcp-server-edit-label"/i.test(edit), edit.slice(0, 300));
+  check("...and only that one", (edit.match(/autofocus=""/gi) ?? []).length === 1);
+  const source = readFileSync(fileURLToPath(new URL("./McpPanel.tsx", import.meta.url)), "utf8");
+  check("the credential form opens with its field focused", /<SecretField\s*autoFocus\s*id=\{`\$\{fieldId\}-credential`\}/.test(source));
+
+  seed(useSessionStore, sessionAs("admin"));
+  seed(useMcpStore, { servers: [server({ configured: true, credential_store: "kms" })], selectedId: null, awaited: null, formOpen: false });
+  const html = markup(React.createElement(McpPanel));
+  const badge = /<button[^>]*data-mcp-credential-badge[^>]*>.*?<\/button>/s.exec(html)?.[0] ?? "";
+  check("the stored credential badge is a button", badge.includes("credential stored"), badge.slice(0, 200));
+  check("...that says where it leads as well as where the credential is kept", /title="Kept encrypted for this workspace alone\. Jaroku never displays it\. Open Secrets to see it there\."/.test(badge), badge);
+  check("...and opens the Secrets tab", /onClick=\{\(\) => useUiStore\.getState\(\)\.setRightTab\("secrets"\)\}/.test(source));
+  seed(useSessionStore, sessionAs("member"));
+  check("a member can follow it too, since it changes nothing", /data-mcp-credential-badge/.test(markup(React.createElement(McpPanel))));
+  seed(useSessionStore, sessionAs("admin"));
+  seed(useMcpStore, { servers: [server()] });
+  check("a server with no stored credential has no badge", !/data-mcp-credential-badge/.test(markup(React.createElement(McpPanel))));
+  seed(useMcpStore, { servers: [], selectedId: null });
+}
+
 console.log(fail === 0 ? "\nALL CORRECT" : `\n${fail} FAILURES`);
 (globalThis as { process?: { exit(code: number): void } }).process?.exit(fail === 0 ? 0 : 1);

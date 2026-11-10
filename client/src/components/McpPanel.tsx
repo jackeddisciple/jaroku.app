@@ -310,6 +310,7 @@ export function EditServerForm({ server, onDone }: { server: McpServer; onDone: 
     >
       <FieldLabel htmlFor={`${fieldId}-label`} first>Name</FieldLabel>
       <input
+        autoFocus
         id={`${fieldId}-label`}
         name="mcp-server-edit-label"
         aria-label="Name"
@@ -494,8 +495,15 @@ function ServerDetail({ server }: { server: McpServer }) {
         <p data-mcp-endpoint className="mt-0.5 font-mono text-tiny leading-[1.5] text-muted [overflow-wrap:anywhere]">{server.endpoint}</p>
         {server.configured && (
           <div className="mt-1 flex items-center gap-2 flex-wrap">
-            <StatusBadge state="neutral" variant="outline" label="credential stored" icon={KeyIcon}
-              title={storedCredentialTitle(server)} />
+            <button
+              type="button"
+              data-mcp-credential-badge
+              className="rounded-xs transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:shadow-focusring"
+              title={`${storedCredentialTitle(server)} Open Secrets to see it there.`}
+              onClick={() => useUiStore.getState().setRightTab("secrets")}
+            >
+              <StatusBadge state="neutral" variant="outline" label="credential stored" icon={KeyIcon} />
+            </button>
           </div>
         )}
 
@@ -592,6 +600,7 @@ function ServerDetail({ server }: { server: McpServer }) {
           >
             <FieldLabel htmlFor={`${fieldId}-credential`} first>Credential</FieldLabel>
             <SecretField
+              autoFocus
               id={`${fieldId}-credential`}
               name="mcp-server-credential"
               aria-label={`Credential for ${server.label}`}
