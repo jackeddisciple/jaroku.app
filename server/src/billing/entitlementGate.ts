@@ -570,6 +570,20 @@ export async function requireEntitlement(
  * `billing/gate.ts` writes its refusals under: "quota exceeded" sends somebody to a dashboard to
  * work out what happened, and naming the number means the message IS the answer.
  */
+const LIMIT_NAME: Record<string, string> = {
+  agents: "agents",
+  runs_per_month: "runs this month",
+  eval_runs_per_month: "eval runs this month",
+  live_deployments: "live deployments",
+  mcp_servers: "MCP servers",
+  members: "members",
+  workspaces: "workspaces",
+};
+
+export function limitName(kind: string): string {
+  return LIMIT_NAME[kind] ?? kind.replace(/_/g, " ");
+}
+
 export function refusalMessage(r: EntitlementRefusal): string {
   // NAMED RATHER THAN "UPGRADING", for the same reason the card names it: this sentence is the
   // whole answer on a channel with no card, and "upgrading turns it on" sends somebody to a
@@ -580,7 +594,7 @@ export function refusalMessage(r: EntitlementRefusal): string {
       ? `that is not part of the ${r.tier} plan — ${to} turns it on, and nothing you have made changes`
       : `that is not part of the ${r.tier} plan, and no plan currently includes it`;
   }
-  const used = `${r.current} of ${r.limit} ${r.kind.replace(/_/g, " ")} used on the ${r.tier} plan`;
+  const used = `${r.current} of ${r.limit} ${limitName(r.kind)} used on the ${r.tier} plan`;
   return to
     ? `${used} — ${to} raises it, and everything you have made stays exactly as it is`
     : `${used}, and no plan raises it — nothing you have made changes`;

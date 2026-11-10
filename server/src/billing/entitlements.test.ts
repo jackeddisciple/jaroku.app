@@ -27,7 +27,7 @@ import {
   type TierEntitlements,
 } from "./entitlements.ts";
 import {
-  COMMAND_ENTITLEMENT, NO_ENTITLEMENT, USAGE_METRICS, countedAgents, entitlementFor, refusalMessage,
+  COMMAND_ENTITLEMENT, NO_ENTITLEMENT, USAGE_METRICS, countedAgents, entitlementFor, limitName, refusalMessage,
   requireEntitlement, type EntitlementCounts, type EntitlementKind,
 } from "./entitlementGate.ts";
 import { systemContextFor, newRequestId, type TenantContext } from "../db/tenant.ts";
@@ -280,6 +280,9 @@ console.log("\na refusal names the figure, the limit and what would change it");
   check(refusalMessage(fourth!).includes("3 of 3"), "the sentence carries the numbers");
   check(refusalMessage(fourth!).includes("stays exactly as it is"), "...and says the work is not going anywhere");
   check(refusalMessage(gh!).includes("nothing you have made changes"), "the feature sentence says the same thing");
+  const servers = refusalMessage({ error: "quota_exceeded", kind: "mcp_servers", current: 3, limit: 3, tier: "free", upgradeUrl: "/billing", unlocks: "pro", unlocksLabel: "Pro" });
+  check(servers.startsWith("3 of 3 MCP servers used on the free plan"), "a limit is named as it is written everywhere else");
+  check(limitName("runs_per_month") === "runs this month" && limitName("some_new_limit") === "some new limit", "...and one with no name of its own still reads as words");
 
   // -------------------------------------------------------------------------------------------
   // WHICH PLAN WOULD ACTUALLY LIFT IT, which is the one thing this card exists to say and which
