@@ -37,7 +37,8 @@ import { StatusBadge } from "./StatusBadge.tsx";
 import { StatusGlyph } from "./StatusGlyph.tsx";
 import { SectionHeader } from "./SectionHeader.tsx";
 import { MCP_PHASE } from "../lib/domainPhase.ts";
-import { AlertTriangleIcon, EyeIcon, KeyIcon, PlugIcon, RefreshIcon, ShieldAlertIcon, ChevronDownIcon, UserCircleIcon, XIcon } from "./panelIcons.tsx";
+import { AlertTriangleIcon, EyeIcon, KebabIcon, KeyIcon, PencilIcon, PlugIcon, RefreshIcon, ShieldAlertIcon, ChevronDownIcon, UserCircleIcon, XIcon } from "./panelIcons.tsx";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "./ui/dropdown-menu.tsx";
 import { useCanRun } from "../lib/useCapability.ts";
 import { moreToolsLabel, useToolWindow } from "../lib/toolWindow.ts";
 import { STATUS_LABEL, attentionSummary, endpointHint, endpointHost, endpointProblem, orderServers } from "../lib/mcpView.ts";
@@ -407,6 +408,11 @@ function ServerDetail({ server }: { server: McpServer }) {
   const [token, setToken] = useState("");
   const [open, setOpen] = useState<DetailForm | null>(null);
   const toggle = (form: DetailForm) => setOpen((current) => toggledForm(current, form));
+  const handingFocus = useRef(false);
+  const openFromMenu = (form: DetailForm) => {
+    handingFocus.current = open !== form;
+    toggle(form);
+  };
   const [credentialError, setCredentialError] = useState<string | null>(null);
   const [checkUnsent, setCheckUnsent] = useState(false);
   useEffect(() => {
@@ -481,7 +487,7 @@ function ServerDetail({ server }: { server: McpServer }) {
             panel itself — which servers are connected, which tools they offer, which one is
             failing — because that is what `mcp:read` is for. */}
         {canManage && (
-          <div className="mt-2 flex items-center gap-2 flex-wrap">
+          <div className="mt-2 flex items-center gap-2">
             <button className={controlBtn} disabled={discovering || server.status === "connecting"}
               onClick={() => setCheckUnsent(!sendRediscoverMcpServer(server.id))}
               title="Ask the server what it can do, again. A failure keeps the tools already discovered.">
@@ -492,15 +498,37 @@ function ServerDetail({ server }: { server: McpServer }) {
               <KeyIcon size={ICON.xs} />
               {server.configured ? "replace credential" : "add a credential"}
             </button>
-            <button className={controlBtn} aria-expanded={open === "edit"} onClick={() => toggle("edit")}>
-              edit
-            </button>
-            <button className={controlBtn + " ml-auto hover:!text-err"}
-              aria-expanded={open === "disconnect"}
-              onClick={() => toggle("disconnect")}>
-              <XIcon size={ICON.xs} />
-              disconnect
-            </button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  data-mcp-more
+                  aria-label={`More for ${server.label}`}
+                  title="Edit or disconnect"
+                  className={`${controlBtn} ml-auto !px-1.5`}
+                >
+                  <KebabIcon size={ICON.xs} />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                align="end"
+                aria-label={`More for ${server.label}`}
+                onCloseAutoFocus={(e) => {
+                  if (!handingFocus.current) return;
+                  handingFocus.current = false;
+                  e.preventDefault();
+                }}
+              >
+                <DropdownMenuItem size="compact" onSelect={() => openFromMenu("edit")}>
+                  <PencilIcon size={ICON.xs} />
+                  edit
+                </DropdownMenuItem>
+                <DropdownMenuItem size="compact" tone="danger" onSelect={() => openFromMenu("disconnect")}>
+                  <XIcon size={ICON.xs} />
+                  disconnect
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         )}
         {checkUnsent && <p role="alert" className="mt-1.5 text-tiny leading-[1.5] text-err">{notSent("re-check")}</p>}

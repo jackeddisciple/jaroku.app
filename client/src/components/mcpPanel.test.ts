@@ -418,7 +418,7 @@ console.log("\ndisconnecting and removing a credential ask first, and say what i
 
   const source = readFileSync(fileURLToPath(new URL("./McpPanel.tsx", import.meta.url)), "utf8");
   const detail = /function ServerDetail\([\s\S]*?\n\}\n/.exec(source)?.[0] ?? "";
-  check("disconnect opens the question rather than disconnecting", /onClick=\{\(\) => toggle\("disconnect"\)\}/.test(detail) && !/sendRemoveMcpServer/.test(detail));
+  check("disconnect opens the question rather than disconnecting", /onSelect=\{\(\) => openFromMenu\("disconnect"\)\}/.test(detail) && !/sendRemoveMcpServer/.test(detail));
   check("...and Remove does the same for the credential", /onClick=\{\(\) => setOpen\("credential-removal"\)\}/.test(detail) && !/sendSetMcpServerAuth\(server\.id, null\)/.test(detail));
 }
 
@@ -438,9 +438,11 @@ console.log("\na server can be renamed, and a mistyped endpoint fixed before it 
   seed(useSessionStore, sessionAs("admin"));
   seed(useMcpStore, { servers: [server()], selectedId: null });
   const panel = markup(React.createElement(McpPanel));
-  check("an admin is offered edit", /<button[^>]*aria-expanded="false"[^>]*>edit<\/button>/.test(panel));
+  check("an admin is offered edit, from the server's menu", /<button[^>]*data-mcp-more[^>]*>/.test(panel) && /aria-label="More for Alpha"/.test(panel));
+  const menu = /<DropdownMenuContent[\s\S]*?<\/DropdownMenuContent>/.exec(/function ServerDetail\([\s\S]*?\n\}\n/.exec(readFileSync(fileURLToPath(new URL("./McpPanel.tsx", import.meta.url)), "utf8"))?.[0] ?? "")?.[0] ?? "";
+  check("...which opens the edit form", /onSelect=\{\(\) => openFromMenu\("edit"\)\}/.test(menu));
   seed(useSessionStore, sessionAs("member"));
-  check("a member is not", !/>edit<\/button>/.test(markup(React.createElement(McpPanel))));
+  check("a member is not", !/data-mcp-more/.test(markup(React.createElement(McpPanel))));
   seed(useSessionStore, sessionAs("admin"));
 
   const socket = readFileSync(fileURLToPath(new URL("../lib/socket.ts", import.meta.url)), "utf8");
@@ -499,9 +501,10 @@ console.log("\nwhat a person reads to decide is readable, and the controls are b
   check("the reason a tool was classified is not faint", /<p class="[^"]*text-muted[^"]*">[^<]*its name begins with a read verb/.test(html));
   check("nor is the server's claim about itself", /<span class="text-muted"> — its own claim, unverified<\/span>/.test(html));
   check("nor when it was last checked", /<p class="px-2 py-1\.5 text-tiny text-muted">1 tool/.test(html));
-  for (const label of ["re-check", "edit", "disconnect"]) {
+  for (const label of ["re-check", "add a credential"]) {
     check(`${label} is at least 24px tall`, new RegExp(`<button[^>]*class="[^"]*min-h-6[^"]*"[^>]*>(?:(?!</button>).)*${label}</button>`, "s").test(html));
   }
+  check("the menu holding edit and disconnect is at least 24px tall too", /<button[^>]*data-mcp-more[^>]*class="[^"]*min-h-6|<button[^>]*class="[^"]*min-h-6[^"]*"[^>]*data-mcp-more/.test(html));
   check("every control in that row shares the taller class", controlBtn.includes("min-h-6"));
 }
 
@@ -975,10 +978,28 @@ console.log("\na button that has opened something looks pressed");
   seed(useMcpStore, { servers: [server()], selectedId: null, awaited: null, formOpen: true, draft: { endpoint: "", label: "" }, pendingAdd: null, tokenDropped: false });
   const html = markup(React.createElement(McpPanel));
   const toggles = [...html.matchAll(/<button[^>]*aria-expanded="(?:true|false)"[^>]*>/g)].map((m) => m[0]).filter((b) => !/data-mcp-picker/.test(b) && !/Why this matters/.test(b));
-  check("the panel has buttons that open things", toggles.length >= 4, String(toggles.length));
+  check("the panel has buttons that open things", toggles.length >= 3, String(toggles.length));
   check("...and each of them has a pressed look for when it has", toggles.every((b) => /aria-expanded:bg-(active|chrome)/.test(b) && /aria-expanded:text-ink/.test(b)), toggles.find((b) => !/aria-expanded:bg-/.test(b)) ?? "");
   check("Connect a server reads as pressed while its form is open", /<button[^>]*data-mcp-connect[^>]*aria-expanded="true"[^>]*class="[^"]*aria-expanded:bg-chrome/.test(html) || /<button[^>]*class="[^"]*aria-expanded:bg-chrome[^"]*"[^>]*data-mcp-connect[^>]*aria-expanded="true"/.test(html) || /<button[^>]*data-mcp-connect[^>]*>/.exec(html)?.[0].includes('aria-expanded="true"') === true);
   seed(useMcpStore, { servers: [], selectedId: null, formOpen: false });
+}
+
+console.log("\na server's controls fit on one row");
+{
+  seed(useSessionStore, sessionAs("admin"));
+  seed(useMcpStore, { servers: [server({ tools: [tool("read_page")] })], selectedId: null, awaited: null, formOpen: false });
+  const html = markup(React.createElement(McpPanel));
+  const more = /<button[^>]*data-mcp-more[^>]*>/.exec(html)?.[0] ?? "";
+  check("edit and disconnect sit behind one menu button", more.length > 0 && !/>edit<\/button>/.test(html) && !/>disconnect<\/button>/.test(html));
+  check("...which is named, and titled for a pointer", /aria-label="More for Alpha"/.test(more) && /title="Edit or disconnect"/.test(more), more);
+  check("...and says it opens a menu", /aria-haspopup="menu"/.test(more));
+  const source = readFileSync(fileURLToPath(new URL("./McpPanel.tsx", import.meta.url)), "utf8");
+  const detail = /function ServerDetail\([\s\S]*?\n\}\n/.exec(source)?.[0] ?? "";
+  const row = /<div className="mt-2 flex items-center gap-2">[\s\S]*?<\/DropdownMenu>\s*<\/div>/.exec(detail)?.[0] ?? "";
+  check("the row no longer wraps, so no control is left alone on a second line", row.length > 0 && !/flex-wrap/.test(row));
+  check("disconnect is still marked as the one that removes something", /<DropdownMenuItem size="compact" tone="danger" onSelect=\{\(\) => openFromMenu\("disconnect"\)\}>/.test(row));
+  check("a form opened from the menu takes the focus the menu would have taken back", /handingFocus\.current = open !== form;/.test(detail) && /if \(!handingFocus\.current\) return;\s*handingFocus\.current = false;\s*e\.preventDefault\(\);/.test(detail));
+  seed(useMcpStore, { servers: [], selectedId: null });
 }
 
 console.log(fail === 0 ? "\nALL CORRECT" : `\n${fail} FAILURES`);
