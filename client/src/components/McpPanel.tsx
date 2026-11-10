@@ -59,6 +59,11 @@ import { Icon } from "../lib/icons/registry.ts";
  */
 export const PRESSED_OPEN = "aria-expanded:bg-active aria-expanded:text-ink";
 
+export const FIELD =
+  "h-8 w-full rounded-input border border-edge bg-elevated px-2.5 py-1.5 text-caption text-ink outline-none focus-visible:shadow-focusring placeholder:text-faint read-only:text-muted";
+
+export const FIELD_MONO = `${FIELD} font-mono`;
+
 export const controlBtn = `${secondaryBtn} min-h-6 ${PRESSED_OPEN}`;
 
 export const nextBtn =
@@ -310,7 +315,7 @@ export function EditServerForm({ server, onDone }: { server: McpServer; onDone: 
         aria-label="Name"
         autoComplete="off"
         maxLength={MCP_LABEL_MAX}
-        className="w-full rounded-input border border-edge bg-elevated px-2 py-1 text-tiny text-ink outline-none focus-visible:shadow-focusring placeholder:text-faint"
+        className={FIELD}
         value={label}
         onChange={(e) => setLabel(e.target.value)}
       />
@@ -321,7 +326,7 @@ export function EditServerForm({ server, onDone }: { server: McpServer; onDone: 
         aria-label="Server URL"
         autoComplete="off"
         readOnly={fixed}
-        className="w-full rounded-input border border-edge bg-elevated px-2 py-1 text-tiny text-ink outline-none focus-visible:shadow-focusring placeholder:text-faint read-only:text-muted"
+        className={FIELD_MONO}
         placeholder="https://example.com/mcp"
         value={endpoint}
         onChange={(e) => setEndpoint(e.target.value)}
@@ -590,7 +595,7 @@ function ServerDetail({ server }: { server: McpServer }) {
                 id={`${fieldId}-credential`}
                 name="mcp-server-credential"
                 aria-label={`Credential for ${server.label}`}
-                className="min-w-0 flex-1 rounded-input border border-edge bg-elevated px-2 py-1 text-tiny text-ink outline-none focus-visible:shadow-focusring placeholder:text-faint"
+                className={`${FIELD_MONO} min-w-0 flex-1`}
                 placeholder="bearer token or API key"
                 value={token}
                 onChange={(e) => setToken(e.target.value)}
@@ -765,7 +770,7 @@ export function ConnectForm() {
           name="mcp-server-endpoint"
           aria-label="Server URL"
           autoComplete="off"
-          className="h-8 w-full rounded-input border border-edge bg-elevated px-2 py-1 text-tiny text-ink outline-none focus-visible:shadow-focusring placeholder:text-faint"
+          className={FIELD_MONO}
           placeholder="https://example.com/mcp"
           value={endpoint}
           readOnly={sending}
@@ -799,7 +804,7 @@ export function ConnectForm() {
           aria-label="Name (optional)"
           autoComplete="off"
           maxLength={MCP_LABEL_MAX}
-          className="h-8 w-full rounded-input border border-edge bg-elevated px-2 py-1 text-tiny text-ink outline-none focus-visible:shadow-focusring placeholder:text-faint"
+          className={FIELD}
           value={label}
           readOnly={sending}
           onChange={(e) => setLabel(e.target.value)}
@@ -809,7 +814,7 @@ export function ConnectForm() {
           id={`${fieldId}-token`}
           name="mcp-server-token"
           aria-label="Token (if the server needs one)"
-          className="h-8 w-full rounded-input border border-edge bg-elevated px-2 py-1 text-tiny text-ink outline-none focus-visible:shadow-focusring placeholder:text-faint"
+          className={FIELD_MONO}
           value={token}
           readOnly={sending}
           onChange={(e) => {

@@ -1,7 +1,7 @@
 import React from "react";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { ConnectForm, CredentialHome, CredentialRemovalConfirm, ENDPOINT_SETTLED, EditServerForm, MCP_EMPTY_ADMIN, MCP_EMPTY_MEMBER, MCP_LABEL_MAX, McpPanel, NOT_SENT, PRESSED_OPEN, RemovalConfirm, SCHEMA_DISPLAY_CHARS, SCHEMA_SHORTENED, TOKEN_DROPPED, TrustBanner, controlBtn, nextBtn, notSent, sameToolRow, schemaText, startAdd, storedCredentialTitle, toggledForm } from "./McpPanel.tsx";
+import { ConnectForm, CredentialHome, CredentialRemovalConfirm, ENDPOINT_SETTLED, EditServerForm, FIELD, FIELD_MONO, MCP_EMPTY_ADMIN, MCP_EMPTY_MEMBER, MCP_LABEL_MAX, McpPanel, NOT_SENT, PRESSED_OPEN, RemovalConfirm, SCHEMA_DISPLAY_CHARS, SCHEMA_SHORTENED, TOKEN_DROPPED, TrustBanner, controlBtn, nextBtn, notSent, sameToolRow, schemaText, startAdd, storedCredentialTitle, toggledForm } from "./McpPanel.tsx";
 import { FIRST_TOOL_PAGE, TOOL_PAGE, matchTools, moreToolsLabel, searchTools, showMoreTools, toolWindow } from "../lib/toolWindow.ts";
 import { useBuildStore } from "../store/buildStore.ts";
 import { ADD_INTERRUPTED, DEPARTURE_FOCUS_MS, DISCOVERY_STALE_MS, agentsUsing, allMcpTools, awaitedServer, hasDeparted, isDiscovering, liveSelection, mcpToolSearchText, removalConsequences, useMcpStore } from "../store/mcpStore.ts";
@@ -1072,6 +1072,27 @@ console.log("\nevery field keeps a label that stays once something is typed");
   const source = readFileSync(fileURLToPath(new URL("./McpPanel.tsx", import.meta.url)), "utf8");
   check("the credential field is labelled too", /<FieldLabel htmlFor=\{`\$\{fieldId\}-credential`\} first>Credential<\/FieldLabel>/.test(source) && /id=\{`\$\{fieldId\}-credential`\}\s*name="mcp-server-credential"/.test(source));
   check("each form makes its own ids, so two servers' forms never share one", (source.match(/const fieldId = useId\(\);/g) ?? []).length === 3);
+}
+
+console.log("\nan MCP field is drawn as a Secrets field is");
+{
+  const secrets = readFileSync(fileURLToPath(new URL("./SecretsPanel.tsx", import.meta.url)), "utf8");
+  for (const cls of ["rounded-input", "border-edge", "bg-elevated", "px-2.5", "py-1.5", "text-caption", "text-ink", "placeholder:text-faint"]) {
+    check(`${cls} is shared with the Secrets panel's inputs`, FIELD.split(" ").includes(cls) && secrets.includes(cls));
+  }
+  check("no MCP field is set smaller than a Secrets one", !FIELD.split(" ").includes("text-tiny") && !FIELD.split(" ").includes("py-1") && !FIELD.split(" ").includes("px-2"));
+  check("an address or a credential is set in mono, as a key is", FIELD_MONO === `${FIELD} font-mono`);
+  seed(useMcpStore, { formOpen: true, draft: { endpoint: "", label: "" }, pendingAdd: null, tokenDropped: false });
+  const connect = markup(React.createElement(ConnectForm));
+  const cls = (html: string, name: string): string => /class="([^"]*)"/.exec(new RegExp(`<input[^>]*name="${name}"[^>]*>`).exec(html)?.[0] ?? "")?.[1] ?? "";
+  check("the connect form's address is mono", cls(connect, "mcp-server-endpoint") === FIELD_MONO);
+  check("...its name is not, being words", cls(connect, "mcp-server-label") === FIELD);
+  check("...and its token is", cls(connect, "mcp-server-token") === FIELD_MONO);
+  seed(useMcpStore, { formOpen: false });
+  const edit = markup(React.createElement(EditServerForm, { server: server(), onDone: () => {} }));
+  check("the edit form follows the same rule", cls(edit, "mcp-server-edit-label") === FIELD && cls(edit, "mcp-server-edit-endpoint") === FIELD_MONO);
+  const source = readFileSync(fileURLToPath(new URL("./McpPanel.tsx", import.meta.url)), "utf8");
+  check("no MCP field spells out a style of its own", !/<(input|SecretField)\b(?:(?!\/>)[\s\S])*?className="[^"]*rounded-input/.test(source.replace(/name="mcp-tool-filter"[\s\S]*?\/>/, "")));
 }
 
 console.log(fail === 0 ? "\nALL CORRECT" : `\n${fail} FAILURES`);
