@@ -41,7 +41,7 @@ import { AlertTriangleIcon, EyeIcon, KebabIcon, KeyIcon, PencilIcon, PlugIcon, R
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "./ui/dropdown-menu.tsx";
 import { useCanRun } from "../lib/useCapability.ts";
 import { moreToolsLabel, useToolWindow } from "../lib/toolWindow.ts";
-import { STATUS_LABEL, attentionSummary, endpointHint, endpointHost, endpointProblem, orderServers } from "../lib/mcpView.ts";
+import { STATUS_LABEL, attentionSummary, endpointHint, endpointHost, endpointProblem, nextStep, orderServers } from "../lib/mcpView.ts";
 import { McpServerPicker } from "./McpServerPicker.tsx";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collapsible.tsx";
 import type { McpServer, McpTool } from "../types.ts";
@@ -60,6 +60,9 @@ import { Icon } from "../lib/icons/registry.ts";
 export const PRESSED_OPEN = "aria-expanded:bg-active aria-expanded:text-ink";
 
 export const controlBtn = `${secondaryBtn} min-h-6 ${PRESSED_OPEN}`;
+
+export const nextBtn =
+  "inline-flex min-h-6 items-center gap-1.5 rounded-control px-2.5 py-1 text-tiny bg-ink text-bg hover:bg-ink/90 active:bg-ink/80 aria-expanded:bg-ink/80 transition-colors disabled:opacity-40 disabled:cursor-not-allowed";
 
 export const SCHEMA_DISPLAY_CHARS = 20_000;
 export const SCHEMA_SHORTENED = "… shortened for display: this schema is longer than the panel shows";
@@ -438,6 +441,23 @@ function ServerDetail({ server }: { server: McpServer }) {
   };
   const highCount = server.tools.filter((t) => t.impact === "high").length;
   const lastChecked = server.checked_at ?? server.discovered_at;
+  const step = nextStep(server);
+  const recheckControl = (
+    <button key="recheck" data-mcp-next={step === "recheck" ? "recheck" : undefined}
+      className={step === "recheck" ? nextBtn : controlBtn} disabled={discovering || server.status === "connecting"}
+      onClick={() => setCheckUnsent(!sendRediscoverMcpServer(server.id))}
+      title="Ask the server what it can do, again. A failure keeps the tools already discovered.">
+      <RefreshIcon size={ICON.xs} />
+      {discovering ? "checking…" : "re-check"}
+    </button>
+  );
+  const credentialControl = (
+    <button key="credential" data-mcp-next={step === "credential" ? "credential" : undefined}
+      className={step === "credential" ? nextBtn : controlBtn} aria-expanded={open === "credential"} onClick={() => toggle("credential")}>
+      <KeyIcon size={ICON.xs} />
+      {server.configured ? "replace credential" : "add a credential"}
+    </button>
+  );
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
@@ -488,16 +508,13 @@ function ServerDetail({ server }: { server: McpServer }) {
             failing — because that is what `mcp:read` is for. */}
         {canManage && (
           <div className="mt-2 flex items-center gap-2">
-            <button className={controlBtn} disabled={discovering || server.status === "connecting"}
-              onClick={() => setCheckUnsent(!sendRediscoverMcpServer(server.id))}
-              title="Ask the server what it can do, again. A failure keeps the tools already discovered.">
-              <RefreshIcon size={ICON.xs} />
-              {discovering ? "checking…" : "re-check"}
-            </button>
-            <button className={controlBtn} aria-expanded={open === "credential"} onClick={() => toggle("credential")}>
-              <KeyIcon size={ICON.xs} />
-              {server.configured ? "replace credential" : "add a credential"}
-            </button>
+            {step === "address" && (
+              <button data-mcp-next="address" className={nextBtn} aria-expanded={open === "edit"} onClick={() => toggle("edit")}>
+                <PencilIcon size={ICON.xs} />
+                fix the address
+              </button>
+            )}
+            {step === "credential" ? [credentialControl, recheckControl] : [recheckControl, credentialControl]}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button

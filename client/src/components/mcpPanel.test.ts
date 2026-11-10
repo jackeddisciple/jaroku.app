@@ -1,7 +1,7 @@
 import React from "react";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { ConnectForm, CredentialHome, CredentialRemovalConfirm, ENDPOINT_SETTLED, EditServerForm, MCP_EMPTY_ADMIN, MCP_EMPTY_MEMBER, MCP_LABEL_MAX, McpPanel, NOT_SENT, PRESSED_OPEN, RemovalConfirm, SCHEMA_DISPLAY_CHARS, SCHEMA_SHORTENED, TOKEN_DROPPED, TrustBanner, controlBtn, notSent, sameToolRow, schemaText, startAdd, storedCredentialTitle, toggledForm } from "./McpPanel.tsx";
+import { ConnectForm, CredentialHome, CredentialRemovalConfirm, ENDPOINT_SETTLED, EditServerForm, MCP_EMPTY_ADMIN, MCP_EMPTY_MEMBER, MCP_LABEL_MAX, McpPanel, NOT_SENT, PRESSED_OPEN, RemovalConfirm, SCHEMA_DISPLAY_CHARS, SCHEMA_SHORTENED, TOKEN_DROPPED, TrustBanner, controlBtn, nextBtn, notSent, sameToolRow, schemaText, startAdd, storedCredentialTitle, toggledForm } from "./McpPanel.tsx";
 import { FIRST_TOOL_PAGE, TOOL_PAGE, matchTools, moreToolsLabel, searchTools, showMoreTools, toolWindow } from "../lib/toolWindow.ts";
 import { useBuildStore } from "../store/buildStore.ts";
 import { ADD_INTERRUPTED, DEPARTURE_FOCUS_MS, DISCOVERY_STALE_MS, agentsUsing, allMcpTools, awaitedServer, hasDeparted, isDiscovering, liveSelection, mcpToolSearchText, removalConsequences, useMcpStore } from "../store/mcpStore.ts";
@@ -12,6 +12,7 @@ import { grantRows } from "./AgentTabs.tsx";
 import { useEntitlementStore } from "../store/entitlementStore.ts";
 import { announceAsks } from "./McpConfirmModal.tsx";
 import { McpServerFacts } from "./McpServerPicker.tsx";
+import { nextStep } from "../lib/mcpView.ts";
 import { TOAST_MAX_MS, TOAST_MS, toastDuration, useUiStore } from "../store/uiStore.ts";
 import type { AgentSummary, McpServer, McpTool } from "../types.ts";
 
@@ -999,6 +1000,37 @@ console.log("\na server's controls fit on one row");
   check("the row no longer wraps, so no control is left alone on a second line", row.length > 0 && !/flex-wrap/.test(row));
   check("disconnect is still marked as the one that removes something", /<DropdownMenuItem size="compact" tone="danger" onSelect=\{\(\) => openFromMenu\("disconnect"\)\}>/.test(row));
   check("a form opened from the menu takes the focus the menu would have taken back", /handingFocus\.current = open !== form;/.test(detail) && /if \(!handingFocus\.current\) return;\s*handingFocus\.current = false;\s*e\.preventDefault\(\);/.test(detail));
+  seed(useMcpStore, { servers: [], selectedId: null });
+}
+
+console.log("\nthe next step for a server's status is the first button, and the loud one");
+{
+  check("a server that needs a credential is asked for one", nextStep({ status: "auth_required", discovered_at: null }) === "credential");
+  check("one whose address never worked is sent to fix it", nextStep({ status: "error", discovered_at: null }) === "address");
+  check("one that broke after connecting is checked again", nextStep({ status: "error", discovered_at: "2026-11-07T10:00:00.000Z" }) === "recheck");
+  check("...as is one that cannot be reached", nextStep({ status: "unreachable", discovered_at: null }) === "recheck");
+  check("a healthy server has no next step to push", nextStep({ status: "connected", discovered_at: "2026-11-07T10:00:00.000Z" }) === null && nextStep({ status: "connecting", discovered_at: null }) === null);
+  check("the loud button is the ink one, and no shorter than the others", /bg-ink/.test(nextBtn) && /min-h-6/.test(nextBtn) && !/bg-ink/.test(controlBtn));
+
+  const controls = (patch: Partial<McpServer>): string[] => {
+    seed(useSessionStore, sessionAs("admin"));
+    seed(useMcpStore, { servers: [server(patch)], selectedId: null, awaited: null, formOpen: false, discovering: {} });
+    const html = markup(React.createElement(McpPanel));
+    const row = /<div class="mt-2 flex items-center gap-2">.*?data-mcp-more/s.exec(html)?.[0] ?? "";
+    return [...row.matchAll(/<button([^>]*)>(.*?)<\/button>/gs)].map((m) => `${/data-mcp-next="([a-z]+)"/.exec(m[1] ?? "")?.[1] ?? "-"}:${(m[2] ?? "").replace(/<[^>]*>/g, "")}`);
+  };
+  const locked = controls({ status: "auth_required", discovered_at: null, last_error: "a bearer token is required" });
+  check("needing a credential puts add a credential first", locked[0] === "credential:add a credential" && locked[1] === "-:re-check", locked.join(" | "));
+  const typo = controls({ status: "error", discovered_at: null, last_error: "could not find the host" });
+  check("an address that never worked puts fix the address first", typo[0] === "address:fix the address" && typo[1] === "-:re-check", typo.join(" | "));
+  const down = controls({ status: "unreachable", last_error: "timed out" });
+  check("an unreachable server keeps re-check first", down[0] === "recheck:re-check" && down[1] === "-:add a credential", down.join(" | "));
+  const healthy = controls({});
+  check("a connected server has no loud button", healthy.join(" | ") === "-:re-check | -:add a credential", healthy.join(" | "));
+  seed(useSessionStore, sessionAs("member"));
+  seed(useMcpStore, { servers: [server({ status: "auth_required" })] });
+  check("a member is offered none of them", !/data-mcp-next/.test(markup(React.createElement(McpPanel))));
+  seed(useSessionStore, sessionAs("admin"));
   seed(useMcpStore, { servers: [], selectedId: null });
 }
 

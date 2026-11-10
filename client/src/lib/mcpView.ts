@@ -95,3 +95,12 @@ export function attentionSummary(servers: readonly McpServer[]): string | null {
   if (count === 0) return null;
   return count === 1 ? "1 server needs attention" : `${count} servers need attention`;
 }
+
+export type NextStep = "credential" | "address" | "recheck";
+
+export function nextStep(server: Pick<McpServer, "status" | "discovered_at">): NextStep | null {
+  if (server.status === "auth_required") return "credential";
+  if (server.status === "error") return server.discovered_at === null ? "address" : "recheck";
+  if (server.status === "unreachable") return "recheck";
+  return null;
+}
