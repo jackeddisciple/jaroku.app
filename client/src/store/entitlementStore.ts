@@ -24,6 +24,7 @@
 
 import { create } from "zustand";
 import { useBuildStore } from "./buildStore.ts";
+import { useMcpStore } from "./mcpStore.ts";
 
 /** A limit that may not exist. The server sends the word rather than the absence. */
 export type Limit = number | "unlimited";
@@ -137,4 +138,10 @@ useBuildStore.subscribe((now, before) => {
   if (now.agents.length >= before.agents.length) return;
   const { refusal, clear } = useEntitlementStore.getState();
   if (refusal?.error === "quota_exceeded" && refusal.kind === "agents") clear();
+});
+
+useMcpStore.subscribe((now, before) => {
+  if (now.servers.length >= before.servers.length) return;
+  const { refusal, clear } = useEntitlementStore.getState();
+  if (refusal?.error === "quota_exceeded" && refusal.kind === "mcp_servers" && now.servers.length < refusal.limit) clear();
 });

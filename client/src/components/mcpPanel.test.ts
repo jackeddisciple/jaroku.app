@@ -774,5 +774,31 @@ console.log("\na server just added stays selected until the list names it");
   seed(useMcpStore, { servers: [], selectedId: null, awaited: null, formOpen: false, pendingAdd: null });
 }
 
+console.log("\nthe limit card goes once the workspace is under its limit again");
+{
+  const three = [server(), server({ id: "beta", label: "Beta" }), server({ id: "gamma", label: "Gamma" })];
+  const quota = { error: "quota_exceeded" as const, kind: "mcp_servers", current: 3, limit: 3, tier: "free", upgradeUrl: "/billing", unlocks: "pro", unlocksLabel: "Pro" };
+  useMcpStore.getState().setServers(three);
+  useEntitlementStore.getState().refuse("mcp", quota);
+  useMcpStore.getState().setServers(three);
+  check("the same list leaves the card up", useEntitlementStore.getState().refusal !== null);
+  useMcpStore.getState().setServers(three.slice(0, 2));
+  check("disconnecting a server puts it away", useEntitlementStore.getState().refusal === null && useEntitlementStore.getState().channel === null);
+
+  useMcpStore.getState().setServers(three);
+  useEntitlementStore.getState().refuse("gen", { ...quota, kind: "agents" });
+  useMcpStore.getState().setServers(three.slice(0, 2));
+  check("a limit on something else is not cleared by it", useEntitlementStore.getState().refusal?.kind === "agents");
+  useEntitlementStore.getState().clear();
+
+  useMcpStore.getState().setServers([...three, server({ id: "delta", label: "Delta" })]);
+  useEntitlementStore.getState().refuse("mcp", quota);
+  useMcpStore.getState().setServers(three);
+  check("a workspace still at its limit keeps the card", useEntitlementStore.getState().refusal !== null);
+  useEntitlementStore.getState().clear();
+  useMcpStore.getState().setServers([]);
+  seed(useMcpStore, { servers: [], selectedId: null });
+}
+
 console.log(fail === 0 ? "\nALL CORRECT" : `\n${fail} FAILURES`);
 (globalThis as { process?: { exit(code: number): void } }).process?.exit(fail === 0 ? 0 : 1);
