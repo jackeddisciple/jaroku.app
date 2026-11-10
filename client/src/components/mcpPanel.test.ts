@@ -1034,5 +1034,20 @@ console.log("\nthe next step for a server's status is the first button, and the 
   seed(useMcpStore, { servers: [], selectedId: null });
 }
 
+console.log("\nthe connect form gives each field the panel's width");
+{
+  seed(useMcpStore, { formOpen: true, draft: { endpoint: "", label: "" }, pendingAdd: null, tokenDropped: false });
+  const form = markup(React.createElement(ConnectForm));
+  const fields = ["mcp-server-endpoint", "mcp-server-label", "mcp-server-token"].map((name) => new RegExp(`<input[^>]*name="${name}"[^>]*>`).exec(form)?.[0] ?? "");
+  check("all three fields are there", fields.every((f) => f.length > 0));
+  check("each is as wide as the form", fields.every((f) => /class="[^"]*\bw-full\b/.test(f) && !/flex-1/.test(f)), fields.find((f) => !/\bw-full\b/.test(f)) ?? "");
+  check("...and as tall as the buttons beside none of them", fields.every((f) => /\bh-8\b/.test(f)));
+  const actions = /<div data-mcp-form-actions[^>]*>.*?<\/div>/s.exec(form)?.[0] ?? "";
+  check("Connect and Cancel have a row of their own", />Connect<\/button>/.test(actions) && />Cancel<\/button>/.test(actions) && !/<input/.test(actions), actions);
+  check("...at the fields' height", (actions.match(/\bh-8\b/g) ?? []).length === 2);
+  check("the fields come before the buttons, in the order they are filled in", form.indexOf("mcp-server-endpoint") < form.indexOf("mcp-server-label") && form.indexOf("mcp-server-label") < form.indexOf("mcp-server-token") && form.indexOf("mcp-server-token") < form.indexOf("data-mcp-form-actions"));
+  seed(useMcpStore, { formOpen: false });
+}
+
 console.log(fail === 0 ? "\nALL CORRECT" : `\n${fail} FAILURES`);
 (globalThis as { process?: { exit(code: number): void } }).process?.exit(fail === 0 ? 0 : 1);

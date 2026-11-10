@@ -747,7 +747,7 @@ export function ConnectForm() {
           name="mcp-server-endpoint"
           aria-label="Server URL"
           autoComplete="off"
-          className="w-full rounded-input border border-edge bg-elevated px-2 py-1 text-tiny text-ink outline-none focus-visible:shadow-focusring placeholder:text-faint"
+          className="h-8 w-full rounded-input border border-edge bg-elevated px-2 py-1 text-tiny text-ink outline-none focus-visible:shadow-focusring placeholder:text-faint"
           placeholder="https://example.com/mcp"
           value={endpoint}
           readOnly={sending}
@@ -774,43 +774,43 @@ export function ConnectForm() {
             )}
           </p>
         )}
-        <div className="mt-1.5 flex items-center gap-2">
-          <input
-            name="mcp-server-label"
-            aria-label="Name (optional)"
-            autoComplete="off"
-            maxLength={MCP_LABEL_MAX}
-            className="min-w-0 flex-1 rounded-input border border-edge bg-elevated px-2 py-1 text-tiny text-ink outline-none focus-visible:shadow-focusring placeholder:text-faint"
-            placeholder="name (optional)"
-            value={label}
-            readOnly={sending}
-            onChange={(e) => setLabel(e.target.value)}
-          />
-          <SecretField
-            name="mcp-server-token"
-            aria-label="Token (if the server needs one)"
-            className="min-w-0 flex-1 rounded-input border border-edge bg-elevated px-2 py-1 text-tiny text-ink outline-none focus-visible:shadow-focusring placeholder:text-faint"
-            placeholder="token (if it needs one)"
-            value={token}
-            readOnly={sending}
-            onChange={(e) => {
-              setToken(e.target.value);
-              if (tokenDropped) useMcpStore.getState().setTokenDropped(false);
-            }}
-          />
-          <button type="submit" className={primaryBtn} disabled={!endpoint.trim() || sending}>
-            {sending ? "connecting…" : "Connect"}
-          </button>
-          <button type="button" className={quietBtn} disabled={sending} onClick={cancel}>
-            Cancel
-          </button>
-        </div>
+        <input
+          name="mcp-server-label"
+          aria-label="Name (optional)"
+          autoComplete="off"
+          maxLength={MCP_LABEL_MAX}
+          className="mt-1.5 h-8 w-full rounded-input border border-edge bg-elevated px-2 py-1 text-tiny text-ink outline-none focus-visible:shadow-focusring placeholder:text-faint"
+          placeholder="name (optional)"
+          value={label}
+          readOnly={sending}
+          onChange={(e) => setLabel(e.target.value)}
+        />
+        <SecretField
+          name="mcp-server-token"
+          aria-label="Token (if the server needs one)"
+          className="mt-1.5 h-8 w-full rounded-input border border-edge bg-elevated px-2 py-1 text-tiny text-ink outline-none focus-visible:shadow-focusring placeholder:text-faint"
+          placeholder="token (if it needs one)"
+          value={token}
+          readOnly={sending}
+          onChange={(e) => {
+            setToken(e.target.value);
+            if (tokenDropped) useMcpStore.getState().setTokenDropped(false);
+          }}
+        />
         {tokenDropped && (
           <p className="mt-1.5 text-tiny leading-[1.5] text-muted">{TOKEN_DROPPED}</p>
         )}
         {formError && (
           <p role="alert" className="mt-1.5 break-words text-tiny leading-[1.5] text-err">{formError}</p>
         )}
+        <div data-mcp-form-actions className="mt-2 flex items-center gap-2">
+          <button type="submit" className={`${primaryBtn} h-8`} disabled={!endpoint.trim() || sending}>
+            {sending ? "connecting…" : "Connect"}
+          </button>
+          <button type="button" className={`${quietBtn} h-8`} disabled={sending} onClick={cancel}>
+            Cancel
+          </button>
+        </div>
         <p className="mt-1.5 text-tiny leading-[1.5] text-faint">
           Jaroku will ask the server what it can do and show you the answer. Nothing is
           granted to any agent until you select it while planning, or on an agent's
