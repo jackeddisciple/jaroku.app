@@ -13,7 +13,7 @@
 // optimistic local state here — the only local state is the add form and which row is open.
 
 import { memo, useCallback, useEffect, useRef, useState } from "react";
-import { awaitedServer, isDiscovering, removalConsequences, useMcpStore } from "../store/mcpStore.ts";
+import { awaitedServer, hasDeparted, isDiscovering, removalConsequences, useMcpStore } from "../store/mcpStore.ts";
 import { useBuildStore } from "../store/buildStore.ts";
 import { useSessionStore } from "../store/sessionStore.ts";
 import { useEntitlementStore } from "../store/entitlementStore.ts";
@@ -331,7 +331,14 @@ export function RemovalConfirm({ server, onKeep }: { server: McpServer; onKeep: 
       {failed && <p role="alert" className="mt-1 text-tiny leading-[1.5] text-err">{notSent(`Disconnect ${server.label}`)}</p>}
       <div className="mt-2 flex items-center gap-2">
         <button type="button" className={controlBtn + " hover:!text-err"}
-          onClick={() => (sendRemoveMcpServer(server.id) ? onKeep() : setFailed(true))}>
+          onClick={() => {
+            if (!sendRemoveMcpServer(server.id)) {
+              setFailed(true);
+              return;
+            }
+            useMcpStore.getState().noteDeparting(server.id);
+            onKeep();
+          }}>
           <XIcon size={ICON.xs} />
           Disconnect {server.label}
         </button>
@@ -792,10 +799,18 @@ export function McpPanel() {
     if (selected && selected.id !== selectedId) setSelectedId(selected.id);
   }, [selected, selectedId, setSelectedId]);
   const picking = servers.length > 0 || pending !== null;
+  const root = useRef<HTMLDivElement>(null);
+  const departing = useMcpStore((s) => s.departing);
+  useEffect(() => {
+    if (!departing) return;
+    if (!hasDeparted({ departing, servers }, Date.now())) return;
+    useMcpStore.getState().noteDeparting(null);
+    root.current?.querySelector<HTMLElement>("[data-mcp-picker], [data-mcp-connect]")?.focus();
+  }, [departing, servers]);
   const attention = attentionSummary(servers);
 
   return (
-    <div className="flex h-full flex-col overflow-hidden">
+    <div ref={root} className="flex h-full flex-col overflow-hidden">
       {/* The standing reminder. It is worth the two lines it costs: everything below this
           came from code that was never reviewed, and that is easy to forget once a tool list
           looks as tidy as a connector list. */}

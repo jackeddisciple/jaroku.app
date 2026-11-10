@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { ConnectForm, CredentialHome, CredentialRemovalConfirm, ENDPOINT_SETTLED, EditServerForm, MCP_EMPTY_ADMIN, MCP_EMPTY_MEMBER, MCP_LABEL_MAX, McpPanel, NOT_SENT, RemovalConfirm, SCHEMA_DISPLAY_CHARS, SCHEMA_SHORTENED, TOKEN_DROPPED, controlBtn, notSent, sameToolRow, schemaText, startAdd, storedCredentialTitle } from "./McpPanel.tsx";
 import { FIRST_TOOL_PAGE, TOOL_PAGE, matchTools, moreToolsLabel, searchTools, showMoreTools, toolWindow } from "../lib/toolWindow.ts";
 import { useBuildStore } from "../store/buildStore.ts";
-import { ADD_INTERRUPTED, DISCOVERY_STALE_MS, agentsUsing, allMcpTools, awaitedServer, isDiscovering, liveSelection, mcpToolSearchText, removalConsequences, useMcpStore } from "../store/mcpStore.ts";
+import { ADD_INTERRUPTED, DEPARTURE_FOCUS_MS, DISCOVERY_STALE_MS, agentsUsing, allMcpTools, awaitedServer, hasDeparted, isDiscovering, liveSelection, mcpToolSearchText, removalConsequences, useMcpStore } from "../store/mcpStore.ts";
 import { useSessionStore } from "../store/sessionStore.ts";
 import { markup, seed, sessionAs } from "../lib/testRender.ts";
 import { resetWorkspaceStores } from "../store/reset.ts";
@@ -868,6 +868,31 @@ console.log("\na server in trouble can be seen without opening it");
   check("...and carries no asks first mark it has not earned", !/ask(s)? first/.test(troubled));
   const picker = readFileSync(fileURLToPath(new URL("./McpServerPicker.tsx", import.meta.url)), "utf8");
   check("the menu lists servers needing attention first", /orderServers\(servers\)\.map\(\(server\) => \(/.test(picker));
+  seed(useMcpStore, { servers: [], selectedId: null });
+}
+
+console.log("\nfocus lands somewhere useful after a disconnect");
+{
+  const alpha = server();
+  const beta = server({ id: "beta", label: "Beta" });
+  const at = Date.now();
+  check("nothing has left while the server is still listed", !hasDeparted({ departing: { id: "beta", at }, servers: [alpha, beta] }, at));
+  check("once the list drops it, it has", hasDeparted({ departing: { id: "beta", at }, servers: [alpha] }, at));
+  check("a removal nobody here asked for moves no focus", !hasDeparted({ departing: null, servers: [alpha] }, at));
+  check("...and neither does one asked for long ago", !hasDeparted({ departing: { id: "beta", at }, servers: [alpha] }, at + DEPARTURE_FOCUS_MS + 1));
+  useMcpStore.getState().noteDeparting("beta");
+  check("pressing Disconnect notes which server is leaving", useMcpStore.getState().departing?.id === "beta");
+  useMcpStore.getState().noteDeparting(null);
+  check("...and the note is cleared once focus has moved", useMcpStore.getState().departing === null);
+
+  const source = readFileSync(fileURLToPath(new URL("./McpPanel.tsx", import.meta.url)), "utf8");
+  const confirm = /export function RemovalConfirm\([\s\S]*?\n\}\n/.exec(source)?.[0] ?? "";
+  check("the note is made only when the removal was sent", /if \(!sendRemoveMcpServer\(server\.id\)\) \{\s*setFailed\(true\);\s*return;\s*\}\s*useMcpStore\.getState\(\)\.noteDeparting\(server\.id\);/.test(confirm));
+  check("focus goes to the picker, or to Connect a server when no server is left", /querySelector<HTMLElement>\("\[data-mcp-picker\], \[data-mcp-connect\]"\)\?\.focus\(\)/.test(source));
+  seed(useSessionStore, sessionAs("admin"));
+  seed(useMcpStore, { servers: [alpha], selectedId: null, awaited: null, formOpen: false });
+  const some = markup(React.createElement(McpPanel));
+  check("the picker comes before the connect button, so it is the one found first", some.indexOf("data-mcp-picker") > 0 && some.indexOf("data-mcp-picker") < some.indexOf("data-mcp-connect"));
   seed(useMcpStore, { servers: [], selectedId: null });
 }
 

@@ -62,6 +62,8 @@ interface McpState {
   interruptAdd: () => void;
   clearAdd: () => void;
   awaited: AwaitedServer | null;
+  departing: { id: string; at: number } | null;
+  noteDeparting: (serverId: string | null) => void;
   /** Server ids with a handshake in flight, plus null for an add that has no id yet. */
   discovering: Record<string, number>;
 
@@ -136,6 +138,8 @@ export const useMcpStore = create<McpState>((set, get) => ({
     ),
   clearAdd: () => set({ pendingAdd: null }),
   awaited: null,
+  departing: null,
+  noteDeparting: (serverId) => set({ departing: serverId === null ? null : { id: serverId, at: Date.now() } }),
   confirms: [],
   revealNonce: null,
   discovering: {},
@@ -244,6 +248,14 @@ export function removalConsequences(server: McpServer, agents: readonly AgentSum
       ? ` ${plural(using.length, "agent")} granted its tools (${named}) will no longer be able to call them.`
       : " No agent is granted its tools.")
   );
+}
+
+export const DEPARTURE_FOCUS_MS = 15_000;
+
+export function hasDeparted(state: Pick<McpState, "departing" | "servers">, now: number): boolean {
+  const { departing } = state;
+  if (!departing || now - departing.at > DEPARTURE_FOCUS_MS) return false;
+  return !state.servers.some((server) => server.id === departing.id);
 }
 
 export function awaitedServer(state: Pick<McpState, "awaited" | "selectedId" | "servers">): AwaitedServer | null {
