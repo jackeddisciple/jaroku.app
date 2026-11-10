@@ -590,16 +590,19 @@ function ServerDetail({ server }: { server: McpServer }) {
             className="mt-2 rounded-card border border-edge bg-panel p-2"
           >
             <FieldLabel htmlFor={`${fieldId}-credential`} first>Credential</FieldLabel>
-            <div className="flex items-center gap-2">
-              <SecretField
-                id={`${fieldId}-credential`}
-                name="mcp-server-credential"
-                aria-label={`Credential for ${server.label}`}
-                className={`${FIELD_MONO} min-w-0 flex-1`}
-                placeholder="bearer token or API key"
-                value={token}
-                onChange={(e) => setToken(e.target.value)}
-              />
+            <SecretField
+              id={`${fieldId}-credential`}
+              name="mcp-server-credential"
+              aria-label={`Credential for ${server.label}`}
+              className={FIELD_MONO}
+              placeholder="bearer token or API key"
+              value={token}
+              onChange={(e) => setToken(e.target.value)}
+            />
+            {credentialError && (
+              <p role="alert" className="mt-1.5 break-words text-tiny leading-[1.5] text-err">{credentialError}</p>
+            )}
+            <div data-mcp-form-actions className="mt-2 flex items-center gap-2">
               <button type="submit" className={primaryBtn} disabled={!token.trim()}>
                 Save
               </button>
@@ -613,9 +616,6 @@ function ServerDetail({ server }: { server: McpServer }) {
                 Cancel
               </button>
             </div>
-            {credentialError && (
-              <p role="alert" className="mt-1.5 break-words text-tiny leading-[1.5] text-err">{credentialError}</p>
-            )}
             {/* Saying where it goes matters more than saying it is safe. */}
             <p className="mt-1.5 text-tiny leading-[1.5] text-faint">
               <CredentialHome server={server} /> It is never logged and never sent back to this page.

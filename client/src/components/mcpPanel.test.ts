@@ -1095,5 +1095,18 @@ console.log("\nan MCP field is drawn as a Secrets field is");
   check("no MCP field spells out a style of its own", !/<(input|SecretField)\b(?:(?!\/>)[\s\S])*?className="[^"]*rounded-input/.test(source.replace(/name="mcp-tool-filter"[\s\S]*?\/>/, "")));
 }
 
+console.log("\nthe credential field has the form's width to itself");
+{
+  const source = readFileSync(fileURLToPath(new URL("./McpPanel.tsx", import.meta.url)), "utf8");
+  const form = /\{open === "credential" && \(\s*<form[\s\S]*?<\/form>/.exec(source)?.[0] ?? "";
+  const field = /<SecretField[\s\S]*?\/>/.exec(form)?.[0] ?? "";
+  check("the field is full width, not one of four things on a row", /className=\{FIELD_MONO\}/.test(field) && !/flex-1/.test(field), field);
+  const actions = /<div data-mcp-form-actions[\s\S]*?<\/div>/.exec(form)?.[0] ?? "";
+  check("Save, Remove and Cancel sit on a row beneath it", /Save/.test(actions) && /Remove/.test(actions) && /Cancel/.test(actions) && !/SecretField/.test(actions));
+  check("...in that order, after the field", form.indexOf("<SecretField") < form.indexOf("data-mcp-form-actions") && actions.indexOf("Save") < actions.indexOf("Remove") && actions.indexOf("Remove") < actions.indexOf("Cancel"));
+  check("a refusal is said between the field and its buttons", form.indexOf("{credentialError && (") > form.indexOf("<SecretField") && form.indexOf("{credentialError && (") < form.indexOf("data-mcp-form-actions"));
+  check("its hint is whole, with room to be", /placeholder="bearer token or API key"/.test(field));
+}
+
 console.log(fail === 0 ? "\nALL CORRECT" : `\n${fail} FAILURES`);
 (globalThis as { process?: { exit(code: number): void } }).process?.exit(fail === 0 ? 0 : 1);
